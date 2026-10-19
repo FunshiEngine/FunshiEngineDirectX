@@ -670,6 +670,28 @@ set_target_properties(manifiesto-assets-tests PROPERTIES
 )
 add_test(NAME manifiesto-assets-tests COMMAND manifiesto-assets-tests)
 
+# Nucleo del sistema de mods (.fmod): versiones semver minimas (ModVersion,
+# RangoVersion) y el esquema del manifiesto (ManifiestoMod). Headless y sin GUI
+# ni GLFW (solo nlohmann/json de External) para correr tambien con
+# BUILD_ENGINE=OFF. Cubre parseo, cortafuegos de esquemaVersion, validacion de
+# campos, dependencias/conflictos y lectura desde disco.
+add_executable(mods-tests
+    ${SRC_DIR}/Mods/ModVersion.cpp
+    ${SRC_DIR}/Mods/ManifiestoMod.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../tests/ModsTests.cpp
+)
+target_link_libraries(mods-tests PRIVATE funshi_diagnostics_core)
+target_include_directories(mods-tests PRIVATE
+    ${SRC_DIR}
+    ${CMAKE_SOURCE_DIR}/External
+)
+set_target_properties(mods-tests PROPERTIES
+    CXX_STANDARD 17
+    CXX_STANDARD_REQUIRED ON
+    CXX_EXTENSIONS OFF
+)
+add_test(NAME mods-tests COMMAND mods-tests)
+
 # Orquestador de estados de GUI (la "funcion de marco" de F5/F6/F7 y las teclas)
 # tambien es pura logica de estados y se prueba headless: cubre las reglas por
 # estado de Play/Pausa/Stop, Escape -> menu e "Iniciar Estudio" -> editor.
