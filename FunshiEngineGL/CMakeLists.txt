@@ -17,6 +17,14 @@ set(FUNSHI_APP_ICON "app.ico")
 string(REPLACE "." "," FUNSHI_VERSION_COMMA "${FUNSHI_VERSION}")
 set(FUNSHI_VERSION_COMMA "${FUNSHI_VERSION_COMMA},0")
 
+# Versión del motor compilada en los binarios (además de la de caché de
+# CMake). El sistema de mods la lee desde código para validar el campo
+# versionMotor del manifiesto, que expresa un rango contra esta versión;
+# por eso tiene que existir en tiempo de compilación. Definición global
+# (no PUBLIC de un target): la consumen la librería del motor, la librería
+# de mods y los targets de test, que se compilan también con BUILD_ENGINE=OFF.
+add_compile_definitions(FUNSHI_VERSION_STR="${FUNSHI_VERSION}")
+
 # Configuración básica
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
