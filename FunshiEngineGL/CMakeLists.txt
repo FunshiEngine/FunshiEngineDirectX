@@ -77,6 +77,18 @@ else()
     target_link_libraries(funshi_diagnostics_core PUBLIC ${CMAKE_DL_LIBS})
 endif()
 
+# miniz (vendoriado en External/miniz): biblioteca ZIP en C, sin dependencias.
+# La comparten la libreria del motor (sistema de mods) y los targets de test
+# headless que corren con BUILD_ENGINE=OFF. Se expone el directorio External
+# para incluirla como <miniz/miniz.h>, igual que nlohmann/json.
+add_library(funshi_miniz STATIC
+    ${CMAKE_CURRENT_SOURCE_DIR}/External/miniz/miniz.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/External/miniz/miniz_tdef.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/External/miniz/miniz_tinfl.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/External/miniz/miniz_zip.c)
+target_include_directories(funshi_miniz PUBLIC
+    ${CMAKE_CURRENT_SOURCE_DIR}/External)
+
 
 
 # El motor se compila como libreria estatica (funshi_engine) y el ejecutable
@@ -125,7 +137,7 @@ if(BUILD_ENGINE)
 
     add_library(funshi_engine STATIC ${SOURCES} ${HEADERS})
     target_link_libraries(funshi_engine PUBLIC
-        funshi_project_core funshi_diagnostics_core)
+        funshi_project_core funshi_diagnostics_core funshi_miniz)
 
     if(NOT BUILD_RUNTIME)
     # Ejecutable principal (solo el entry point).
@@ -678,9 +690,10 @@ add_test(NAME manifiesto-assets-tests COMMAND manifiesto-assets-tests)
 add_executable(mods-tests
     ${SRC_DIR}/Mods/ModVersion.cpp
     ${SRC_DIR}/Mods/ManifiestoMod.cpp
+    ${SRC_DIR}/Mods/LectorZip.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../tests/ModsTests.cpp
 )
-target_link_libraries(mods-tests PRIVATE funshi_diagnostics_core)
+target_link_libraries(mods-tests PRIVATE funshi_diagnostics_core funshi_miniz)
 target_include_directories(mods-tests PRIVATE
     ${SRC_DIR}
     ${CMAKE_SOURCE_DIR}/External

@@ -17,19 +17,28 @@
     SPDX-License-Identifier: Apache-2.0
 */
 // Pruebas headless del nucleo del sistema de mods: versiones semver minimas
-// (ModVersion y RangoVersion) y el esquema del manifiesto de un paquete .fmod
-// (ManifiestoMod.json). Cubre el parseo de campos obligatorios y opcionales,
-// la validacion del id, la tolerancia a campos ausentes, el cortafuegos de
-// esquemaVersion y las dependencias/conflictos. No toca ZIP ni disco mas alla
-// de un archivo de manifiesto suelto.
+// (ModVersion y RangoVersion), el esquema del manifiesto de un paquete .fmod
+// (ManifiestoMod.json) y la lectura del paquete ZIP (LectorZip: manifiesto
+// desde el .fmod, extraccion a cache y contrato anti zip-slip). Cubre parseo de
+// campos obligatorios y opcionales, validacion del id, tolerancia a campos
+// ausentes, cortafuegos de esquemaVersion, dependencias/conflictos y paquetes
+// generados en el momento con miniz.
 
+#include <filesystem>
 #include <fstream>
 #include <iostream>
 #include <string>
+#include <utility>
+#include <vector>
+
+#include <miniz/miniz.h>
 
 #include "TempPruebas.h"
+#include "../FunshiEngineGL/src/Mods/LectorZip.h"
 #include "../FunshiEngineGL/src/Mods/ManifiestoMod.h"
 #include "../FunshiEngineGL/src/Mods/ModVersion.h"
+
+namespace fs = std::filesystem;
 
 namespace {
 
@@ -48,6 +57,37 @@ int fallos = 0;
 
 bool contiene(const std::string& texto, const std::string& aguja) {
     return texto.find(aguja) != std::string::npos;
+}
+
+// Arma un ZIP en `ruta` con las entradas (nombre, contenido) recibidas, usando
+// el escritor de miniz. Es el mismo camino con el que un empaquetador de mods
+// generaria un .fmod, y permite a los tests fabricar paquetes validos y
+// maliciosos (entradas con "..", absolutas) sin depender de binarios externos.
+bool crearZip(const std::string& ruta,
+              const std::vector<std::pair<std::string, std::string>>& entradas) {
+    mz_zip_archive zip;
+    mz_zip_zero_struct(&zip);
+    if (!mz_zip_writer_init_file(&zip, ruta.c_str(), 0))
+        return false;
+    for (const auto& entrada : entradas) {
+        if (!mz_zip_writer_add_mem(&zip, entrada.first.c_str(),
+                                   entrada.second.data(), entrada.second.size(),
+                                   MZ_BEST_COMPRESSION)) {
+            mz_zip_writer_end(&zip);
+            return false;
+        }
+    }
+    const bool ok = mz_zip_writer_finalize_archive(&zip) != MZ_FALSE;
+    mz_zip_writer_end(&zip);
+    return ok;
+}
+
+std::string leerArchivoTexto(const std::string& ruta) {
+    std::ifstream archivo(ruta, std::ios::binary);
+    if (!archivo)
+        return std::string();
+    return std::string(std::istreambuf_iterator<char>(archivo),
+                       std::istreambuf_iterator<char>());
 }
 
 // Manifiesto minimo valido, con los campos obligatorios de la v1. Los tests
@@ -336,6 +376,114 @@ int main() {
               "un archivo inexistente no parsea");
         CHECK(!error.empty(),
               "el archivo inexistente deja mensaje de error");
+    }
+
+    // 7. LectorZip: manifiesto desde un .fmod y extraccion anti zip-slip.
+    {
+        TempPruebas::CarpetaPrueba carpeta("funshi_mods_zip_tests");
+        const fs::path zip = carpeta.ruta() / "mod.fmod";
+        CHECK(crearZip(zip.string(),
+                       {{"ManifiestoMod.json", manifiestoBase()},
+                        {"bin/mimod.so", std::string("binario falso")},
+                        {"icono.png", std::string("png falso")}}),
+              "el helper arma el .fmod de prueba con miniz");
+
+        std::string contenido;
+        std::string error;
+        CHECK(LectorZip::leerEntrada(zip.string(), "ManifiestoMod.json",
+                                     contenido, error),
+              "leerEntrada encuentra el manifiesto en el paquete");
+        CHECK(contenido == manifiestoBase(),
+              "el manifiesto extraido coincide byte a byte con el original");
+
+        ManifiestoMod mod;
+        CHECK(ManifiestoMod::parsear(contenido, mod, error),
+              "el manifiesto leido del .fmod parsea");
+
+        error.clear();
+        CHECK(!LectorZip::leerEntrada(zip.string(), "NoExiste.json", contenido,
+                                      error),
+              "una entrada ausente no se lee");
+        CHECK(!error.empty(), "la entrada ausente deja mensaje de error");
+
+        // Extraccion completa: respeta subdirectorios y contenido.
+        const fs::path destino = carpeta.ruta() / "extraido";
+        error.clear();
+        CHECK(LectorZip::extraerTodo(zip.string(), destino.string(), error),
+              "extraerTodo extrae el paquete completo");
+        CHECK(error.empty(), "una extraccion correcta no deja error");
+        CHECK(fs::exists(destino / "ManifiestoMod.json"),
+              "el manifiesto queda en la raiz del destino");
+        CHECK(fs::exists(destino / "bin" / "mimod.so"),
+              "la extraccion crea los subdirectorios del paquete");
+        CHECK(leerArchivoTexto((destino / "bin" / "mimod.so").string()) ==
+                  "binario falso",
+              "el contenido extraido coincide");
+
+        // Zip-slip con "..": se rechaza entero y no escribe fuera.
+        const fs::path malicioso = carpeta.ruta() / "malicioso.fmod";
+        CHECK(crearZip(malicioso.string(),
+                       {{"../escape.txt", std::string("malo")},
+                        {"ManifiestoMod.json", manifiestoBase()}}),
+              "se arma un .fmod con una entrada que escapa");
+        error.clear();
+        CHECK(!LectorZip::extraerTodo(malicioso.string(),
+                                      (carpeta.ruta() / "extraido_mal").string(),
+                                      error),
+              "extraerTodo rechaza una entrada con '..'");
+        CHECK(!error.empty(), "el rechazo de zip-slip deja mensaje");
+        CHECK(!fs::exists(carpeta.ruta() / "escape.txt"),
+              "nada se escribio fuera del destino");
+
+        // Zip-slip con ruta absoluta (unidad en Windows, raiz en POSIX).
+#ifdef _WIN32
+        const std::string rutaAbsoluta = "C:/escape_abs.txt";
+#else
+        const std::string rutaAbsoluta = "/escape_abs.txt";
+#endif
+        const fs::path absoluto = carpeta.ruta() / "absoluto.fmod";
+        CHECK(crearZip(absoluto.string(),
+                       {{rutaAbsoluta, std::string("malo")}}),
+              "se arma un .fmod con una entrada absoluta");
+        error.clear();
+        CHECK(!LectorZip::extraerTodo(absoluto.string(),
+                                      (carpeta.ruta() / "extraido_abs").string(),
+                                      error),
+              "extraerTodo rechaza una entrada absoluta");
+
+        // Contrato anti zip-slip a nivel de ruta.
+        CHECK(LectorZip::esRutaSegura("bin/mimod.so"),
+              "una ruta relativa normal es segura");
+        CHECK(!LectorZip::esRutaSegura("../escape.txt"),
+              "una ruta con '..' no es segura");
+        CHECK(!LectorZip::esRutaSegura("/abs.txt") &&
+                  !LectorZip::esRutaSegura("C:/abs.txt"),
+              "una ruta absoluta no es segura");
+        CHECK(!LectorZip::esRutaSegura("bin\\..\\escape.txt"),
+              "un '..' con separador de Windows tampoco es seguro");
+
+        // Un archivo que no es un ZIP se rechaza sin volcar basura.
+        const fs::path noZip = carpeta.ruta() / "no_es_zip.fmod";
+        {
+            std::ofstream salida(noZip);
+            salida << "esto no es un zip";
+        }
+        error.clear();
+        CHECK(!LectorZip::leerEntrada(noZip.string(), "ManifiestoMod.json",
+                                      contenido, error),
+              "un archivo que no es ZIP no se lee");
+        error.clear();
+        CHECK(!LectorZip::extraerTodo(noZip.string(),
+                                      (carpeta.ruta() / "extraido_nozip").string(),
+                                      error),
+              "extraerTodo rechaza un archivo que no es ZIP");
+
+        // ZIP inexistente.
+        error.clear();
+        CHECK(!LectorZip::leerEntrada((carpeta.ruta() / "no.fmod").string(),
+                                      "ManifiestoMod.json", contenido, error),
+              "un ZIP inexistente no se lee");
+        CHECK(!error.empty(), "el ZIP inexistente deja mensaje de error");
     }
 
     std::cout << (fallos == 0 ? "OK" : "FALLOS") << ": " << (total - fallos)
