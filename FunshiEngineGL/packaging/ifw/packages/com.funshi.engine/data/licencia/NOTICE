@@ -29,3 +29,4 @@ THIRD_PARTY_NOTICES.md for the full list, licensing terms and attribution:
   - nlohmann/json (FunshiEngineGL/External/nlohmann/)
   - stb_image (FunshiEngineGL/src/Herramientas/IconosGUI/stb_image.h)
   - OpenGL Mathematics - GLM (system dependency; vendored fallback if present)
+  - miniz (FunshiEngineGL/External/miniz/)
