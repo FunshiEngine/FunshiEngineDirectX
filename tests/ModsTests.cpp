@@ -34,6 +34,8 @@
 #include <miniz/miniz.h>
 
 #include "TempPruebas.h"
+#include "../FunshiEngineGL/src/Diagnosticos/RegistroDiagnosticos.h"
+#include "../FunshiEngineGL/src/Mods/GestorMods.h"
 #include "../FunshiEngineGL/src/Mods/LectorZip.h"
 #include "../FunshiEngineGL/src/Mods/ManifiestoMod.h"
 #include "../FunshiEngineGL/src/Mods/ModVersion.h"
@@ -108,6 +110,27 @@ std::string manifiestoBase() {
         ],
         "conflictos": ["Tercero.Malo"]
     })json";
+}
+
+// Manifiesto sintetico para los tests del gestor: arma el JSON de un mod con
+// los obligatorios y el bloque `extra` que pase cada caso.
+std::string manifiestoPara(const std::string& id, const std::string& version,
+                           const std::string& extra = std::string()) {
+    return std::string("{\"esquemaVersion\":1,\"id\":\"") + id +
+           "\",\"nombre\":\"" + id + "\",\"version\":\"" + version +
+           "\",\"tipo\":\"nativo\",\"puntoEntrada\":\"bin/m.so\"" +
+           (extra.empty() ? std::string() : "," + extra) + "}";
+}
+
+// Arma un paquete .fmod con el manifiesto indicado dentro de `carpeta` (que
+// crea). Es lo que el usuario copiaria a Mods/, con la ruta de paquete real.
+bool crearPaquete(const fs::path& carpeta, const std::string& archivo,
+                  const std::string& manifiesto) {
+    std::error_code ec;
+    fs::create_directories(carpeta, ec);
+    return crearZip((carpeta / archivo).string(),
+                    {{"ManifiestoMod.json", manifiesto},
+                     {"bin/m.so", std::string("binario")}});
 }
 
 } // namespace
@@ -484,6 +507,185 @@ int main() {
                                       "ManifiestoMod.json", contenido, error),
               "un ZIP inexistente no se lee");
         CHECK(!error.empty(), "el ZIP inexistente deja mensaje de error");
+    }
+
+    // 8. GestorMods: descubrimiento, validacion, orden por dependencias y
+    //    ambito motor/proyecto, con reporte al registro de diagnosticos.
+    {
+        TempPruebas::CarpetaPrueba carpeta("funshi_mods_gestor_tests");
+        const fs::path motor = carpeta.ruta() / "motor" / "Mods";
+        const fs::path proyecto = carpeta.ruta() / "proyecto" / "Mods";
+
+        // A y B (B depende de A), C que pide cargarse despues de D.
+        CHECK(crearPaquete(motor, "a.fmod", manifiestoPara("Autor.A", "1.0.0")),
+              "se empaqueta el mod A");
+        CHECK(crearPaquete(motor, "b.fmod",
+                           manifiestoPara("Autor.B", "1.0.0",
+                                          "\"dependencias\":[{\"id\":\"Autor.A\"}]")),
+              "se empaqueta el mod B (depende de A)");
+        CHECK(crearPaquete(proyecto, "c.fmod",
+                           manifiestoPara("Autor.C", "1.0.0",
+                                          "\"dependencias\":[{\"id\":\"Autor.D\",\"requerida\":false,\"orden\":\"despues\"}]")),
+              "se empaqueta el mod C del proyecto");
+        CHECK(crearPaquete(proyecto, "d.fmod", manifiestoPara("Autor.D", "1.0.0")),
+              "se empaqueta el mod D del proyecto");
+
+        GestorMods::Resultado resultado = GestorMods::descubrir(
+            {{motor.string(), AmbitoMod::Motor},
+             {proyecto.string(), AmbitoMod::Proyecto}});
+        CHECK(resultado.fallos.empty(), "los cuatro mods validos no dan fallos");
+        CHECK(resultado.mods.size() == 4, "se descubren los cuatro mods");
+
+        // Orden: A antes que B (dependencia requerida); C antes que D (orden
+        // "despues" de C respecto de D).
+        std::vector<std::string> ids;
+        for (const PaqueteMod& mod : resultado.mods)
+            ids.push_back(mod.manifiesto.id);
+        auto posicionDe = [&ids](const std::string& id) {
+            for (std::size_t i = 0; i < ids.size(); ++i)
+                if (ids[i] == id)
+                    return static_cast<int>(i);
+            return -1;
+        };
+        CHECK(posicionDe("Autor.A") < posicionDe("Autor.B"),
+              "A se ordena antes que B (B lo requiere)");
+        CHECK(posicionDe("Autor.C") < posicionDe("Autor.D"),
+              "C se ordena antes que D (C lo pide con orden 'despues')");
+
+        // Ambito: cada paquete conserva de que carpeta salio.
+        for (const PaqueteMod& mod : resultado.mods) {
+            if (mod.manifiesto.id == "Autor.A")
+                CHECK(mod.ambito == AmbitoMod::Motor,
+                      "el mod de la carpeta del motor queda como Motor");
+            if (mod.manifiesto.id == "Autor.C")
+                CHECK(mod.ambito == AmbitoMod::Proyecto,
+                      "el mod del proyecto queda como Proyecto");
+        }
+
+        // Reporte: resumen de cargados y, por cada fallo, mod y causa.
+        const fs::path registro = carpeta.ruta() / "diagnosticos.jsonl";
+        RegistroDiagnosticos diario(registro.string());
+        GestorMods::reportar(resultado, diario);
+        std::string resumen;
+        for (const EventoDiagnostico& evento : diario.ultimos(50))
+            resumen += evento.mensaje + "\n";
+        CHECK(contiene(resumen, "mods cargados: 4"),
+              "el reporte dice cuantos mods se cargaron");
+    }
+
+    // 9. GestorMods: casos de rechazo (id duplicado, dependencia faltante,
+    //    ciclo, version del motor, versionMin y conflicto).
+    {
+        TempPruebas::CarpetaPrueba carpeta("funshi_mods_rechazos_tests");
+        const fs::path motor = carpeta.ruta() / "Mods";
+        const fs::path proyecto = carpeta.ruta() / "Proyecto" / "Mods";
+
+        // id duplicado entre motor y proyecto: se rechazan las dos instancias.
+        CHECK(crearPaquete(motor, "dup1.fmod", manifiestoPara("Autor.Dup", "1.0.0")),
+              "se empaqueta la primera instancia del id duplicado");
+        CHECK(crearPaquete(proyecto, "dup2.fmod", manifiestoPara("Autor.Dup", "2.0.0")),
+              "se empaqueta la segunda instancia del id duplicado");
+        // dependencia faltante.
+        CHECK(crearPaquete(motor, "huerfano.fmod",
+                           manifiestoPara("Autor.Huerfano", "1.0.0",
+                                          "\"dependencias\":[{\"id\":\"Autor.NoExiste\"}]")),
+              "se empaqueta un mod con dependencia faltante");
+        // ciclo entre dos mods.
+        CHECK(crearPaquete(motor, "ciclo1.fmod",
+                           manifiestoPara("Autor.Ciclo1", "1.0.0",
+                                          "\"dependencias\":[{\"id\":\"Autor.Ciclo2\"}]")),
+              "se empaqueta el primer mod del ciclo");
+        CHECK(crearPaquete(motor, "ciclo2.fmod",
+                           manifiestoPara("Autor.Ciclo2", "1.0.0",
+                                          "\"dependencias\":[{\"id\":\"Autor.Ciclo1\"}]")),
+              "se empaqueta el segundo mod del ciclo");
+        // versionMotor incompatible con el motor.
+        CHECK(crearPaquete(motor, "futuro.fmod",
+                           manifiestoPara("Autor.Futuro", "1.0.0",
+                                          "\"versionMotor\":\">=99.0.0\"")),
+              "se empaqueta un mod que pide un motor futuro");
+        // versionMin insatisfecha por la dependencia presente.
+        CHECK(crearPaquete(motor, "viejo.fmod", manifiestoPara("Autor.Viejo", "1.0.0")),
+              "se empaqueta la dependencia vieja");
+        CHECK(crearPaquete(motor, "exigente.fmod",
+                           manifiestoPara("Autor.Exigente", "1.0.0",
+                                          "\"dependencias\":[{\"id\":\"Autor.Viejo\",\"versionMin\":\"2.0.0\"}]")),
+              "se empaqueta un mod que exige una version mayor");
+        // conflicto con un mod presente.
+        CHECK(crearPaquete(motor, "conflictivo.fmod",
+                           manifiestoPara("Autor.Conflictivo", "1.0.0",
+                                          "\"conflictos\":[\"Autor.Viejo\"]")),
+              "se empaqueta un mod en conflicto");
+        // manifiesto roto: no aporta mod.
+        CHECK(crearPaquete(motor, "roto.fmod", "{ esto no es json"),
+              "se empaqueta un manifiesto roto");
+        // archivo que no es .fmod: se ignora.
+        {
+            std::ofstream otro((motor / "notas.txt").string());
+            otro << "no soy un mod";
+        }
+
+        GestorMods::Resultado resultado = GestorMods::descubrir(
+            {{motor.string(), AmbitoMod::Motor},
+             {proyecto.string(), AmbitoMod::Proyecto}});
+
+        std::string causas;
+        for (const FalloMod& fallo : resultado.fallos)
+            causas += fallo.paquete + " | " + fallo.causa + "\n";
+        auto hayCausa = [&causas](const std::string& aguja) {
+            return causas.find(aguja) != std::string::npos;
+        };
+
+        CHECK(contiene(causas, "Autor.Dup"),
+              "el id duplicado queda reportado");
+        CHECK(contiene(causas, "duplicado"),
+              "la causa del id duplicado se explica");
+        CHECK(contiene(causas, "Autor.Huerfano") &&
+                  contiene(causas, "Autor.NoExiste"),
+              "la dependencia faltante se reporta con el id que falta");
+        CHECK(hayCausa("ciclo"), "el ciclo entre mods se reporta");
+        CHECK(contiene(causas, "Autor.Futuro"),
+              "el mod incompatible con el motor se rechaza");
+        CHECK(contiene(causas, "Autor.Exigente"),
+              "el mod que exige una version mayor se rechaza");
+        CHECK(contiene(causas, "Autor.Conflictivo"),
+              "el mod en conflicto se rechaza");
+        CHECK(contiene(causas, "roto.fmod"),
+              "el manifiesto roto se reporta con su paquete");
+
+        // Ningun mod invalido ni ignorado entra en la lista de carga: quedan
+        // solo los que pueden cargarse (Viejo, que nadie pudo exigir OK).
+        bool cargaDuplicado = false;
+        bool cargaCiclo = false;
+        bool cargaRoto = false;
+        for (const PaqueteMod& mod : resultado.mods) {
+            if (mod.manifiesto.id == "Autor.Dup")
+                cargaDuplicado = true;
+            if (mod.manifiesto.id == "Autor.Ciclo1" ||
+                mod.manifiesto.id == "Autor.Ciclo2")
+                cargaCiclo = true;
+        }
+        CHECK(!cargaDuplicado, "un id duplicado no entra a la lista de carga");
+        CHECK(!cargaCiclo, "un mod en ciclo no entra a la lista de carga");
+        CHECK(!cargaRoto, "un manifiesto roto no entra a la lista de carga");
+
+        // Reporte de los rechazos: un evento por mod fallido, con su causa.
+        const fs::path registro = carpeta.ruta() / "diagnosticos.jsonl";
+        RegistroDiagnosticos diario(registro.string());
+        GestorMods::reportar(resultado, diario);
+        std::string texto;
+        for (const EventoDiagnostico& evento : diario.ultimos(100))
+            texto += evento.mensaje + "\n";
+        CHECK(contiene(texto, "mods cargados:"),
+              "el reporte incluye el resumen de mods cargados");
+        CHECK(contiene(texto, "Autor.Huerfano"),
+              "el reporte incluye el mod fallido y su causa");
+
+        // Carpetas inexistentes: no hay mods ni fallos.
+        GestorMods::Resultado vacio = GestorMods::descubrir(
+            {{(carpeta.ruta() / "NoExiste").string(), AmbitoMod::Motor}});
+        CHECK(vacio.mods.empty() && vacio.fallos.empty(),
+              "una carpeta inexistente no aporta mods ni fallos");
     }
 
     std::cout << (fallos == 0 ? "OK" : "FALLOS") << ": " << (total - fallos)
