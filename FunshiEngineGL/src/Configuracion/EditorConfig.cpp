@@ -251,6 +251,7 @@ void EditorConfig::cargarGeneral(const std::string& ruta) {
     datos_.sensibilidadCamara = g.sensibilidadCamara;
     datos_.sensibilidadMovimientoCamara = g.sensibilidadMovimientoCamara;
     datos_.apariencia = g.apariencia;
+    datos_.modsMotor = g.mods;
 }
 
 void EditorConfig::cargarProyecto(const std::string& nombreProyecto,
@@ -267,6 +268,7 @@ void EditorConfig::cargarProyecto(const std::string& nombreProyecto,
     // Se asigna entero (y no se fusiona) para que entrar a un proyecto sin
     // configuracion arranque en defaults en lugar de heredar los del anterior.
     datos_.estadoVentanas = p.estadoVentanas;
+    datos_.modsProyecto = p.mods;
 }
 
 // ============================================================================
@@ -292,6 +294,7 @@ void EditorConfig::guardarGeneral(const std::string& ruta) {
     g.sensibilidadCamara = datos_.sensibilidadCamara;
     g.sensibilidadMovimientoCamara = datos_.sensibilidadMovimientoCamara;
     g.apariencia = datos_.apariencia;
+    g.mods = datos_.modsMotor;
 
     ConfigPersistence::guardarGeneral(g, ruta);
 
@@ -310,6 +313,7 @@ void EditorConfig::guardarProyecto(const std::string& nombreProyecto,
     p.camaraActivaId = datos_.camaraActivaId;
     p.dimension = datos_.dimension;
     p.estadoVentanas = datos_.estadoVentanas;
+    p.mods = datos_.modsProyecto;
 
     ConfigPersistence::guardarProyecto(p, nombreProyecto, ruta);
 }

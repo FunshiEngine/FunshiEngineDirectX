@@ -34,6 +34,7 @@
 #include <miniz/miniz.h>
 
 #include "TempPruebas.h"
+#include "../FunshiEngineGL/src/Configuracion/ProjectPaths.h"
 #include "../FunshiEngineGL/src/Diagnosticos/RegistroDiagnosticos.h"
 #include "../FunshiEngineGL/src/Mods/GestorMods.h"
 #include "../FunshiEngineGL/src/Mods/LectorZip.h"
@@ -686,6 +687,20 @@ int main() {
             {{(carpeta.ruta() / "NoExiste").string(), AmbitoMod::Motor}});
         CHECK(vacio.mods.empty() && vacio.fallos.empty(),
               "una carpeta inexistente no aporta mods ni fallos");
+    }
+
+    // 10. Rutas de mods: la global cuelga de la raiz de datos y la del
+    //     proyecto de su carpeta. ProjectPaths compone con '/', que es su
+    //     contrato (no el separador nativo): se compara contra el mismo texto.
+    {
+        CHECK(ProjectPaths::directorioMods() ==
+                  ProjectPaths::directorioBase() + "/Mods",
+              "directorioMods cuelga de la raiz de datos");
+        CHECK(ProjectPaths::directorioModsProyecto("MiJuego") ==
+                  ProjectPaths::directorioProyecto("MiJuego") + "/Mods",
+              "directorioModsProyecto cuelga del proyecto");
+        CHECK(fs::path(ProjectPaths::directorioMods()).filename() == "Mods",
+              "la carpeta global se llama Mods");
     }
 
     std::cout << (fallos == 0 ? "OK" : "FALLOS") << ": " << (total - fallos)

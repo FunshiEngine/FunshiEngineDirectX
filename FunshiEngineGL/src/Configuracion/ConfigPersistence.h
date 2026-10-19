@@ -39,6 +39,10 @@ public:
         float sensibilidadCamara = 0.15f;
         float sensibilidadMovimientoCamara = 1.0f;
         Apariencia apariencia;
+        // Mods del motor activos (id -> habilitado). Los mods del proyecto
+        // viven en ConfigPersistence::Proyecto, porque el ambito decide que
+        // archivo los guarda.
+        std::map<std::string, bool> mods;
     };
 
     struct Proyecto {
@@ -55,6 +59,9 @@ public:
         // serializacion en un metodo aparte, guardarProyecto reescribia el
         // archivo sin el mapa y se perdia el estado de los paneles.
         std::map<std::string, bool> estadoVentanas;
+        // Mods activos del proyecto (id -> habilitado): el ambito de cada mod
+        // decide en que archivo vive su estado (general o de proyecto).
+        std::map<std::string, bool> mods;
     };
 
     // Escribe JSON en disco, creando directorios padre. Escritura atomica

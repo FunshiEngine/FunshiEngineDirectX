@@ -107,6 +107,10 @@ std::string directorioExportacion(const std::string& nombreExportacion);
 // Validacion de nombre de proyecto (sin separadores, vacio, reservados)
 bool esNombreValido(const std::string& nombre);
 
+// Carpetas de mods
+std::string directorioMods();        // <directorioBase>/Mods (global)
+std::string directorioModsProyecto(const std::string& nombreProyecto); // <proyecto>/Mods
+
 } // namespace ProjectPaths
 
 #endif // PROJECT_PATHS_H

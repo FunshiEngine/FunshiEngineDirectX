@@ -218,6 +218,12 @@ ConfigPersistence::General ConfigPersistence::cargarGeneral(const std::string& r
         g.sensibilidadMovimientoCamara = j["sensibilidadMovimientoCamara"].get<float>();
     if (j.contains("apariencia") && j["apariencia"].is_object())
         g.apariencia = jsonToApariencia(j["apariencia"]);
+    if (j.contains("mods") && j["mods"].is_object()) {
+        for (auto it = j["mods"].begin(); it != j["mods"].end(); ++it) {
+            if (it.value().is_boolean())
+                g.mods[it.key()] = it.value().get<bool>();
+        }
+    }
 
     return g;
 }
@@ -231,6 +237,8 @@ void ConfigPersistence::guardarGeneral(const General& g, const std::string& ruta
     j["sensibilidadCamara"] = g.sensibilidadCamara;
     j["sensibilidadMovimientoCamara"] = g.sensibilidadMovimientoCamara;
     j["apariencia"] = aparienciaToJson(g.apariencia);
+    for (const auto& [id, activo] : g.mods)
+        j["mods"][id] = activo;
     escribirJson(rutaReal, j);
 }
 
@@ -269,6 +277,12 @@ ConfigPersistence::Proyecto ConfigPersistence::cargarProyecto(const std::string&
             }
         }
     }
+    if (j.contains("mods") && j["mods"].is_object()) {
+        for (auto it = j["mods"].begin(); it != j["mods"].end(); ++it) {
+            if (it.value().is_boolean())
+                p.mods[it.key()] = it.value().get<bool>();
+        }
+    }
     return p;
 }
 
@@ -284,5 +298,7 @@ void ConfigPersistence::guardarProyecto(const Proyecto& p, const std::string& no
     j["editor"]["dimension"] = dimensionProyectoAEntero(p.dimension);
     for (const auto& [nombre, abierta] : p.estadoVentanas)
         j["editor"]["ventanas"][nombre] = abierta;
+    for (const auto& [id, activo] : p.mods)
+        j["mods"][id] = activo;
     escribirJson(rutaReal, j);
 }

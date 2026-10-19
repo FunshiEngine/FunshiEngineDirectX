@@ -692,6 +692,8 @@ add_executable(mods-tests
     ${SRC_DIR}/Mods/ManifiestoMod.cpp
     ${SRC_DIR}/Mods/LectorZip.cpp
     ${SRC_DIR}/Mods/GestorMods.cpp
+    ${SRC_DIR}/Configuracion/ProjectPaths.cpp
+    ${SRC_DIR}/Configuracion/ProjectManager.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../tests/ModsTests.cpp
 )
 target_link_libraries(mods-tests PRIVATE funshi_diagnostics_core funshi_miniz)

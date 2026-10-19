@@ -122,6 +122,9 @@ void ProjectManager::asegurarEstructuraBase() {
     std::filesystem::create_directories(ProjectPaths::directorioProyects(), ec);
     std::filesystem::create_directories(ProjectPaths::directorioConfiguraciones(), ec);
     std::filesystem::create_directories(ProjectPaths::directorioExportaciones(), ec);
+    // Carpeta global de mods del motor: el descubrimiento la recorre al
+    // arrancar y el usuario deja ahi los .fmod que instala a mano.
+    std::filesystem::create_directories(ProjectPaths::directorioMods(), ec);
 
     migrarProyectosAntiguos();
     migrarConfiguracionGlobal();
@@ -201,7 +204,8 @@ bool ProjectManager::crearProyectoNuevo(const std::string& nombre,
         fs::path(ProjectPaths::directorioMemory(nombre)) / "Binarios" / "Scene",
         fs::path(ProjectPaths::directorioSrc(nombre)),
         fs::path(ProjectPaths::directorioSonidos(nombre)),
-        fs::path(ProjectPaths::directorioScripts(nombre))};
+        fs::path(ProjectPaths::directorioScripts(nombre)),
+        fs::path(ProjectPaths::directorioModsProyecto(nombre))};
     std::vector<fs::path> creados;
     for (const fs::path& directorio : directorios) {
         error.clear();

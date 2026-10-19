@@ -327,6 +327,14 @@ std::string directorioScripts(const std::string& nombreProyecto) {
     return directorioSrc(nombreProyecto) + "/Scripts";
 }
 
+std::string directorioMods() {
+    return directorioBase() + "/Mods";
+}
+
+std::string directorioModsProyecto(const std::string& nombreProyecto) {
+    return directorioProyecto(nombreProyecto) + "/Mods";
+}
+
 std::string rutaConfiguracionGeneral() {
     return directorioConfiguraciones() + "/Configuracion.json";
 }
