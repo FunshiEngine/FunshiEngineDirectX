@@ -50,6 +50,7 @@
 #include "../src/Input/EditorInput.h"
 #include "../src/Rendering/Backend/IRenderBackend.h"
 #include "../src/Diagnosticos/RegistroDiagnosticos.h"
+#include "../src/Mods/GestorMods.h"
 #include "../src/ExcepcionesCPP/RuntimeException.h"
 #ifdef FUNSHI_CEF
 #include "../src/WebUI/WebUIRuntime.h"
@@ -408,6 +409,24 @@ static int EjecutarMotor(int argc, char* argv[])
         gestor.proyectoActual().empty()
             ? std::string()
             : EditorConfig::directorioSrc(gestor.proyectoActual()));
+
+    // Descubrimiento de mods: se leen los .fmod de la carpeta global del motor
+    // y, si hay proyecto abierto, los de su carpeta. El resultado se reporta al
+    // registro de diagnosticos (panel de estado/log); la carga nativa de los
+    // binarios es una fase posterior. Las carpetas se crean en
+    // asegurarEstructuraBase / al crear el proyecto.
+    {
+        std::vector<CarpetaMods> carpetasMods = {
+            {ProjectPaths::directorioMods(), AmbitoMod::Motor}};
+        if (gestor.hayProyecto()) {
+            carpetasMods.push_back({ProjectPaths::directorioModsProyecto(
+                                        gestor.proyectoActual()),
+                                    AmbitoMod::Proyecto});
+        }
+        const GestorMods::Resultado modsDescubiertos =
+            GestorMods::descubrir(carpetasMods);
+        GestorMods::reportar(modsDescubiertos);
+    }
 
     if (gestor.hayProyecto())
         gestor.prepararProyectoAlArrancar();

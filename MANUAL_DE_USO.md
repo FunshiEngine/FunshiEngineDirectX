@@ -36,6 +36,7 @@ por arrastre y escribir scripts con la API exacta que expone el motor.
 16. [Hot reload y depuración](#16-hot-reload-y-depuración)
 
 17. [Terminal integrada](#17-terminal-integrada)
+18. [Mods del editor (.fmod)](#18-mods-del-editor-fmod)
 
 ---
 
@@ -113,10 +114,12 @@ MotorGrafico/
 │       │   ├── Binarios/Scene        ← escenas binarias
 │       │   ├── ConfiguracionProyecto.json
 │       │   └── imgui.ini
+│       # ├── Mods/                     ← mods del proyecto (.fmod, ver seccion 18)
 │       └── src<proyecto>/            ← assets del proyecto (raiz del explorador)
 │           ├── modelos/              ← .obj/.fbx que arrastra el editor
 │           # ├── Sonidos/              ← clips de audio (.wav/.mp3/...)
 │           └── Scripts/              ← scripts del usuario (.cpp/.java)
+# ├── Mods/                             ← mods globales del motor (.fmod, ver seccion 18)
 ├── Configuraciones/
 │   └── Configuracion.json            ← configuracion global (ultimo proyecto, idioma,
 │                                       sensibilidades y apariencia: tema, B/N, acento,
@@ -1413,5 +1416,104 @@ de estado y posicion del cursor. La emulacion cubre secuencias VT de uso comun;
 no implementa extensiones como colores true-color/256, raton, portapapeles ni
 todas las convenciones de cada emulador. Algunas aplicaciones TUI pueden
 requerir funciones que el panel todavia no ofrece.
+
+---
+
+## 18. Mods del editor (.fmod)
+
+Un **mod** es un paquete que extiende el editor: agrega paneles y herramientas
+que el motor no trae de fábrica. Los mods se aplican **solo al editor**; los
+juegos exportados no llevan mods.
+
+### 18.1 Carpetas de mods
+
+El motor lee dos carpetas y las dos son opcionales:
+
+- `<raizDeDatos>/Mods/` — mods **globales**, disponibles para cualquier
+  proyecto. La carpeta se crea al arrancar el editor.
+- `<proyecto>/Mods/` — mods del **proyecto activo**; se leen solo mientras ese
+  proyecto está abierto. La carpeta se crea al crear el proyecto.
+
+Ambas se recorren al arrancar el editor. El resultado se reporta en el panel de
+estado/log: un resumen `mods cargados: N` y, por cada paquete rechazado, el
+nombre del mod y la causa.
+
+### 18.2 Instalación
+
+La instalación es **manual**: copia o arrastra el archivo `.fmod` a la carpeta
+de mods que corresponda. No hay descarga desde red desde el motor.
+
+### 18.3 Formato del paquete
+
+Un `.fmod` es un archivo **ZIP** con extensión propia (se puede abrir con
+cualquier herramienta ZIP). El nombre del archivo es libre; la única fuente de
+verdad es el manifiesto. El paquete contiene:
+
+```
+autor.mimod_1.0.0.fmod
+├── ManifiestoMod.json       ← obligatorio, en la raíz del ZIP
+├── icono.png                ← opcional
+└── bin/                     ← el binario del mod (.dll en Windows, .so en Linux)
+```
+
+La extracción rechaza rutas que escapen de la carpeta destino (`..` o rutas
+absolutas): un paquete no puede escribir fuera de su caché.
+
+### 18.4 Manifiesto
+
+`ManifiestoMod.json` declara la identidad del mod y con qué puede convivir:
+
+```json
+{
+  "esquemaVersion": 1,
+  "id": "Autor.Nombre",
+  "nombre": "Nombre visible",
+  "descripcion": "Qué hace el mod",
+  "autor": "Autor",
+  "version": "1.0.0",
+  "licencia": "MIT",
+  "icono": "icono.png",
+  "tipo": "nativo",
+  "versionMotor": ">=1.0.0 <2.0.0",
+  "puntoEntrada": { "windows": "bin/mod.dll", "linux": "bin/mod.so" },
+  "dependencias": [
+    { "id": "Autor.Otro", "versionMin": "1.2.0", "requerida": true, "orden": "antes" }
+  ],
+  "conflictos": ["Autor.Incompatible"]
+}
+```
+
+- `id` es estable, con formato `Autor.Nombre`. Un mismo `id` **dos veces** (en
+  la misma carpeta o entre la global y la del proyecto) es error: se rechazan
+  todas las instancias con ese id.
+- `version` y `versionMin` usan `X.Y.Z`. `versionMotor` es un rango contra la
+  versión del motor (`>=1.0.0 <2.0.0`), para no cargar binarios incompatibles.
+- `tipo` solo admite `"nativo"` en v1. `"contenido"` está reservado para el
+  futuro.
+- `orden` de una dependencia es `antes`, `despues` o `ninguno`: los mods se
+  carga en orden topológico y un ciclo entre dependencias se rechaza.
+- `icono`, `dependencias` y `conflictos` son opcionales.
+
+### 18.5 Confianza
+
+Los mods se cargan con **confianza total**: no hay firma ni sandbox, igual que
+en otros motores con mods. Un mod es código que corre dentro del editor, con
+los mismos permisos. Instala solo paquetes de autores en los que confíes; el
+motor no puede distinguir un mod benigno de uno malicioso.
+
+### 18.6 Estado activo
+
+El estado activo de cada mod se guarda por ámbito: los mods del motor en la
+configuración general del editor (`Configuracion.json`) y los del proyecto en
+la del proyecto (`ConfiguracionProyecto.json`). Un mod que no está en el mapa
+se considera activo por defecto.
+
+### 18.7 Actualización y alcance de esta versión
+
+No hay hot-reload: los mods se cargan al arrancar y se descargan al salir.
+Actualizar un mod es reemplazar su `.fmod` y reiniciar el editor. Esta versión
+cubre el **envase**: descubre, valida y ordena los paquetes y reporta lo que
+encuentra. La carga del binario del mod y el registro de sus paneles de GUI
+llegan en una etapa siguiente.
 
 ---

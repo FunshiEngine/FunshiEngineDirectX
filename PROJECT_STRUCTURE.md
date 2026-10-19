@@ -133,6 +133,8 @@ FunshiEngineGL/                          ← raíz del repo
     ├── Imagenes/                        ← íconos del explorador (cpp, cubo, file, folder, hpp)
     ├── ImGuizmo/                        ← dependencia integrada (ImGuizmo.cpp/.h, etc.)
     ├── External/nlohmann/json.hpp       ← nlohmann/json vendoriado (EditorConfig)
+    ├── External/miniz/                   ← miniz 3.0.2 vendoriado (módulos separados;
+    │                                       lectura/escritura de ZIP de los .fmod)
 
     └── src/
         ├── main.cpp                     ← composition root: ventanas, callbacks, bucle, config
@@ -308,6 +310,12 @@ FunshiEngineGL/                          ← raíz del repo
         ├── ImGui/                        ← Dear ImGui v1.x integrado (+ backends glfw/opengl3)
         ├── Matematicas/
         │   └── StructVec3.h/.cpp         ← vec3 propio
+        ├── Mods/
+        │   ├── ManifiestoMod.h/.cpp      ← parseo y validación de ManifiestoMod.json
+        │   ├── ModVersion.h/.cpp         ← versiones X.Y.Z y rangos (versionMotor/versionMin)
+        │   ├── LectorZip.h/.cpp          ← manifiesto desde el .fmod y extracción anti zip-slip
+        │   └── GestorMods.h/.cpp         ← descubrimiento en Mods/, orden topológico, ciclos,
+        │                                    ámbito motor/proyecto y reporte a diagnósticos
         ├── Rendering/
         │   ├── SceneRenderer.h/.cpp       ← renderizador de la escena: skybox, modelos,
         │   │                                  iluminación, horizonte común de grilla/render,
@@ -910,7 +918,7 @@ La convención general es un par `.h`/`.cpp` por clase. Las excepciones son:
 al build sin enumerarlos manualmente. Los archivos de ImGui se recopilan por separado
 desde `src/ImGui/` y los de ImGuizmo desde `ImGuizmo/` (fuera de `src/`).
 
-Además del ejecutable, el proyecto define **veintinueve targets de prueba
+Además del ejecutable, el proyecto define **treinta targets de prueba
 headless** registrados en CTest (`scripts-java-tests` solo se registra con
 `-DFUNSHI_JAVA=ON`; nueve de ellos viven bajo `BUILD_ENGINE=ON`
 —`comandos-tests`, `escena-serializacion-tests`, `catalogo-componentes-tests`,
@@ -1030,6 +1038,15 @@ headless** registrados en CTest (`scripts-java-tests` solo se registra con
 - `manifiesto-assets-tests` (37): manifiesto `SceneAssets.json` (JSON round-trip de
   malla, texturas, script y las seis caras del cubemap, tolerancia a manifiestos
   corruptos y precedencia sobre el `.db`).
+- `mods-tests` (141): sistema de mods `.fmod` en su fase de envase: parseo y
+  validación de `ManifiestoMod.json` (campos obligatorios, `esquemaVersion`,
+  `id` con formato `Autor.Nombre`, `tipo` nativo), semver y rangos
+  (`versionMotor`, `versionMin`), lectura del manifiesto desde el ZIP y
+  extracción con rechazo de rutas `../`/absolutas (anti zip-slip), y
+  descubrimiento en `Mods/` con orden topológico, detección de ciclos, rechazo
+  de `id` duplicado, chequeos de dependencia/conflicto/versión de motor, ámbito
+  motor vs proyecto y reporte a `RegistroDiagnosticos`. Los `.fmod` de prueba se
+  generan con el escritor de miniz.
 - `orquestador-estado-tests`: transiciones de Depuración/Juego, pausa, solicitud
   consumible de Reset, fin/Escape por estado, teclas del editor y atajos frente
   a ImGui.
@@ -1322,7 +1339,7 @@ GameScene → coordina todos los subsistemas del frame
   con deshacer/rehacer, la cadena de redo múltiple, el límite del historial, la
   descripción que el historial devuelve para avisar en la barra de estado y el
   registro de cuerpos en fisica al borrar/duplicar/agregar/quitar.
-- Los veinte targets compilan en cualquier plataforma y se ejecutan con `ctest`.
+- Los treinta targets compilan en cualquier plataforma y se ejecutan con `ctest`.
 - `.github/workflows/ci.yml` compila el engine completo en Ubuntu (Release, sin
   ASan) y ejecuta las pruebas; además ejecuta las headless en
   Linux/Windows con `BUILD_ENGINE=OFF` y el backend Java en Ubuntu con JDK.
