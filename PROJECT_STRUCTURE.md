@@ -156,6 +156,8 @@ FunshiEngineGL/                          ← raíz del repo
         │   ├── AudioEngine.h/.cpp       ← fachada thread-safe (cola de comandos + hilo)
         │   ├── AudioClipsManager.h/.cpp ← descubre clips en Sonidos/ y registra por nombre
         │   ├── IAudioBackend.h          ← contrato Strategy del backend de audio
+        │   ├── IMusicaBackend.h         ← contrato del backend de música (pista, bus, fundido)
+        │   ├── GestorMusica.h/.cpp      ← reproductor de música (fundido cruzado, bus, playlist)
         │   ├── MiniAudioBackend.*       ← backend concreto (miniaudio vendoriado)
         │   ├── NullAudioBackend.h       ← backend nulo para pruebas headless
         │   └── AudioClip.h              ← handle/metadata del clip
@@ -968,14 +970,14 @@ La convención general es un par `.h`/`.cpp` por clase. Las excepciones son:
 al build sin enumerarlos manualmente. Los archivos de ImGui se recopilan por separado
 desde `src/ImGui/` y los de ImGuizmo desde `ImGuizmo/` (fuera de `src/`).
 
-Además del ejecutable, el proyecto define **treinta y cinco targets de prueba
+Además del ejecutable, el proyecto define **treinta y seis targets de prueba
 headless** registrados en CTest (`scripts-java-tests` solo se registra con
 `-DFUNSHI_JAVA=ON`; quince de ellos viven bajo `BUILD_ENGINE=ON`
 —`catalogo-componentes-tests`, `comandos-tests`, `escena-serializacion-tests`,
 `iluminacion-tests`, `interface-component-tests`, `interfaces-juego-tests`,
 `manifiesto-assets-tests`, `orquestador-estado-tests`, `prefab-tests`,
 `serializacion-tests`, `shaders-tests`, `sombras-tests`, `tema-tests`,
-`tilemap-tests` y `webui-runtime-tests`—; los diecinueve restantes compilan
+`tilemap-tests` y `webui-runtime-tests`—; los veinte restantes compilan
 también con `BUILD_ENGINE=OFF`):
 
 - `filemanager-tests` (190 en Linux; 181 en Windows con MinGW, 183 con MSVC): ejercita `GestorDeArchivos`/`FileManager`/`FileSystemWatcher`
@@ -1092,6 +1094,11 @@ también con `BUILD_ENGINE=OFF`):
   inválidos), el componente `Sombras` con sus ajustes y la selección de
   proyectores (las luces puntuales no soportadas, el límite de mapas y el orden
   en que se eligen).
+- `musica-tests` (70): el reproductor de música con un backend falso: el
+  catálogo de pistas, la reproducción, el fundido cruzado (la pista que sale
+  baja mientras la que entra sube), el paso automático a la pista siguiente
+  cuando la actual se acaba o cuando le queda justo el fundido, la
+  detención con y sin fundido y el volumen del bus.
 - `iluminacion-tests` (17): la recogida de las luces de la escena (el orden en
   que se recorren, los datos que salen del `Transform` de cada objeto y el límite
   de slots) y el paralelismo entre la lista de luces y la de dueños: el pase de
@@ -1181,8 +1188,8 @@ necesitan glm (`interface-component-tests`, `webui-runtime-tests`,
 (`tema-tests`) y los que usan solo el core de diagnóstico
 (`manifiesto-assets-tests` y `orquestador-estado-tests`). El resto compila sus
 fuentes directamente (`barra-progreso-tests` entre ellas) y corre también con
-`BUILD_ENGINE=OFF`: con el motor hay 33 suites que se ejecutan (35
-registradas, dos deshabilitadas) y sin él 19.
+`BUILD_ENGINE=OFF`: con el motor hay 34 suites que se ejecutan (36
+registradas, dos deshabilitadas) y sin él 20.
 
 La opción `BUILD_ENGINE=OFF` compila solo las pruebas (útil en CI y plataformas
 sin las librerías gráficas), y `ENABLE_ASAN` (ON por defecto en Debug) activa
