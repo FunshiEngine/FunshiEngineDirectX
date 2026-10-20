@@ -69,6 +69,28 @@ jobs:
       - name: Ejecutar pruebas
         run: ctest --test-dir build --output-on-failure
 
+  # Generador multi-config (Visual Studio): cada configuracion compila en su
+  # propia carpeta, asi que lo que el proyecto genera en tiempo de
+  # configuracion tiene que ser por configuracion. El job de Windows de
+  # release.yml usa el generador por defecto (multi-config) y es el que
+  # publica el instalador, asi que esta suite comprueba que el proyecto se
+  # configura, compila y prueba bien ahi. Sin engine: no hacen falta las
+  # dependencias graficas.
+  tests-multi-config:
+    name: Pruebas headless (multi-config)
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configurar (multi-config)
+        run: cmake -B build -S FunshiEngineGL -DBUILD_ENGINE=OFF -DENABLE_ASAN=OFF -DFUNSHI_JAVA=OFF
+
+      - name: Compilar pruebas headless
+        run: cmake --build build --config Release --target terminal-emulator-tests terminal-session-tests diagnostic-registry-tests filemanager-tests configuracion-tests eventbus-tests menu-tests assetmanager-tests texturemanager-tests estructuras-tests rendering-tests scripts-tests scripts-runtime-tests audio-tests model-serialization-tests proceso-tests barra-progreso-tests mods-tests
+
+      - name: Ejecutar pruebas
+        run: ctest --test-dir build -C Release --output-on-failure
+
   # Backend de scripts Java (JNI). Requiere JDK en el runner; solo Linux.
   tests-java:
     name: Scripts Java (Ubuntu + JDK)

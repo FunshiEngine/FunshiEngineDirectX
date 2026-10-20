@@ -101,7 +101,7 @@ FunshiEngineGL/                          ← raíz del repo
 ├── ARQUITECTURA_ESTADOS_GUI.md          ← estados/menú/GUI internas (diseño + Fases 1-3)
 ├── MANUAL_DE_USO.md                     ← manual de usuario (editor + scripting C++/Java)
 ├── FLUJO_DE_RAMAS.md                    ← convención de ramas (develop/test/staging/release)
-├── .github/workflows/ci.yml             ← CI: engine en Ubuntu + pruebas en Linux/Win/macOS
+├── .github/workflows/ci.yml             ← CI: engine en Ubuntu + pruebas headless en Linux/Win
 ├── .github/workflows/release.yml        ← instaladores Qt IFW (.run) e Inno (.exe) por tag
 ├── .github/workflows/windows-release.yml← build+release específico de Windows
 ├── .gitignore / .gitattributes
@@ -1380,9 +1380,14 @@ GameScene → coordina todos los subsistemas del frame
 - Los treinta targets compilan en cualquier plataforma y se ejecutan con `ctest`.
 - `.github/workflows/ci.yml` compila el engine completo en Ubuntu (Release, sin
   ASan) y ejecuta las pruebas; además ejecuta las headless en
-  Linux/Windows con `BUILD_ENGINE=OFF` y el backend Java en Ubuntu con JDK.
+  Linux/Windows con `BUILD_ENGINE=OFF`, el backend Java en Ubuntu con JDK y
+  las headless en Windows con el **generador multi-config** (Visual Studio),
+  donde cada configuración compila en su propia carpeta: lo que el proyecto
+  genera en tiempo de configuración tiene que ser por configuración.
 - `.github/workflows/release.yml` y `windows-release.yml` también ejecutan la
-  suite (y `estructuras-tests`) al generar los instaladores por tag.
+  suite (y `estructuras-tests`) al generar los instaladores por tag. El job de
+  Windows usa el generador por defecto (multi-config), que es el mismo que
+  comprueba el job multi-config de la CI.
 - La lista de targets que compila cada job tiene que cubrir todas las suites
   registradas en ese modo de build (30 con `BUILD_ENGINE=ON`, 18 con
   `BUILD_ENGINE=OFF`): `ctest` ejecuta todos los tests registrados en el build,
