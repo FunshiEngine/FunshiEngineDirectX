@@ -27,7 +27,14 @@ jobs:
             libbullet-dev \
             libasound2-dev \
             libxrandr-dev \
-            libxi-dev
+            libxi-dev \
+            glslang-tools
+
+      - name: Validar el GLSL embebido
+        # El GLSL va embebido en el binario: un error de sintaxis no lo ve el
+        # compilador de C++, solo el driver al compilar el programa. El
+        # validador lo comprueba sin necesidad de GPU.
+        run: python3 .github/scripts/validar-glsl.py
 
       - name: Configurar
         run: cmake -B build -S FunshiEngineGL -G Ninja -DCMAKE_BUILD_TYPE=Release -DENABLE_ASAN=OFF -DFUNSHI_JAVA=ON
