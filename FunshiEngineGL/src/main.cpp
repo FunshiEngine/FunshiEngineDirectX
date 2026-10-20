@@ -312,7 +312,15 @@ static int EjecutarMotor(int argc, char* argv[])
     RegistroDiagnosticos::global().registrar(std::move(inicio));
 
     Ventana* auxVentana = new Ventana();
-    auxVentana->initVentana();
+    // Sin ventana no hay contexto de OpenGL ni entrada: seguir adelante
+    // dejaria el motor callingando sobre una ventana nula. Se corta el
+    // arranque con un mensaje claro.
+    if (auxVentana->initVentana() != 0) {
+        std::cerr << "No se pudo crear la ventana de OpenGL 3.3; el motor "
+                     "no puede arrancar\n";
+        delete auxVentana;
+        return -1;
+    }
     GLFWwindow* window = auxVentana->getWindow();
     GUIManager* managerOfGUI = new GUIManager(window);
     GameScene* scene = new GameScene(managerOfGUI);
