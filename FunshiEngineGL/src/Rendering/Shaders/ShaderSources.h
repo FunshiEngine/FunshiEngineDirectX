@@ -19,17 +19,21 @@
 #ifndef SHADERSOURCES_H
 #define SHADERSOURCES_H
 
-// Shader por defecto del renderer moderno: Blinn-Phong en espacio mundo que
-// replica el modelo de iluminacion fixed-function que ya usa el motor
-// (LightSystem + Material), para que el pasaje a VBO/VAO no sea una regresion
-// visual. El renderer sube luces/material/camara como uniforms; la grilla y
-// los gizmos siguen siendo modo inmediato.
+// Fuentes de los shaders incorporados al motor.
+//
+// Van embebidas en el binario (no en archivos): el ejecutable exportado no
+// puede depender de assets extra. Solo las incluye el gestor de shaders,
+// que es el dueno de los programas: el resto del motor pide el programa por
+// nombre y no necesita saber de donde sale el GLSL.
+//
+// Las variables son inline (C++17) para que exista una sola copia en todo el
+// programa, no una por unidad de traduccion que las incluya.
 
 // Atributos: 0 = posicion (vec3), 1 = normal (vec3), 2 = uv (vec2),
 // 3 = tangente (vec3), 4 = bitangente (vec3). Las UVs alimentan vUv y el muestreo
 // de texturas; tangente/bitangente arman el marco TBN para el normal mapping
 // cuando el Material define una mapa de normales.
-static const char* const kDefaultVertexShader = R"(#version 330 core
+inline const char* const kDefaultVertexShader = R"(#version 330 core
 layout(location = 0) in vec3 aPosition;
 layout(location = 1) in vec3 aNormal;
 layout(location = 2) in vec2 aUv;
@@ -67,7 +71,7 @@ void main() {
 }
 )";
 
-static const char* const kDefaultFragmentShader = R"(#version 330 core
+inline const char* const kDefaultFragmentShader = R"(#version 330 core
 in vec3 vNormalWorld;
 in vec3 vWorldPos;
 in vec2 vUv;
@@ -215,7 +219,7 @@ void main() {
 // colapsa fuera del frustum (asi la grilla no "explota" al cruzarse con la
 // camara). El tamano del viewport va en un vec4 (anchoPx, altoPx) y no en un
 // vec2 porque el backend solo carga glUniform{1,3,4}fv.
-static const char* const kLineVertexShader = R"(#version 330 core
+inline const char* const kLineVertexShader = R"(#version 330 core
 layout(location = 0) in vec3 aStart;
 layout(location = 1) in vec3 aEnd;
 layout(location = 2) in float aSide;
@@ -284,7 +288,7 @@ void main() {
 }
 )";
 
-static const char* const kLineFragmentShader = R"(#version 330 core
+inline const char* const kLineFragmentShader = R"(#version 330 core
 in vec4 vColor;
 in vec3 vWorldPosition;
 out vec4 FragColor;
@@ -314,7 +318,7 @@ void main() {
 // malla compartida sirve para cualquier region, sin duplicar geometria. El tinte
 // y la opacidad (fade del componente) van en uTint y se multiplican sobre el
 // texel (modo MODULATE, igual que el material 3D).
-static const char* const kSpriteVertexShader = R"(#version 330 core
+inline const char* const kSpriteVertexShader = R"(#version 330 core
 layout(location = 0) in vec3 aPosition;
 layout(location = 2) in vec2 aUv;
 
@@ -331,7 +335,7 @@ void main() {
 }
 )";
 
-static const char* const kSpriteFragmentShader = R"(#version 330 core
+inline const char* const kSpriteFragmentShader = R"(#version 330 core
 in vec2 vUv;
 out vec4 FragColor;
 
@@ -347,7 +351,7 @@ void main() {
 }
 )";
 
-static const char* const kSkyVertexShader = R"(#version 330 core
+inline const char* const kSkyVertexShader = R"(#version 330 core
 // Fullscreen triangle (no VBO needed): gl_VertexID 0..2 maps to the three
 // corners of a triangle that covers the viewport. Solo emite la coordenada NDC
 // del pixel: el color sale de la DIRECCION de vista de ese pixel, no de su
@@ -365,7 +369,7 @@ void main() {
 }
 )";
 
-static const char* const kSkyFragmentShader = R"(#version 330 core
+inline const char* const kSkyFragmentShader = R"(#version 330 core
 in vec2 vNdc;
 out vec4 FragColor;
 uniform vec3 uColorTop;    // color del cenit (mirando bien hacia arriba)
@@ -384,6 +388,29 @@ void main() {
     // se reparte alrededor del horizonte y satura en los dos extremos.
     float t = clamp(dir.y / uTransicion * 0.5 + 0.5, 0.0, 1.0);
     FragColor = vec4(mix(uColorBottom, uColorTop, t), 1.0);
+}
+)";
+
+// Cubemap del cielo (el cubo centrado en la camara, con las caras del
+// Skybox). El vertice deja el cubo en el plano lejano (z = w).
+inline const char* const kCubemapVertexShader = R"(#version 330 core
+layout(location = 0) in vec3 aPos;
+out vec3 vTexCoord;
+uniform mat4 uView;
+uniform mat4 uProjection;
+void main() {
+    vTexCoord = aPos;
+    vec4 pos = uProjection * uView * vec4(aPos, 1.0);
+    gl_Position = pos.xyww; // z = w para estar en el plano lejano
+}
+)";
+
+inline const char* const kCubemapFragmentShader = R"(#version 330 core
+in vec3 vTexCoord;
+out vec4 FragColor;
+uniform samplerCube uSkybox;
+void main() {
+    FragColor = texture(uSkybox, vTexCoord);
 }
 )";
 

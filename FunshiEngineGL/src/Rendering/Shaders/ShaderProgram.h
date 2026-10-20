@@ -36,9 +36,13 @@
 class ShaderProgram {
 private:
     Rendering::Backend::Handle program_ = Rendering::Backend::kInvalidHandle;
+    // Backend con el que se compilo el programa. Si no se indica ninguno, se
+    // usa el backend activo (el localizador global).
+    Rendering::Backend::IRenderBackend* backend_ = nullptr;
     mutable std::unordered_map<std::string, int> uniformLocations_;
 
     int findUniform(const char* name) const;
+    Rendering::Backend::IRenderBackend& backend() const;
 
     ShaderProgram() = default;
 
@@ -49,6 +53,11 @@ public:
     ShaderProgram(ShaderProgram&& other) noexcept;
     ShaderProgram& operator=(ShaderProgram&& other) noexcept;
 
+    // Crea el programa con el backend indicado (el gestor de shaders lo
+    // inyecta, para no depender del localizador global).
+    static ShaderProgram fromSource(Rendering::Backend::IRenderBackend& backend,
+                                    const char* vertexSource,
+                                    const char* fragmentSource);
     static ShaderProgram fromSource(const char* vertexSource,
                                     const char* fragmentSource);
 

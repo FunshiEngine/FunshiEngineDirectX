@@ -1193,6 +1193,29 @@ set_target_properties(rendering-tests PROPERTIES
 )
 add_test(NAME rendering-tests COMMAND rendering-tests)
 
+# --- Pruebas headless del sistema de shaders ----------------------------------
+# El preprocesador de #include (resuelto en CPU: OpenGL 3.3 no tiene
+# ARB_shading_language_include) y el gestor de shaders (un programa por
+# nombre, compilado una vez y compartido). El backend es falso: sin pila
+# grafica ni driver.
+add_executable(shaders-tests
+    ${SRC_DIR}/Rendering/Shaders/PreprocesadorShaders.cpp
+    ${SRC_DIR}/Rendering/Shaders/GestorShaders.cpp
+    ${SRC_DIR}/Rendering/Shaders/ShaderProgram.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../tests/ShadersTests.cpp
+)
+target_include_directories(shaders-tests PRIVATE
+    ${SRC_DIR}
+    ${CMAKE_SOURCE_DIR}/External
+)
+target_link_libraries(shaders-tests PRIVATE funshi_diagnostics_core)
+set_target_properties(shaders-tests PROPERTIES
+    CXX_STANDARD 17
+    CXX_STANDARD_REQUIRED ON
+    CXX_EXTENSIONS OFF
+)
+add_test(NAME shaders-tests COMMAND shaders-tests)
+
 # Reflexion de comportamiento (motor de SerializeField): headless y portatil.
 # Cubre las macros REFLECT_*, la lectura/escritura de campos (incl. grupos
 # anidados y vectores de grupos) y el round-trip binario del arbol de valores.

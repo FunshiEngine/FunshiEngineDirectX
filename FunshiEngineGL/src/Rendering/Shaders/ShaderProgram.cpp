@@ -25,36 +25,47 @@ using Rendering::Backend::kInvalidHandle;
 
 ShaderProgram ShaderProgram::fromSource(const char* vertexSource,
                                         const char* fragmentSource) {
+    return fromSource(Rendering::Backend::activeBackend(), vertexSource,
+                      fragmentSource);
+}
+
+ShaderProgram ShaderProgram::fromSource(Rendering::Backend::IRenderBackend& backend,
+                                        const char* vertexSource,
+                                        const char* fragmentSource) {
     ShaderProgram program;
-    program.program_ = Rendering::Backend::activeBackend().createProgram(
-        vertexSource, fragmentSource);
+    program.backend_ = &backend;
+    program.program_ = backend.createProgram(vertexSource, fragmentSource);
     return program;
 }
 
 ShaderProgram::~ShaderProgram() {
-    if (program_ != kInvalidHandle)
-        Rendering::Backend::activeBackend().destroyProgram(program_);
+    if (program_ != kInvalidHandle) backend().destroyProgram(program_);
 }
 
 ShaderProgram::ShaderProgram(ShaderProgram&& other) noexcept
-    : program_(other.program_) {
+    : program_(other.program_), backend_(other.backend_) {
     other.program_ = kInvalidHandle;
+    other.backend_ = nullptr;
 }
 
 ShaderProgram& ShaderProgram::operator=(ShaderProgram&& other) noexcept {
     if (this != &other) {
-        if (program_ != kInvalidHandle)
-            Rendering::Backend::activeBackend().destroyProgram(program_);
+        if (program_ != kInvalidHandle) backend().destroyProgram(program_);
         program_ = other.program_;
+        backend_ = other.backend_;
         other.program_ = kInvalidHandle;
+        other.backend_ = nullptr;
         uniformLocations_.clear();
     }
     return *this;
 }
 
+Rendering::Backend::IRenderBackend& ShaderProgram::backend() const {
+    return backend_ ? *backend_ : Rendering::Backend::activeBackend();
+}
+
 void ShaderProgram::use() const {
-    if (program_ != kInvalidHandle)
-        Rendering::Backend::activeBackend().useProgram(program_);
+    if (program_ != kInvalidHandle) backend().useProgram(program_);
 }
 
 void ShaderProgram::unbind() {
@@ -66,8 +77,7 @@ int ShaderProgram::findUniform(const char* name) const {
     if (it != uniformLocations_.end()) return it->second;
 
     int location = program_ != kInvalidHandle
-                       ? Rendering::Backend::activeBackend().uniformLocation(
-                             program_, name)
+                       ? backend().uniformLocation(program_, name)
                        : -1;
     uniformLocations_.emplace(name, location);
     return location;
@@ -76,35 +86,35 @@ int ShaderProgram::findUniform(const char* name) const {
 void ShaderProgram::setMat4(const char* name, const glm::mat4& value) {
     const int loc = findUniform(name);
     if (loc < 0) return;
-    Rendering::Backend::activeBackend().setUniformMat4(loc, value);
+    backend().setUniformMat4(loc, value);
 }
 
 void ShaderProgram::setMat3(const char* name, const glm::mat3& value) {
     const int loc = findUniform(name);
     if (loc < 0) return;
-    Rendering::Backend::activeBackend().setUniformMat3(loc, value);
+    backend().setUniformMat3(loc, value);
 }
 
 void ShaderProgram::setVec3(const char* name, const glm::vec3& value) {
     const int loc = findUniform(name);
     if (loc < 0) return;
-    Rendering::Backend::activeBackend().setUniformVec3(loc, value);
+    backend().setUniformVec3(loc, value);
 }
 
 void ShaderProgram::setVec4(const char* name, const float* value) {
     const int loc = findUniform(name);
     if (loc < 0) return;
-    Rendering::Backend::activeBackend().setUniformVec4(loc, value);
+    backend().setUniformVec4(loc, value);
 }
 
 void ShaderProgram::setFloat(const char* name, float value) {
     const int loc = findUniform(name);
     if (loc < 0) return;
-    Rendering::Backend::activeBackend().setUniformFloat(loc, value);
+    backend().setUniformFloat(loc, value);
 }
 
 void ShaderProgram::setInt(const char* name, int value) {
     const int loc = findUniform(name);
     if (loc < 0) return;
-    Rendering::Backend::activeBackend().setUniformInt(loc, value);
+    backend().setUniformInt(loc, value);
 }
