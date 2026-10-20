@@ -95,6 +95,27 @@ uniform float uLightLinear[MAX_LIGHTS];
 uniform float uLightQuadratic[MAX_LIGHTS];
 uniform float uSpotCutoffCos[MAX_LIGHTS];
 
+// Sombras: un mapa de profundidad por luz que proyecta. MAX_SHADOWS tiene que
+// coincidir con el limite de proyectores del motor (kMaxProyectoresSombra).
+//
+// Cada mapa tiene su propio sampler (uShadowMap0..3) y no un array: GLSL 3.30
+// no deja indexar un array de samplers con una variable, asi que el mapa que
+// se consulta se elige con una cadena de if.
+// uShadowLightIndex dice a que luz de las de arriba pertenece cada mapa: la
+// sombra oscurece solo la contribucion de esa luz, no la de las demas.
+// uShadowTexel es 1/resolucion del mapa (el PCF necesita el tamano del texel).
+const int MAX_SHADOWS = 4;
+uniform sampler2DShadow uShadowMap0;
+uniform sampler2DShadow uShadowMap1;
+uniform sampler2DShadow uShadowMap2;
+uniform sampler2DShadow uShadowMap3;
+uniform mat4 uShadowMatrix[MAX_SHADOWS];
+uniform float uShadowBias[MAX_SHADOWS];
+uniform float uShadowStrength[MAX_SHADOWS];
+uniform float uShadowTexel[MAX_SHADOWS];
+uniform int uShadowLightIndex[MAX_SHADOWS];
+uniform int uShadowCount;
+
 uniform vec4 uMaterialAmbient;
 uniform vec4 uMaterialDiffuse;
 uniform vec4 uMaterialSpecular;
@@ -117,6 +138,59 @@ uniform int uUseNormalMap;
 vec3 normalizarSeguro(vec3 v) {
     float len = length(v);
     return (len < 1e-8) ? vec3(0.0) : v / len;
+}
+
+// PCF 3x3 sobre un mapa: promedia nueve muestras alrededor del texel para que
+// el borde de la sombra no sea un escalon.
+float pcf3x3(sampler2DShadow mapa, vec2 uv, float ref, float texel) {
+    float suma = 0.0;
+    for (int dy = -1; dy <= 1; ++dy) {
+        for (int dx = -1; dx <= 1; ++dx) {
+            vec2 offset = vec2(float(dx), float(dy)) * texel;
+            suma += texture(mapa, vec3(uv + offset, ref));
+        }
+    }
+    return suma / 9.0;
+}
+
+// Cobertura del mapa que toca el indice dado. El sampler se elige con una
+// cadena de if porque el indice del mapa no puede ser una variable.
+float coberturaSombra(int indice, vec2 uv, float ref, float texel) {
+    if (indice == 0) return pcf3x3(uShadowMap0, uv, ref, texel);
+    if (indice == 1) return pcf3x3(uShadowMap1, uv, ref, texel);
+    if (indice == 2) return pcf3x3(uShadowMap2, uv, ref, texel);
+    return pcf3x3(uShadowMap3, uv, ref, texel);
+}
+
+// Factor de sombra de una luz: 1.0 = iluminado, 0.0 = en sombra.
+//
+// El mapa es una sampler2DShadow en modo de comparacion: el hardware compara
+// la profundidad del fragmento con la del mapa y devuelve el porcentaje de
+// cobertura.
+//
+// Si el fragmento cae fuera del mapa, o detras del plano lejano, no hay nada
+// que compare y se queda iluminado: la sombra no se repite en el borde.
+float factorSombra(int indiceLuz, vec3 fragPos) {
+    for (int s = 0; s < MAX_SHADOWS; ++s) {
+        if (s >= uShadowCount) break;
+        if (uShadowLightIndex[s] != indiceLuz) continue;
+
+        vec4 clip = uShadowMatrix[s] * vec4(fragPos, 1.0);
+        if (clip.w <= 0.0) return 1.0;
+        vec3 ndc = clip.xyz / clip.w;
+        vec2 uv = ndc.xy * 0.5 + 0.5;
+        float z = ndc.z * 0.5 + 0.5;
+        if (uv.x < 0.0 || uv.x > 1.0 || uv.y < 0.0 || uv.y > 1.0) return 1.0;
+        if (z > 1.0) return 1.0;
+
+        // El sesbio se resta en profundidad: acerca el fragmento a la luz para
+        // que el mapa no lo de por tapado por su propia superficie.
+        float ref = z - uShadowBias[s];
+        float cobertura = coberturaSombra(s, uv, ref, uShadowTexel[s]);
+        // La fuerza va de 0 (sin sombra) a 1 (sombra plena).
+        return mix(1.0, cobertura, uShadowStrength[s]);
+    }
+    return 1.0;
 }
 
 vec3 contribucionLuz(int i, vec3 N, vec3 V, vec3 fragPos, vec3 baseDiffuse,
@@ -161,7 +235,10 @@ vec3 contribucionLuz(int i, vec3 N, vec3 V, vec3 fragPos, vec3 baseDiffuse,
                     uLightSpecular[i] * baseSpecular;
     }
 
-    resultado += (difuso + especular) * (atenuacion * factorSpot);
+    // La sombra de la luz (si esta la proyecta) atenua su difuso y su
+    // especular; el ambiente no se toca.
+    float sombra = factorSombra(i, fragPos);
+    resultado += (difuso + especular) * (atenuacion * factorSpot * sombra);
     return resultado;
 }
 
@@ -411,6 +488,34 @@ out vec4 FragColor;
 uniform samplerCube uSkybox;
 void main() {
     FragColor = texture(uSkybox, vTexCoord);
+}
+)";
+
+// Pases de profundidad del mapa de sombras.
+//
+// El vertex shader solo proyecta la geometria con la matriz de la luz: la
+// posicion del vertice en el mapa es lo que se guarda en la textura de
+// profundidad. No hay colores ni materiales, asi que solo usa el atributo de
+// posicion (el resto del VAO queda sin usar).
+inline const char* const kDepthVertexShader = R"(#version 330 core
+layout(location = 0) in vec3 aPosition;
+
+uniform mat4 uModel;
+uniform mat4 uLightMatrix;
+
+void main() {
+    gl_Position = uLightMatrix * uModel * vec4(aPosition, 1.0);
+}
+)";
+
+// El fragment shader no escribe nada util: el mapa es solo de profundidad y el
+// destino de dibujo no tiene buffer de color (glDrawBuffer(GL_NONE)). Se
+// declara la salida igualmente, para no depender de que el driver acepte un
+// fragment shader sin color.
+inline const char* const kDepthFragmentShader = R"(#version 330 core
+out vec4 FragColor;
+void main() {
+    FragColor = vec4(1.0);
 }
 )";
 

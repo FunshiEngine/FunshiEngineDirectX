@@ -22,16 +22,25 @@
 //    lado 2*radio alrededor del foco, el plano lejano queda delante del
 //    cercano, la matriz es finita y la direccion de la luz manda,
 //  - el componente de sombras: sus valores por defecto, el acotado de los
-//    valores imposibles y el viaje de ida y vuelta por el archivo binario.
+//    valores imposibles y el viaje de ida y vuelta por el archivo binario,
+//  - la seleccion de proyectores y el mapa de sombras: que solo projecute las
+//    luces que pueden, que el limite se respete y que los objetivos de
+//    profundidad se rehagan solo cuando cambia la resolucion,
+//  - el límite de mapas: el shader de mallas declara cuantos mapas puede
+//    consultar y tiene que ser el mismo que el motor.
+//
+// El backend es falso (no-op): sin pila grafica ni driver.
 
 #include <cmath>
 #include <fstream>
 #include <iostream>
+#include <string>
 
 #include <glm/glm.hpp>
 
 #include "../FunshiEngineGL/src/Iluminacion/MatrizLuz.h"
 #include "../FunshiEngineGL/src/Objetos/Componentes/Sombras/Sombras.h"
+#include "../FunshiEngineGL/src/Rendering/Shaders/ShaderSources.h"
 #include "../FunshiEngineGL/src/Rendering/Sombras/MapaSombras.h"
 #include "TempPruebas.h"
 
@@ -495,6 +504,18 @@ void testMapaDeSombras() {
     CHECK(backend.destruidos == 2, "el mapa del segundo proyector se destruye");
 }
 
+void testElLimiteCoincideConElShader() {
+    // El shader de mallas declara cuantos mapas puede consultar. Si el motor
+    // sube el limite y el shader no, sobran mapas; si el shader sube y el
+    // motor no, el motor escribe fuera del array.
+    const std::string declaracion =
+        "const int MAX_SHADOWS = " +
+        std::to_string(Rendering::kMaxProyectoresSombra) + ";";
+    CHECK(std::string(kDefaultFragmentShader).find(declaracion) !=
+              std::string::npos,
+          "el limite de mapas del shader es el mismo que el del motor");
+}
+
 int main() {
     testVistaMiraEnLaDireccion();
     testVistaVerticalNoEsNaN();
@@ -511,6 +532,7 @@ int main() {
     testSeleccionDeProyectores();
     testSeleccionSinCandidatos();
     testMapaDeSombras();
+    testElLimiteCoincideConElShader();
 
     std::cout << "SombrasTests: " << total << " verificaciones, " << fallos
               << " fallos" << std::endl;

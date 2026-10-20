@@ -38,6 +38,9 @@ void GestorShaders::registrarIncorporados() {
     registrarShader("sprite", kSpriteVertexShader, kSpriteFragmentShader);
     registrarShader("cielo", kSkyVertexShader, kSkyFragmentShader);
     registrarShader("cubemap", kCubemapVertexShader, kCubemapFragmentShader);
+    // Pases de profundidad del mapa de sombras: no colorea, solo deja la
+    // profundidad de la geometria vista desde la luz.
+    registrarShader("profundidad", kDepthVertexShader, kDepthFragmentShader);
 }
 
 void GestorShaders::registrarFragmento(const std::string& nombre,

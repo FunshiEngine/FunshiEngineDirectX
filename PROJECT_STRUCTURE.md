@@ -382,7 +382,9 @@ FunshiEngineGL/                          ← raíz del repo
         │       │                              (GL 3.3 no tiene ARB_shading_language_include)
         │       ├── ShaderProgram.h/.cpp    ← programa compilado (backend inyectado)
         │       ├── ShaderException.h      ← errores de compilación e inclusión
-        │       └── ShaderSources.h        ← GLSL embebido (inline) de los 5 programas
+        │       └── ShaderSources.h        ← GLSL embebido (inline) de los 6 programas
+        │                                  (malla, linea, sprite, cielo, cubemap y el de
+        │                                  profundidad del mapa de sombras)
         ├── Objetos/
         │   ├── GameObject.h/.cpp         ← id, nombre, tag, estado, update y serialización binaria
         │   ├── TagRegistry.h             ← registro dinámico de tags para el Inspector
