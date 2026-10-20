@@ -102,10 +102,6 @@ std::string EditorConfig::rutaImguiIni(const std::string& nombreProyecto) {
     return ProjectPaths::rutaImguiIni(nombreProyecto);
 }
 
-std::string EditorConfig::directorioSonidos(const std::string& nombreProyecto) {
-    return ProjectPaths::directorioSonidos(nombreProyecto);
-}
-
 std::string EditorConfig::directorioScripts(const std::string& nombreProyecto) {
     return ProjectPaths::directorioScripts(nombreProyecto);
 }

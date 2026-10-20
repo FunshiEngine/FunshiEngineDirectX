@@ -785,14 +785,18 @@ solo como orquestador de arranque y bucle.
   - El layout `imgui.ini` también se guarda junto al proyecto (no en el CWD).
 - Carpeta de un proyecto: `Proyects/<proyecto>/` con `Memory/` (escena,
   configuración del proyecto e `imgui.ini`) y la raíz de
-  assets `src<proyecto>/` (meshes, texturas, materiales, `Sonidos/`,
-  `Scripts/`). Todas esas rutas salen de `ProjectPaths`
-  (`directorioSrc`, `directorioSonidos`, `directorioScripts`), incluido el
+  assets `src<proyecto>/` (meshes, texturas, materiales y las carpetas de
+  assets que cree el usuario). Esas rutas salen de `ProjectPaths`
+  (`directorioSrc`, `directorioScripts`), incluido el
   exportador del juego standalone, que las pide ahí mediante
   `Exportador/RutasExportacion.h` (lógica pura, header-only) en vez de
   componerlas desde la carpeta del proyecto: componiéndolas a mano las copias
   se saltaban en silencio y el juego exportado salía sin sonidos, sin scripts
   del usuario y sin configuración.
+- El motor solo crea `Memory/`, `src<proyecto>/` y su carpeta global de
+  `Mods/`: las carpetas de assets (`Sonidos/`, `Scripts/`, los `Mods/` del
+  proyecto) las crea el usuario desde el explorador. Los assets se referencian
+  por ruta, así que ninguno depende de una carpeta en concreto.
 - Limitación conocida: la serialización binaria no tiene versionado ni validación
   de tamaños; un cambio en la estructura de atributos invalida escenas guardadas.
 

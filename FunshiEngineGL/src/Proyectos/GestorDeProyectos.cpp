@@ -50,8 +50,8 @@ void GestorDeProyectos::prepararProyectoAlArrancar() {
     // proyecto pedido.
     config_.cargarProyecto(proyectoActual_);
     gui_->configurarProyecto(proyectoActual_);
-    // Audio + interfaces: explora Sonidos/ y apunta el creador a
-    // Memory/Interfaces del proyecto (debe correr antes del primer frame).
+    // Estructura del proyecto y puntero del creador a Memory/Interfaces
+    // (debe correr antes del primer frame).
     scene_->configurarProyecto(proyectoActual_);
 }
 
@@ -298,7 +298,7 @@ void GestorDeProyectos::entrar(const std::string& destino) {
     gui_->configurarProyecto(proyectoActual_);
     // Actualizar proyecto actual en el menu bar para exportación.
     reflejarProyectoEnMenuBar();
-    // Re-explorar Sonidos/ e interfaces del proyecto entrante.
+    // Completar la estructura del proyecto entrante.
     scene_->configurarProyecto(proyectoActual_);
     config_.datos().nombreProyecto = proyectoActual_;
     // Antes de conmutar el ini, persistir el layout del proyecto que se

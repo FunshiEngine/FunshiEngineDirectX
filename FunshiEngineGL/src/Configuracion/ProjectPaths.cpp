@@ -319,10 +319,6 @@ std::string directorioSrc(const std::string& nombreProyecto) {
     return directorioProyecto(nombreProyecto) + "/" + nombreRaizSrc(nombreProyecto);
 }
 
-std::string directorioSonidos(const std::string& nombreProyecto) {
-    return directorioSrc(nombreProyecto) + "/Sonidos";
-}
-
 std::string directorioScripts(const std::string& nombreProyecto) {
     return directorioSrc(nombreProyecto) + "/Scripts";
 }

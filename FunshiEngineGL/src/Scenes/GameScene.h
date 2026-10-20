@@ -226,8 +226,8 @@ public:
     bool isSimulacionPausada() const noexcept;
     void setSimulacionPausada(bool pausada) noexcept;
     void loadScene(const std::string& pathTxt, const std::string& semiPath);
-    // Configura los assets de audio (Sonidos/) e interfaces (Memory/Interfaces)
-    // del proyecto. La llama main al arrancar y al cambiar de proyecto.
+    // Asegura la estructura de carpetas del proyecto (Memory/ y src<nombre>/).
+    // La llama main al arrancar y al cambiar de proyecto.
     void configurarProyecto(const std::string& nombreProyecto);
     AudioEngine* getAudioEngine() const noexcept;
     void GUI();

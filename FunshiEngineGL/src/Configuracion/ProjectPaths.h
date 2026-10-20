@@ -88,7 +88,6 @@ std::string directorioMemory(const std::string& nombreProyecto);
 std::string directorioBinarios(const std::string& nombreProyecto);
 std::string nombreRaizSrc(const std::string& nombreProyecto);
 std::string directorioSrc(const std::string& nombreProyecto);
-std::string directorioSonidos(const std::string& nombreProyecto);
 std::string directorioScripts(const std::string& nombreProyecto);
 
 // Archivos de configuracion

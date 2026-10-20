@@ -114,10 +114,10 @@ MotorGrafico/
 │       │   ├── Binarios/Scene        ← escenas binarias
 │       │   ├── ConfiguracionProyecto.json
 │       │   └── imgui.ini
-│       # ├── Mods/                     ← mods del proyecto (.fmod, ver seccion 18)
+│       ├── Mods/                     ← mods del proyecto (.fmod, ver seccion 18)
 │       └── src<proyecto>/            ← assets del proyecto (raiz del explorador)
 │           ├── modelos/              ← .obj/.fbx que arrastra el editor
-│           # ├── Sonidos/              ← clips de audio (.wav/.mp3/...)
+│           ├── Sonidos/              ← clips de audio (.wav/.mp3/...)
 │           └── Scripts/              ← scripts del usuario (.cpp/.java)
 # ├── Mods/                             ← mods globales del motor (.fmod, ver seccion 18)
 ├── Configuraciones/
@@ -138,9 +138,13 @@ MotorGrafico/
         └── JuegoExportado.json       ← metadatos del proyecto
 ```
 
-En el arbol, las carpetas marcadas con `#` las crea el motor al crear el proyecto
-(no hace falta hacerlas a mano). La convencion de assets por nombre usa la carpeta
-`src<proyecto>/Sonidos/`, con mayuscula inicial. El arbol de
+En el arbol, las carpetas marcadas con `#` las crea el motor (no hace falta
+hacerlas a mano). El motor crea su carpeta global de `Mods/` y, al crear un
+proyecto, `Memory/` y `src<proyecto>/`: las carpetas de assets (`Sonidos/`,
+`Scripts/`, los `Mods/` del proyecto) las crea el usuario, desde el explorador
+de archivos, donde las necesite. Ningun asset depende de una carpeta en
+concreto: el motor guarda la **ruta** del archivo, asi que el archivo puede
+estar en cualquier carpeta dentro de `src<proyecto>/`. El arbol de
 archivos del editor lista la **raiz del proyecto** (`src<nombre>`).
 
 > **Nota de packaging:** en el instalador Windows el explorador apunta a la

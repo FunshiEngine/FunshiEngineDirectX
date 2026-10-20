@@ -533,8 +533,8 @@ CHECK(cfgBajo.datos().apariencia.radioDifuminado ==
 
     // 5b. Rutas que el exportador copia a la distribucion del juego standalone.
     // El proyecto viaja COMPLETO con la disposicion del motor: el binario del
-    // juego resuelve MotorGrafico/ junto a si mismo, asi que escenas, Memory,
-    // Sonidos y src<nombre>/ tienen que quedar bajo Proyects/<nombre>/.
+    // juego resuelve MotorGrafico/ junto a si mismo, asi que escenas, Memory y
+    // src<nombre>/ tienen que quedar bajo Proyects/<nombre>/.
     {
         const std::string nombre = "JuegoExport";
         const std::string salida = EditorConfig::directorioExportacion("JuegoExportado");
@@ -555,7 +555,6 @@ CHECK(cfgBajo.datos().apariencia.radioDifuminado ==
         const std::string prefijo = EditorConfig::directorioProyecto(nombre) + "/";
         for (const std::string clave :
              {EditorConfig::directorioMemory(nombre),
-              EditorConfig::directorioSonidos(nombre),
               EditorConfig::rutaConfiguracionProyecto(nombre)}) {
             CHECK(clave.rfind(prefijo, 0) == 0,
                   "el origen vive dentro del proyecto: " + clave);
@@ -582,37 +581,35 @@ CHECK(cfgBajo.datos().apariencia.radioDifuminado ==
               "asegurarEstructuraProyecto creo Memory/Binarios/Scene");
         CHECK(fs::is_directory(srcDir),
               "asegurarEstructuraProyecto creo srcJuegoPrueba");
-        // Sonidos es un asset: el usuario decide cuando crearlo (no auto-creado).
-        const std::string sonidosDir = EditorConfig::directorioSonidos(proyNombre);
-        CHECK(sonidosDir == srcDir + "/Sonidos",
-              "directorioSonidos dentro de src<proyecto>");
-        // El directorio NO se crea automaticamente: lo decide el usuario.
+        // Las carpetas de assets las crea el usuario: el motor no las crea.
+        CHECK(!fs::is_directory(srcDir + "/Sonidos"),
+              "el motor no crea la carpeta de sonidos");
+        CHECK(!fs::is_directory(srcDir + "/Scripts"),
+              "el motor no crea la carpeta de scripts");
+        CHECK(!fs::is_directory(proyDir + "/Mods"),
+              "el motor no crea la carpeta de mods");
 
         // Limpieza de prueba
         std::error_code ec;
         fs::remove_all(proyDir, ec);
     }
 
-    // 5b. Migracion de Sonidos: si el usuario habia creado la carpeta en la raiz,
-    //     se mueve al src conservando sus clips.
+    // 5b. Las carpetas de assets las crea el usuario: el motor no mueve lo que
+    //     el usuario tenga en la raiz del proyecto.
     {
         const std::string proyNombre = "JuegoMigracion";
         const std::string proyDir = EditorConfig::directorioProyecto(proyNombre);
-        const std::string sonidosViejo = proyDir + "/Sonidos";
+        const std::string sonidosRaiz = proyDir + "/Sonidos";
         std::error_code ec;
-        fs::create_directories(sonidosViejo, ec);
-        { std::ofstream out(sonidosViejo + "/tema.wav"); out << "clip"; }
+        fs::create_directories(sonidosRaiz, ec);
+        { std::ofstream out(sonidosRaiz + "/tema.wav"); out << "clip"; }
 
         EditorConfig::asegurarEstructuraProyecto(proyNombre);
 
-        const std::string sonidosNuevo =
-            EditorConfig::directorioSonidos(proyNombre);
-        CHECK(!fs::exists(sonidosViejo),
-              "migracion retira Sonidos de la raiz del proyecto");
-        CHECK(fs::is_directory(sonidosNuevo),
-              "migracion crea Sonidos dentro del src");
-        CHECK(fs::exists(sonidosNuevo + "/tema.wav"),
-              "migracion conserva los clips de audio");
+        CHECK(fs::is_directory(sonidosRaiz),
+              "el motor deja la carpeta de assets donde la puso el usuario");
+        CHECK(fs::exists(sonidosRaiz + "/tema.wav"),
+              "el motor no mueve los archivos de assets del usuario");
 
         fs::remove_all(proyDir, ec);
     }
