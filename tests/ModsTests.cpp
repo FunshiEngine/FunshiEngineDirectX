@@ -92,6 +92,90 @@ bool crearZip(const std::string& ruta,
     return ok;
 }
 
+// miniz se niega a escribir una entrada cuyo nombre empiece por '/', asi que
+// para fabricar un paquete con una ruta absoluta de verdad hay que escribir el
+// ZIP a mano. Se arma el formato minimo valido (una entrada almacenada, sin
+// comprimir) con el nombre que se le pase: el paquete tiene que ser legible
+// por el motor, y lo que se comprueba es que lo rechace.
+void escribirU16(std::vector<unsigned char>& buffer, unsigned int valor) {
+    buffer.push_back(static_cast<unsigned char>(valor & 0xFFu));
+    buffer.push_back(static_cast<unsigned char>((valor >> 8) & 0xFFu));
+}
+
+void escribirU32(std::vector<unsigned char>& buffer, unsigned int valor) {
+    escribirU16(buffer, valor & 0xFFFFu);
+    escribirU16(buffer, (valor >> 16) & 0xFFFFu);
+}
+
+bool crearZipConEntradaNombrada(const std::string& ruta,
+                                 const std::string& nombreEntrada,
+                                 const std::string& contenido) {
+    const unsigned int crc = static_cast<unsigned int>(
+        mz_crc32(MZ_CRC32_INIT,
+                 reinterpret_cast<const unsigned char*>(contenido.data()),
+                 contenido.size()));
+
+    // Cabecera local: la entrada, sin comprimir.
+    std::vector<unsigned char> local;
+    escribirU32(local, 0x04034b50u);   // firma de cabecera local
+    escribirU16(local, 20);            // version minima
+    escribirU16(local, 0);             // flags
+    escribirU16(local, 0);             // metodo: almacenado
+    escribirU16(local, 0);             // hora
+    escribirU16(local, 0);             // fecha
+    escribirU32(local, crc);
+    escribirU32(local, static_cast<unsigned int>(contenido.size()));
+    escribirU32(local, static_cast<unsigned int>(contenido.size()));
+    escribirU16(local, static_cast<unsigned int>(nombreEntrada.size()));
+    escribirU16(local, 0);             // sin campo extra
+    local.insert(local.end(), nombreEntrada.begin(), nombreEntrada.end());
+    local.insert(local.end(), contenido.begin(), contenido.end());
+
+    // Directorio central: el indice de la entrada.
+    const unsigned int offsetCentral = static_cast<unsigned int>(local.size());
+    std::vector<unsigned char> central;
+    escribirU32(central, 0x02014b50u); // firma del directorio central
+    escribirU16(central, 20);          // version creadora
+    escribirU16(central, 20);          // version minima
+    escribirU16(central, 0);           // flags
+    escribirU16(central, 0);           // metodo: almacenado
+    escribirU16(central, 0);           // hora
+    escribirU16(central, 0);           // fecha
+    escribirU32(central, crc);
+    escribirU32(central, static_cast<unsigned int>(contenido.size()));
+    escribirU32(central, static_cast<unsigned int>(contenido.size()));
+    escribirU16(central, static_cast<unsigned int>(nombreEntrada.size()));
+    escribirU16(central, 0);           // sin campo extra
+    escribirU16(central, 0);           // sin comentario
+    escribirU16(central, 0);           // numero de disco
+    escribirU16(central, 0);           // atributos internos
+    escribirU32(central, 0);           // atributos externos
+    escribirU32(central, 0);           // offset de la cabecera local
+    central.insert(central.end(), nombreEntrada.begin(), nombreEntrada.end());
+
+    // Fin del directorio central.
+    std::vector<unsigned char> fin;
+    escribirU32(fin, 0x06054b50u);     // firma del fin del directorio
+    escribirU16(fin, 0);               // disco actual
+    escribirU16(fin, 0);               // disco del directorio central
+    escribirU16(fin, 1);               // entradas en este disco
+    escribirU16(fin, 1);               // entradas en total
+    escribirU32(fin, static_cast<unsigned int>(central.size()));
+    escribirU32(fin, offsetCentral);
+    escribirU16(fin, 0);               // sin comentario
+
+    std::ofstream archivo(ruta, std::ios::binary | std::ios::trunc);
+    if (!archivo)
+        return false;
+    archivo.write(reinterpret_cast<const char*>(local.data()),
+                  static_cast<std::streamsize>(local.size()));
+    archivo.write(reinterpret_cast<const char*>(central.data()),
+                  static_cast<std::streamsize>(central.size()));
+    archivo.write(reinterpret_cast<const char*>(fin.data()),
+                  static_cast<std::streamsize>(fin.size()));
+    return archivo.good();
+}
+
 std::string leerArchivoTexto(const std::string& ruta) {
     std::ifstream archivo(ruta, std::ios::binary);
     if (!archivo)
@@ -544,21 +628,36 @@ int main() {
         CHECK(!fs::exists(carpeta.ruta() / "escape.txt"),
               "nada se escribio fuera del destino");
 
-        // Zip-slip con ruta absoluta (unidad en Windows, raiz en POSIX).
-#ifdef _WIN32
-        const std::string rutaAbsoluta = "C:/escape_abs.txt";
-#else
-        const std::string rutaAbsoluta = "/escape_abs.txt";
-#endif
+        // Zip-slip con ruta absoluta: la raiz en POSIX ("/escape_abs.txt") y la
+        // unidad en Windows ("C:/escape_unidad.txt"). miniz no escribe
+        // entradas que empiezan por '/', asi que el paquete se arma a mano:
+        // tiene que ser un ZIP valido (el motor lo lee) y aun asi rechazarlo.
         const fs::path absoluto = carpeta.ruta() / "absoluto.fmod";
-        CHECK(crearZip(absoluto.string(),
-                       {{rutaAbsoluta, std::string("malo")}}),
-              "se arma un .fmod con una entrada absoluta");
+        CHECK(crearZipConEntradaNombrada(absoluto.string(), "/escape_abs.txt",
+                                          "malo"),
+              "se arma un .fmod con una entrada absoluta de raiz");
+        std::string contenidoAbsoluto;
+        error.clear();
+        CHECK(LectorZip::leerEntrada(absoluto.string(), "/escape_abs.txt",
+                                     contenidoAbsoluto, error),
+              "el paquete con la entrada absoluta es un ZIP valido");
+        CHECK(error.empty(), "leer la entrada absoluta no deja error");
         error.clear();
         CHECK(!LectorZip::extraerTodo(absoluto.string(),
                                       (carpeta.ruta() / "extraido_abs").string(),
                                       error),
-              "extraerTodo rechaza una entrada absoluta");
+              "extraerTodo rechaza una entrada absoluta de raiz");
+        CHECK(!error.empty(), "el rechazo de ruta absoluta deja mensaje");
+
+        const fs::path absolutoUnidad = carpeta.ruta() / "absoluto_unidad.fmod";
+        CHECK(crearZipConEntradaNombrada(absolutoUnidad.string(),
+                                          "C:/escape_unidad.txt", "malo"),
+              "se arma un .fmod con una entrada absoluta de unidad");
+        error.clear();
+        CHECK(!LectorZip::extraerTodo(absolutoUnidad.string(),
+                                      (carpeta.ruta() / "extraido_unidad").string(),
+                                      error),
+              "extraerTodo rechaza una entrada absoluta de unidad");
 
         // Contrato anti zip-slip a nivel de ruta.
         CHECK(LectorZip::esRutaSegura("bin/mimod.so"),
