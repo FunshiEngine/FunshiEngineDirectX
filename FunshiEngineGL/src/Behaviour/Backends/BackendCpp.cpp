@@ -19,7 +19,7 @@
 
 // Carga dinamica multiplataforma compartida con el subsistema de mods.
 // Se extrae a Mods/CargaDinamica.h para reutilizarla en la carga de .dll/.so de mods.
-#include "../Mods/CargaDinamica.h"
+#include "../../Mods/CargaDinamica.h"
 
 #include "BackendCpp.h"
 #include "ComandoCompilacionCpp.h"
