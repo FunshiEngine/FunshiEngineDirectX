@@ -192,7 +192,9 @@ FunshiEngineGL/                          ← raíz del repo
         │   ├── TerminalSession.h/.cpp      ← shell interactiva mediante ConPTY o pseudo-terminal POSIX
         │   └── TerminalEmulator.h/.cpp     ← cuadrícula VT y parser de secuencias ANSI
         ├── Entity/
-        │   ├── Entity.h                 ← base: lista de componentes, Transform, serialización
+        │   ├── Entity.h                 ← base real: componentes, jerarquía, transform y
+        │   │                              serialización común (el derivado aporta sus
+        │   │                              atributos propios)
         │   └── Entity.cpp
         ├── Estructuras/                 ← contenedores genéricos, header-only
         │   ├── Comparable.h / Ordenadora.h
@@ -636,7 +638,12 @@ solo como orquestador de arranque y bucle.
 
 ### Entidades, objetos y componentes
 
-- `Entity` contiene una `ListaDE<Component*>` y un `Transform` base. Define la interfaz abstracta de serialización (métodos `serialize*`/`deserialize*`).
+- `Entity` es la base real de la escena: es duena de sus componentes
+  (`ListaDE<Component*>` más los propietarios), conoce su lugar en la jerarquía
+  y su transform de origen, e implementa la parte común de la serialización
+  (el orden de los bloques, el transform y la lista de componentes) y el
+  transform global. El derivado solo aporta los atributos que son suyos
+  (`serializeLocalAtributes`/`deserializeLocalAtributes`).
 - `GameObject` extiende `Entity` e implementa `Comparable<GameObject>`. Añade:
   id entero, nombre (`inputName[25]`), color auxiliar (`auxColor`), estado (`bool`),
   ciclo `update(dt)` y la lógica de serialización binaria concreta.
