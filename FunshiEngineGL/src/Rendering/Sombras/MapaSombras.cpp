@@ -62,6 +62,7 @@ ResultadoSeleccion seleccionarProyectores(const CandidatoProyector* candidatos,
 
         ProyectorSombra& proyector = salida[resultado.elegidos];
         proyector.matrizLuz = matrizLuz(foco);
+        proyector.indiceLuz = candidato.indiceLuz;
         proyector.resolucion = candidato.resolucion;
         proyector.sesgo = candidato.sesgo;
         proyector.fuerza = candidato.fuerza;
@@ -76,7 +77,7 @@ MapaSombras::MapaSombras(Backend::IRenderBackend& backend)
     : backend_(backend) {}
 
 MapaSombras::~MapaSombras() {
-    for (Entrada& entrada : entradas_) {
+    for (Mapa& entrada : entradas_) {
         if (entrada.target != Backend::kInvalidHandle) {
             backend_.destroyDepthTarget(entrada.target);
         }
@@ -84,31 +85,39 @@ MapaSombras::~MapaSombras() {
     entradas_.clear();
 }
 
-Backend::Handle MapaSombras::preparar(int indice, int resolucion) {
-    if (indice < 0) return Backend::kInvalidHandle;
+bool MapaSombras::preparar(int indice, int resolucion) {
+    if (indice < 0) return false;
     if (indice < static_cast<int>(entradas_.size())) {
-        Entrada& entrada = entradas_[indice];
+        Mapa& entrada = entradas_[indice];
         if (entrada.resolucion == resolucion &&
             entrada.target != Backend::kInvalidHandle) {
-            return backend_.depthTargetTexture(entrada.target);
+            return true;
         }
         // La resolucion cambio: el mapa viejo ya no sirve.
         backend_.destroyDepthTarget(entrada.target);
         entrada.target = Backend::kInvalidHandle;
+        entrada.textura = Backend::kInvalidHandle;
         entrada.resolucion = 0;
     } else {
         entradas_.resize(static_cast<std::size_t>(indice) + 1);
     }
 
-    if (resolucion <= 0) return Backend::kInvalidHandle;
+    if (resolucion <= 0) return false;
 
     const Backend::Handle target = backend_.createDepthTarget(resolucion);
-    if (target == Backend::kInvalidHandle) return Backend::kInvalidHandle;
+    if (target == Backend::kInvalidHandle) return false;
 
-    Entrada& entrada = entradas_[static_cast<std::size_t>(indice)];
+    Mapa& entrada = entradas_[static_cast<std::size_t>(indice)];
     entrada.target = target;
+    entrada.textura = backend_.depthTargetTexture(target);
     entrada.resolucion = resolucion;
-    return backend_.depthTargetTexture(target);
+    return true;
+}
+
+const MapaSombras::Mapa& MapaSombras::mapa(int indice) const {
+    static const Mapa vacio;
+    if (indice < 0 || indice >= static_cast<int>(entradas_.size())) return vacio;
+    return entradas_[static_cast<std::size_t>(indice)];
 }
 
 void MapaSombras::liberarDesde(int indice) {

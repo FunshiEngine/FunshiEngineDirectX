@@ -37,6 +37,7 @@
 #include "MeshGPU.h"
 #include "Shaders/ShaderProgram.h"
 #include "Shaders/GestorShaders.h"
+#include "Sombras/MapaSombras.h"
 #include "TextureGL.h"
 #include "Backend/IRenderBackend.h"
 
@@ -48,6 +49,11 @@ bool matrizFinita(const glm::mat3& m) {
         if (!std::isfinite(p[i])) return false;
     return true;
 }
+
+// Unidades de textura reservadas para los mapas de sombra. Las del material
+// ocupan las cuatro primeras (difusa, especular, emision y normal), asi que
+// los mapas de sombra arrancan en la quinta.
+constexpr int kUnidadTexturaSombra = 4;
 
 } // namespace
 
@@ -62,7 +68,22 @@ bool MeshRenderer::inicializar() {
     if (!gestorShaders_) return false;
     try {
         shader_ = gestorShaders_->obtener("malla");
+        // El programa del pase de profundidad es opcional: si no compila, el
+        // motor dibuja sin sombras en vez de no dibujar nada.
+        try {
+            shaderSombra_ = gestorShaders_->obtener("profundidad");
+        } catch (const std::exception& e) {
+            registrarExcepcionDiagnostica("Rendering/MeshRenderer", e,
+                                          NivelDiagnostico::Advertencia);
+            std::cerr << "[MeshRenderer] Programa de profundidad no disponible: "
+                      << e.what() << '\n';
+            shaderSombra_.reset();
+        }
         aplicarLuces();
+        // Los mapas de sombra tambien se suben aqui: el programa puede
+        // aparecer despues de que la escena ya tuviera proyectores (el
+        // renderer de la escena prepara las sombras antes del primer dibujado).
+        aplicarSombras();
     } catch (const std::exception& e) {
         registrarExcepcionDiagnostica("Rendering/MeshRenderer", e,
                                       NivelDiagnostico::Error);
@@ -145,6 +166,59 @@ void MeshRenderer::aplicarLuces() {
         std::snprintf(name, sizeof(name), "uSpotCutoffCos[%d]", i);
         shader_->setFloat(
             name, std::cos(l.spotCutoffDegrees * 3.14159265358979f / 180.f));
+    }
+}
+
+void MeshRenderer::setSombras(const Rendering::ProyectorSombra* proyectores,
+                              int cantidad) {
+    sombras_.clear();
+    if (proyectores && cantidad > 0) {
+        for (int i = 0; i < cantidad; ++i) {
+            const Rendering::ProyectorSombra& proyector = proyectores[i];
+            // Un proyector sin mapa (el backend no pudo crearlo) no sombrea:
+            // dejarlo en la lista haria que el shader consultara una unidad de
+            // textura sin mapa, con lo que la sombra saldria de otra escena.
+            if (proyector.textura == Rendering::Backend::kInvalidHandle) continue;
+            sombras_.push_back(proyector);
+        }
+    }
+
+    if (shader_) aplicarSombras();
+}
+
+void MeshRenderer::aplicarSombras() {
+    if (!shader_) return;
+    // Los uniforms se suben con el programa activo: sin use() se descartan.
+    shader_->use();
+
+    const int count =
+        std::min(Rendering::kMaxProyectoresSombra,
+                 static_cast<int>(sombras_.size()));
+    shader_->setInt("uShadowCount", count);
+
+    for (int i = 0; i < count; ++i) {
+        const Rendering::ProyectorSombra& proyector =
+            sombras_[static_cast<std::size_t>(i)];
+        char name[32];
+
+        // El sampler de cada mapa (uShadowMap0..3: GLSL 3.30 no deja indexar un
+        // array de samplers con una variable).
+        std::snprintf(name, sizeof(name), "uShadowMap%d", i);
+        shader_->setInt(name, kUnidadTexturaSombra + i);
+
+        std::snprintf(name, sizeof(name), "uShadowMatrix[%d]", i);
+        shader_->setMat4(name, proyector.matrizLuz);
+        std::snprintf(name, sizeof(name), "uShadowBias[%d]", i);
+        shader_->setFloat(name, proyector.sesgo);
+        std::snprintf(name, sizeof(name), "uShadowStrength[%d]", i);
+        shader_->setFloat(name, proyector.fuerza);
+        std::snprintf(name, sizeof(name), "uShadowTexel[%d]", i);
+        shader_->setFloat(name,
+                          1.f / static_cast<float>(proyector.resolucion > 0
+                                                       ? proyector.resolucion
+                                                       : 1));
+        std::snprintf(name, sizeof(name), "uShadowLightIndex[%d]", i);
+        shader_->setInt(name, proyector.indiceLuz);
     }
 }
 
@@ -319,30 +393,81 @@ bool MeshRenderer::intentarRenderMesh(GameObject* contexto, const Mesh* mesh,
 
     aplicarMaterial(contexto);
     aplicarTexturas(contexto, mesh);
+    enlazarTexturasSombra();
 
-    auto it = gpu_.find(mesh);
-    if (it == gpu_.end()) {
-        auto gpu = std::make_unique<MeshGPU>();
-        gpu->upload(&mesh->vertices[0].x, mesh->vertices.size(),
-                    mesh->hasNormals() ? &mesh->normals[0].x : nullptr,
-                    mesh->normals.size(),
-                    mesh->hasUvs() ? &mesh->uvs[0].x : nullptr,
-                    mesh->uvs.size(),
-                    mesh->hasTangents() ? &mesh->tangents[0].x : nullptr,
-                    mesh->tangents.size(),
-                    mesh->hasTangents() ? &mesh->bitangents[0].x : nullptr,
-                    mesh->bitangents.size(),
-                    mesh->indices.empty() ? nullptr : &mesh->indices[0],
-                    mesh->indices.size());
-        it = gpu_.emplace(mesh, std::move(gpu)).first;
-    }
+    const MeshGPU* gpu = obtenerGpu(mesh);
+    if (!gpu) return false;
 
     // El relleno de poligonos es el unico estado valido en un contexto core
     // (no hay glPolygonMode) y el depth test ya lo activa applyBaseState().
     auto& backend = Rendering::Backend::activeBackend();
     backend.setBlendEnabled(true);
-    it->second->draw();
+    gpu->draw();
     backend.setBlendEnabled(false);
+    ShaderProgram::unbind(backend);
+    return true;
+}
+
+// Sube la malla a GPU si no estaba ya (la cache es por identidad de la malla
+// CPU, que el AssetManager comparte entre objetos). Devuelve nullptr si la
+// malla no se puede dibujar.
+const MeshGPU* MeshRenderer::obtenerGpu(const Mesh* mesh) {
+    if (!mesh) return nullptr;
+    auto it = gpu_.find(mesh);
+    if (it != gpu_.end()) return it->second.get();
+
+    auto gpu = std::make_unique<MeshGPU>();
+    gpu->upload(&mesh->vertices[0].x, mesh->vertices.size(),
+                mesh->hasNormals() ? &mesh->normals[0].x : nullptr,
+                mesh->normals.size(),
+                mesh->hasUvs() ? &mesh->uvs[0].x : nullptr,
+                mesh->uvs.size(),
+                mesh->hasTangents() ? &mesh->tangents[0].x : nullptr,
+                mesh->tangents.size(),
+                mesh->hasTangents() ? &mesh->bitangents[0].x : nullptr,
+                mesh->bitangents.size(),
+                mesh->indices.empty() ? nullptr : &mesh->indices[0],
+                mesh->indices.size());
+    it = gpu_.emplace(mesh, std::move(gpu)).first;
+    return it->second.get();
+}
+
+void MeshRenderer::enlazarTexturasSombra() {
+    if (!shader_) return;
+    auto& backend = Rendering::Backend::activeBackend();
+    const int count =
+        std::min(Rendering::kMaxProyectoresSombra,
+                 static_cast<int>(sombras_.size()));
+    for (int i = 0; i < count; ++i) {
+        const Rendering::Backend::Handle textura =
+            sombras_[static_cast<std::size_t>(i)].textura;
+        if (textura == Rendering::Backend::kInvalidHandle) continue;
+        backend.bindTexture2D(textura, kUnidadTexturaSombra + i);
+    }
+}
+
+bool MeshRenderer::intentarRenderSombra(const Mesh* mesh, const float modelo[16],
+                                        const glm::mat4& matrizLuz) {
+    if (!mesh || mesh->isEmpty()) return false;
+    if (!inicializar()) return false;
+    // Sin programa de profundidad no hay pase de sombras, pero el resto de la
+    // escena se dibuja igual.
+    if (!shaderSombra_) return false;
+
+    const glm::mat4 model = glm::make_mat4(modelo);
+    if (!matrizFinita(glm::mat3(model))) return false;
+
+    const MeshGPU* gpu = obtenerGpu(mesh);
+    if (!gpu) return false;
+
+    shaderSombra_->use();
+    shaderSombra_->setMat4("uModel", model);
+    shaderSombra_->setMat4("uLightMatrix", matrizLuz);
+
+    // El pase de profundidad no escribe color: el blend se apaga.
+    auto& backend = Rendering::Backend::activeBackend();
+    backend.setBlendEnabled(false);
+    gpu->draw();
     ShaderProgram::unbind(backend);
     return true;
 }

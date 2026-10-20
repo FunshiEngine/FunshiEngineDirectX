@@ -43,7 +43,7 @@ jobs:
         run: cmake --build build --target FunshiEngineGL
 
       - name: Compilar pruebas
-        run: cmake --build build --config Release --target terminal-emulator-tests terminal-session-tests diagnostic-registry-tests hilos-tests filemanager-tests configuracion-tests eventbus-tests menu-tests assetmanager-tests texturemanager-tests estructuras-tests rendering-tests shaders-tests sombras-tests scripts-tests scripts-runtime-tests audio-tests scripts-java-tests model-serialization-tests manifiesto-assets-tests orquestador-estado-tests tema-tests comandos-tests escena-serializacion-tests serializacion-tests proceso-tests prefab-tests catalogo-componentes-tests tilemap-tests interfaces-juego-tests barra-progreso-tests interface-component-tests webui-runtime-tests mods-tests
+        run: cmake --build build --config Release --target terminal-emulator-tests terminal-session-tests diagnostic-registry-tests hilos-tests filemanager-tests configuracion-tests eventbus-tests menu-tests assetmanager-tests texturemanager-tests estructuras-tests rendering-tests shaders-tests sombras-tests iluminacion-tests scripts-tests scripts-runtime-tests audio-tests scripts-java-tests model-serialization-tests manifiesto-assets-tests orquestador-estado-tests tema-tests comandos-tests escena-serializacion-tests serializacion-tests proceso-tests prefab-tests catalogo-componentes-tests tilemap-tests interfaces-juego-tests barra-progreso-tests interface-component-tests webui-runtime-tests mods-tests
 
       - name: Ejecutar pruebas
         run: ctest --test-dir build -C Release --output-on-failure
@@ -54,10 +54,11 @@ jobs:
   # build hasta que el sistema multiplataforma este mas maduro.
   # NOTA: los targets que exigen el motor (BUILD_ENGINE=ON) NO se incluyen
   # aqui: catalogo-componentes-tests, comandos-tests, escena-serializacion-tests,
-  # interfaces-juego-tests, manifiesto-assets-tests, orquestador-estado-tests,
-  # prefab-tests, serializacion-tests, tema-tests y tilemap-tests.
-  # interface-component-tests, shaders-tests y webui-runtime-tests tampoco
-  # entran: necesitan glm, que este build no trae.
+  # iluminacion-tests, interfaces-juego-tests, manifiesto-assets-tests,
+  # orquestador-estado-tests, prefab-tests, serializacion-tests, tema-tests y
+  # tilemap-tests.
+  # interface-component-tests, shaders-tests, sombras-tests y
+  # webui-runtime-tests tampoco entran: necesitan glm, que este build no trae.
   tests-multiplataforma:
     name: Pruebas headless (${{ matrix.os }})
     strategy:
@@ -142,7 +143,7 @@ jobs:
         run: cmake --build build --config Release --target FunshiEngineGL
 
       - name: Compilar pruebas
-        run: cmake --build build --config Release --target terminal-emulator-tests terminal-session-tests diagnostic-registry-tests hilos-tests filemanager-tests configuracion-tests eventbus-tests menu-tests assetmanager-tests texturemanager-tests estructuras-tests rendering-tests shaders-tests sombras-tests scripts-tests scripts-runtime-tests audio-tests interface-component-tests barra-progreso-tests scripts-java-tests model-serialization-tests manifiesto-assets-tests orquestador-estado-tests tema-tests comandos-tests escena-serializacion-tests serializacion-tests proceso-tests prefab-tests catalogo-componentes-tests tilemap-tests interfaces-juego-tests webui-runtime-tests mods-tests
+        run: cmake --build build --config Release --target terminal-emulator-tests terminal-session-tests diagnostic-registry-tests hilos-tests filemanager-tests configuracion-tests eventbus-tests menu-tests assetmanager-tests texturemanager-tests estructuras-tests rendering-tests shaders-tests sombras-tests iluminacion-tests scripts-tests scripts-runtime-tests audio-tests interface-component-tests barra-progreso-tests scripts-java-tests model-serialization-tests manifiesto-assets-tests orquestador-estado-tests tema-tests comandos-tests escena-serializacion-tests serializacion-tests proceso-tests prefab-tests catalogo-componentes-tests tilemap-tests interfaces-juego-tests webui-runtime-tests mods-tests
 
       - name: Ejecutar pruebas
         uses: nick-fields/retry@v3

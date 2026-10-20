@@ -871,6 +871,27 @@ set_target_properties(sombras-tests PROPERTIES
     CXX_EXTENSIONS OFF
 )
 add_test(NAME sombras-tests COMMAND sombras-tests)
+
+# --- Pruebas headless del sistema de luces ------------------------------------
+# La recogida de las luces de la escena y el paralelismo entre la lista de
+# luces y la de duenos (lo usa el pase de sombras para saber a que luz
+# pertenece cada mapa). Necesita funshi_engine (GameObject, Light, Transform),
+# como catalogo-componentes-tests.
+add_executable(iluminacion-tests
+    ${CMAKE_CURRENT_SOURCE_DIR}/../tests/IluminacionTests.cpp
+)
+target_include_directories(iluminacion-tests PRIVATE
+    ${SRC_DIR}
+    ${CMAKE_SOURCE_DIR}/External
+)
+target_link_libraries(iluminacion-tests PRIVATE funshi_engine)
+set_target_properties(iluminacion-tests PROPERTIES
+    CXX_STANDARD 17
+    CXX_STANDARD_REQUIRED ON
+    CXX_EXTENSIONS OFF
+)
+add_test(NAME iluminacion-tests COMMAND iluminacion-tests)
+
 # Deshabilitada: la suite falla en la rama develop por un fallo preexistente
 # de la interfaz web.
 set_tests_properties(webui-runtime-tests PROPERTIES DISABLED TRUE)
@@ -884,6 +905,7 @@ if(WIN32)
     target_compile_definitions(tema-tests PRIVATE _HAS_STD_BYTE=0)
     target_compile_definitions(interface-component-tests PRIVATE _HAS_STD_BYTE=0)
     target_compile_definitions(webui-runtime-tests PRIVATE _HAS_STD_BYTE=0)
+    target_compile_definitions(iluminacion-tests PRIVATE _HAS_STD_BYTE=0)
 endif()
 
 endif() # NOT BUILD_RUNTIME (sin pruebas del bloque editor)

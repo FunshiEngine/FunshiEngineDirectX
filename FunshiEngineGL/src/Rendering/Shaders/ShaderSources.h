@@ -183,7 +183,7 @@ float factorSombra(int indiceLuz, vec3 fragPos) {
         if (uv.x < 0.0 || uv.x > 1.0 || uv.y < 0.0 || uv.y > 1.0) return 1.0;
         if (z > 1.0) return 1.0;
 
-        // El sesbio se resta en profundidad: acerca el fragmento a la luz para
+        // El sesgo se resta en profundidad: acerca el fragmento a la luz para
         // que el mapa no lo de por tapado por su propia superficie.
         float ref = z - uShadowBias[s];
         float cobertura = coberturaSombra(s, uv, ref, uShadowTexel[s]);

@@ -477,12 +477,14 @@ void testMapaDeSombras() {
     BackendFalso backend;
     MapaSombras mapa(backend);
 
-    const Handle textura = mapa.preparar(0, 1024);
-    CHECK(textura != Rendering::Backend::kInvalidHandle,
-          "el mapa crea su textura de profundidad");
+    CHECK(mapa.preparar(0, 1024), "el mapa crea su objetivo de profundidad");
     CHECK(backend.creados == 1, "el mapa crea un objetivo de profundidad");
     CHECK(backend.ultimoTamano == 1024, "el objetivo tiene el tamano pedido");
     CHECK(mapa.activos() == 1, "el mapa cuenta un mapa activo");
+    CHECK(mapa.mapa(0).textura != Rendering::Backend::kInvalidHandle,
+          "el mapa expone la textura de profundidad");
+    CHECK(mapa.mapa(0).resolucion == 1024,
+          "el mapa recuerda la resolucion con la que se creo");
 
     // Pedirlo otra vez con la misma resolucion no crea otro objetivo.
     mapa.preparar(0, 1024);
@@ -502,6 +504,29 @@ void testMapaDeSombras() {
     mapa.liberarDesde(1);
     CHECK(mapa.activos() == 1, "los mapas que no se usan se sueltan");
     CHECK(backend.destruidos == 2, "el mapa del segundo proyector se destruye");
+
+    // Un mapa que no sepidio esta vacio (no es un mapa valido).
+    CHECK(mapa.mapa(5).target == Rendering::Backend::kInvalidHandle,
+          "un mapa que no se pidio no existe");
+}
+
+void testElProyectorConservaElIndiceDeSuLuz() {
+    // La sombra tiene que atenuar la contribucion de SU luz: por eso el
+    // proyector lleva el indice de la luz a la que pertenece.
+    CandidatoProyector candidato;
+    candidato.tipo = TipoLuzProyector::Spot;
+    candidato.indiceLuz = 3;
+    candidato.sesgo = 0.002f;
+    candidato.fuerza = 0.5f;
+
+    ProyectorSombra salida[1];
+    const ResultadoSeleccion resultado = seleccionarProyectores(
+        &candidato, 1, 4, glm::vec3(0.f), salida);
+    CHECK(resultado.elegidos == 1, "el candidato se elige");
+    CHECK(salida[0].indiceLuz == 3,
+          "el proyector conserva el indice de su luz");
+    CHECK(salida[0].sesgo == 0.002f, "el proyector conserva el sesgo");
+    CHECK(salida[0].fuerza == 0.5f, "el proyector conserva la fuerza");
 }
 
 void testElLimiteCoincideConElShader() {
@@ -532,6 +557,7 @@ int main() {
     testSeleccionDeProyectores();
     testSeleccionSinCandidatos();
     testMapaDeSombras();
+    testElProyectorConservaElIndiceDeSuLuz();
     testElLimiteCoincideConElShader();
 
     std::cout << "SombrasTests: " << total << " verificaciones, " << fallos

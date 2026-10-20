@@ -44,6 +44,9 @@ struct CandidatoProyector {
     glm::vec3 posicion{0.f, 10.f, 0.f};
     glm::vec3 direccion{0.f, -1.f, 0.f};
     TipoLuzProyector tipo = TipoLuzProyector::Direccional;
+    // Indice de la luz en los uniforms de iluminacion: es lo que permite que
+    // la sombra atenue la contribucion de esa luz y no la de las demas.
+    int indiceLuz = 0;
     int resolucion = 1024;
     float radio = 20.f;
     float distancia = 60.f;
@@ -55,6 +58,7 @@ struct CandidatoProyector {
 // consulta el fragmento sombreado, y los ajustes con los que se sombrea.
 struct ProyectorSombra {
     glm::mat4 matrizLuz{1.f};
+    int indiceLuz = 0;
     int resolucion = 1024;
     float sesgo = 0.0015f;
     float fuerza = 1.f;
@@ -86,18 +90,26 @@ ResultadoSeleccion seleccionarProyectores(const CandidatoProyector* candidatos,
 // que dejan de usarse, para no dejar recursos de GPU colgando.
 class MapaSombras {
 public:
+    // Un mapa de sombra en la GPU: el framebuffer de profundidad y su textura.
+    struct Mapa {
+        Backend::Handle target = Backend::kInvalidHandle;
+        Backend::Handle textura = Backend::kInvalidHandle;
+        int resolucion = 0;
+    };
+
     explicit MapaSombras(Backend::IRenderBackend& backend);
     ~MapaSombras();
 
     MapaSombras(const MapaSombras&) = delete;
     MapaSombras& operator=(const MapaSombras&) = delete;
 
-    // Prepara el mapa del proyector 'indice' con la resolucion pedida y
-    // devuelve el handle de su textura de profundidad. Si la resolucion
-    // cambio, el mapa anterior se rehace. Si el backend no puede crear el
-    // objetivo, devuelve el handle invalido (y el proyector se dibuja sin
-    // sombra).
-    Backend::Handle preparar(int indice, int resolucion);
+    // Prepara el mapa del proyector 'indice' con la resolucion pedida. Si la
+    // resolucion cambio, el mapa anterior se rehace. Devuelve false si el
+    // backend no puede crear el objetivo (el proyector se dibuja sin sombra).
+    bool preparar(int indice, int resolucion);
+
+    // El mapa del proyector. Si todavia no se preparo, sale vacio.
+    const Mapa& mapa(int indice) const;
 
     // Suelta los mapas de los proyectores que ya no se usan (los que estan
     // despues del indice dado).
@@ -107,13 +119,8 @@ public:
     int activos() const { return static_cast<int>(entradas_.size()); }
 
 private:
-    struct Entrada {
-        Backend::Handle target = Backend::kInvalidHandle;
-        int resolucion = 0;
-    };
-
     Backend::IRenderBackend& backend_;
-    std::vector<Entrada> entradas_;
+    std::vector<Mapa> entradas_;
 };
 
 }  // namespace Rendering
