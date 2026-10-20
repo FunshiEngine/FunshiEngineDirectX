@@ -222,9 +222,9 @@ int EjecutarJuego(int argc, char* argv[]) {
         // No cargar escena - GameScene arranca con una escena vacía por defecto
     }
 
-    // configurarProyecto() inicializa el catalogo de clips de audio
-    // (Sonidos/) y las interfaces de la escena (Memory/Interfaces).
-    // Debe llamarse DESPUES de loadScene para que la escena ya exista.
+    // configurarProyecto() asegura la estructura de carpetas del proyecto
+    // (Memory/ y src<nombre>/). Debe llamarse DESPUES de loadScene para que la
+    // escena ya exista.
     scene->configurarProyecto(nombreProyecto);
 
     // 9. Maquina de estados y orquestador

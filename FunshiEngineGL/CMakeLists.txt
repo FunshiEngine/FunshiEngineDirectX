@@ -1338,6 +1338,7 @@ set_tests_properties(scripts-runtime-tests PROPERTIES SKIP_RETURN_CODE 77)
 # volumen y limpieza. Necesita hilos (El worker thread del motor).
 add_executable(audio-tests
     ${SRC_DIR}/Audio/AudioEngine.cpp
+    ${SRC_DIR}/Audio/GestorMusica.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../tests/AudioEngineTests.cpp
 )
 target_include_directories(audio-tests PRIVATE ${SRC_DIR})
@@ -1351,6 +1352,21 @@ if(Threads_FOUND)
     target_link_libraries(audio-tests PRIVATE Threads::Threads)
 endif()
 add_test(NAME audio-tests COMMAND audio-tests)
+
+# Reproductor de musica (GestorMusica) headless y portatil: la maquina de
+# estados del fundido cruzado, el paso automatico a la pista siguiente y el
+# bus se prueban con un backend de musica FALSO (sin audio ni hilo de trabajo).
+add_executable(musica-tests
+    ${SRC_DIR}/Audio/GestorMusica.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../tests/MusicaTests.cpp
+)
+target_include_directories(musica-tests PRIVATE ${SRC_DIR})
+set_target_properties(musica-tests PROPERTIES
+    CXX_STANDARD 17
+    CXX_STANDARD_REQUIRED ON
+    CXX_EXTENSIONS OFF
+)
+add_test(NAME musica-tests COMMAND musica-tests)
 
 # Prueba end-to-end del backend Java (se compila solo con FUNSHI_JAVA=ON).
 if(FUNSHI_JAVA)

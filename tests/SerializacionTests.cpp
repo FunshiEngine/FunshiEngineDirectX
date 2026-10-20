@@ -21,7 +21,7 @@
 //  - las cotas de longitud compartida (la longitud la controla el archivo: sin
 //    cota, una reserva enorme aborta el motor),
 //  - el round-trip de los componentes que guardan texto leido del archivo
-//    (script y fuente de audio),
+//    (script, fuente de audio y lista de pistas de musica),
 //  - la lectura de un archivo corrupto: se corta con un error, sin abortar.
 //
 // Sin pila grafica: se ejercita el formato en disco directamente.
@@ -37,6 +37,7 @@
 #include "TempPruebas.h"
 #include "../FunshiEngineGL/src/Herramientas/LimitesSerializacion.h"
 #include "../FunshiEngineGL/src/Objetos/Componentes/AudioSource.h"
+#include "../FunshiEngineGL/src/Objetos/Componentes/Musica.h"
 #include "../FunshiEngineGL/src/Objetos/Componentes/Script.h"
 
 namespace fs = std::filesystem;
@@ -219,7 +220,7 @@ static void testAudioSourceSerializacion() {
     // Round-trip.
     {
         AudioSource original;
-        original.setClip("disparo");
+        original.setRutaClip("disparo.wav");
         original.setVolume(0.5f);
         original.setLoop(true);
         {
@@ -231,14 +232,14 @@ static void testAudioSourceSerializacion() {
             std::ifstream in(ruta, std::ios::binary);
             leido.loadComponent(&in);
         }
-        CHECK(leido.getClip() == "disparo",
-              "el round-trip conserva el nombre del clip");
+        CHECK(leido.getRutaClip() == "disparo.wav",
+              "el round-trip conserva la ruta del clip");
         CHECK(std::fabs(leido.getVolume() - 0.5f) < 1e-5f,
               "el round-trip conserva el volumen");
         CHECK(leido.isLoop(), "el round-trip conserva el loop");
     }
 
-    // Archivo corrupto: la longitud del nombre del clip es absurda.
+    // Archivo corrupto: la longitud de la ruta del clip es absurda.
     {
         std::ofstream out(ruta, std::ios::binary | std::ios::trunc);
         const size_t len = static_cast<size_t>(0xFFFFFFFFFFFFFFF0ull);
@@ -248,8 +249,80 @@ static void testAudioSourceSerializacion() {
         AudioSource leido;
         std::ifstream in(ruta, std::ios::binary);
         leido.loadComponent(&in);
-        CHECK(leido.getClip().empty(),
+        CHECK(leido.getRutaClip().empty(),
               "una longitud de clip invalida deja el componente sin clip");
+        CHECK(!in.good(), "el stream queda marcado como fallido");
+    }
+}
+
+// --- Componente Musica ---------------------------------------------------------
+
+static void testMusicaSerializacion() {
+    std::cout << "-- componente Musica: la lista de pistas y sus ajustes"
+              << std::endl;
+
+    TempPruebas::CarpetaPrueba carpeta("funshi_musica_serializacion");
+    const fs::path ruta = carpeta.ruta() / "musica.bin";
+
+    // Round-trip: la lista conserva el orden y los ajustes.
+    {
+        Musica original;
+        original.setRutas({"tema.ogg", "coda.ogg"});
+        original.setVolume(0.5f);
+        original.setDuracionFundido(3.5f);
+        original.setRepetirLista(false);
+        {
+            std::ofstream out(ruta, std::ios::binary | std::ios::trunc);
+            original.saveComponent(&out);
+        }
+        Musica leido;
+        {
+            std::ifstream in(ruta, std::ios::binary);
+            leido.loadComponent(&in);
+        }
+        CHECK(leido.getRutas().size() == 2,
+              "el round-trip conserva las dos pistas");
+        CHECK(leido.getRutas().size() > 0 &&
+                  leido.getRutas()[0] == "tema.ogg",
+              "la lista conserva el orden de reproduccion");
+        CHECK(leido.getRutas().size() > 1 &&
+                  leido.getRutas()[1] == "coda.ogg",
+              "la segunda pista va despues");
+        CHECK(std::fabs(leido.getVolume() - 0.5f) < 1e-5f,
+              "el round-trip conserva el volumen");
+        CHECK(std::fabs(leido.getDuracionFundido() - 3.5f) < 1e-5f,
+              "el round-trip conserva el fundido");
+        CHECK(!leido.isRepetirLista(),
+              "el round-trip conserva la repeticion de la lista");
+    }
+
+    // Una lista vacia se guarda y se lee sin pistas.
+    {
+        Musica original;
+        {
+            std::ofstream out(ruta, std::ios::binary | std::ios::trunc);
+            original.saveComponent(&out);
+        }
+        Musica leido;
+        {
+            std::ifstream in(ruta, std::ios::binary);
+            leido.loadComponent(&in);
+        }
+        CHECK(leido.getRutas().empty(), "una lista vacia se lee vacia");
+    }
+
+    // Archivo corrupto: la cantidad de pistas es absurda.
+    {
+        std::ofstream out(ruta, std::ios::binary | std::ios::trunc);
+        const size_t cantidad = static_cast<size_t>(0xFFFFFFFFFFFFFFF0ull);
+        out.write(reinterpret_cast<const char*>(&cantidad), sizeof(cantidad));
+        out.close();
+
+        Musica leido;
+        std::ifstream in(ruta, std::ios::binary);
+        leido.loadComponent(&in);
+        CHECK(leido.getRutas().empty(),
+              "una cantidad invalida deja la lista de pistas vacia");
         CHECK(!in.good(), "el stream queda marcado como fallido");
     }
 }
@@ -258,6 +331,7 @@ int main() {
     testLimitesDeLongitud();
     testScriptSerializacion();
     testAudioSourceSerializacion();
+    testMusicaSerializacion();
 
     std::cout << "SerializacionTests: " << total << " verificaciones, " << fallos
               << " fallos" << std::endl;

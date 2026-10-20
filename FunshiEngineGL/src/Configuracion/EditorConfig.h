@@ -123,12 +123,6 @@ public:
     // Ruta del layout de ventanas de ImGui: <directorioMemory>/imgui.ini
     static std::string rutaImguiIni(const std::string& nombreProyecto = "Nuevo Proyecto");
 
-    // Carpeta de assets de audio del proyecto (clips descubiertos por
-    // AudioClipsManager): vive dentro del src para que el explorador de
-    // archivos (raiz src<nombre>) la liste junto a los demas assets:
-    // <directorioProyecto>/src<nombreProyecto>/Sonidos
-    static std::string directorioSonidos(const std::string& nombreProyecto = "Nuevo Proyecto");
-
     // Carpeta con los fuentes de script del proyecto (los que el usuario
     // compila para su juego, junto a los demas assets del explorador):
     // <directorioProyecto>/src<nombreProyecto>/Scripts
@@ -146,10 +140,10 @@ public:
 
     // Crea en disco la estructura de carpetas requerida para el proyecto:
     //   <directorioBase>/Proyects/<nombreProyecto>/Memory/Binarios/Scene
-    //   <directorioBase>/Proyects/<nombreProyecto>/src<nombreProyecto>/Sonidos
     //   <directorioBase>/Proyects/<nombreProyecto>/src<nombreProyecto>
     //   <directorioBase>/Configuraciones/Configuracion.json
     //   <directorioBase>/Exportaciones/
+    // Las carpetas de assets (sonidos, scripts, mods) las crea el usuario.
     // Migra proyectos previos de la estructura antigua (directamente bajo MotorGrafico/)
     // a la nueva estructura MotorGrafico/Proyects/
     static void asegurarEstructuraProyecto(const std::string& nombreProyecto = "Nuevo Proyecto");

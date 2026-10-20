@@ -116,7 +116,7 @@ FunshiEngineGL/                          ← raíz del repo
 │   ├── ScriptsTests.cpp                 ← reflexión SerializeField + round-trip binario
 │   ├── ScriptsRuntimeTests.cpp          ← BackendCpp end-to-end (compila y dlopen un .so)
 │   ├── ScriptsJavaTests.cpp             ← BackendJava end-to-end (solo con FUNSHI_JAVA)
-│   ├── AudioEngineTests.cpp             ← AudioEngine/AudioClipsManager con NullAudioBackend
+│   ├── AudioEngineTests.cpp             ← AudioEngine con NullAudioBackend (por ruta)
 │   ├── SceneSerializationTests.cpp      ← round-trip de escena + nombres por defecto
 │   └── UserInterfaceTests.cpp           ← modelo del Creador de interfaces (round-trip JSON)
 └── FunshiEngineGL/                      ← proyecto CMake principal
@@ -154,11 +154,12 @@ FunshiEngineGL/                          ← raíz del repo
         │                                   archivo sin decodificar
         ├── Audio/                       ← audio del motor (backend inyectable)
         │   ├── AudioEngine.h/.cpp       ← fachada thread-safe (cola de comandos + hilo)
-        │   ├── AudioClipsManager.h/.cpp ← descubre clips en Sonidos/ y registra por nombre
+        │   ├── ExtensionesAudio.h       ← extensiones de audio comparadas normalizadas
         │   ├── IAudioBackend.h          ← contrato Strategy del backend de audio
+        │   ├── IMusicaBackend.h         ← contrato del backend de música (pista, bus, fundido)
+        │   ├── GestorMusica.h/.cpp      ← reproductor de música (fundido cruzado, bus, playlist)
         │   ├── MiniAudioBackend.*       ← backend concreto (miniaudio vendoriado)
         │   ├── NullAudioBackend.h       ← backend nulo para pruebas headless
-        │   └── AudioClip.h              ← handle/metadata del clip
         ├── Behaviour/
         │   ├── IScriptBehaviour.h       ← interfaz de scripts (onStart/onUpdate/onStop, campos)
         │   ├── ScriptGameObject.*       ← tablas versionadas de GameObject y servicios
@@ -281,8 +282,10 @@ FunshiEngineGL/                          ← raíz del repo
         │   │   ├── Camera/SettingsCamera.*       ← FOV, planos, velocidad, vista previa
         │   │   ├── Grid/SettingsGrid.*           ← visible y color de la grilla (infinita,
         │   │   │                                 densidad fija: no hay tamaño/separación)
-        │   │   ├── AudioSource/SettingsAudioSource.* ← dropdown de clip (src<proyecto>/Sonidos/),
-        │   │   │                                 volumen, loop
+        │   │   ├── AudioSource/SettingsAudioSource.* ← ruta del archivo de audio
+        │   │   │                                 (drag & drop), volumen, loop
+        │   │   ├── Musica/SettingsMusica.*     ← lista ordenada de pistas de música
+        │   │   │                                 (drag & drop), volumen, fundido, repetición
         │   │   ├── Interface/SettingsInterface.* ← ruta del .html de la interfaz
         │   │   │                                 (drag & drop) + activa, ancla, tamaño y z
         │   │   ├── Skybox/SettingsSkybox.*       ← visible + las seis caras del cubemap
@@ -419,6 +422,9 @@ FunshiEngineGL/                          ← raíz del repo
         │       ├── Color.h / Model.h / Script.h ← varios scripts por objeto,
         │       │                                    nombre editable y metadatos reflejados
         │       │                                    serializados para el inspector
+        │       ├── AudioSource.h/.cpp    ← fuente de sonido: ruta del archivo, volumen y loop
+        │       ├── Musica.h/.cpp        ← reproductor de música: lista ordenada de pistas
+        │       │                            (rutas), volumen, fundido y repetición de la lista
         │       ├── RigidBody/RigidBody.h/.cpp ← cuerpo Bullet sincronizado, habilitable, con detección de apoyo (RAII); masa, gravedad por cuerpo (uso+escala), friccion y freeze por ejes via setGravity/setFriction/setLinearFactor/setAngularFactor, serial v2 con lectura v1
         │       └── Colliders/
         │           ├── Collider.h/.cpp   ← base abstracta; radio; visibilidad persistente y gizmo
@@ -637,9 +643,9 @@ solo como orquestador de arranque y bucle.
   tiene método de dibujado: la entidad no conoce la capa de Rendering, y es
   `SceneRenderer` quien la pinta vía `MeshRenderer`.
 - Los componentes concretos son: `Transform`, `Color`, `Model`, `Material`, `Light`,
-  `AudioSource`, `InterfaceComponent`, `Grid`, `Script`, `EsfereCollider`,
-  `CubeCollider`, `MallaCollider` y `RigidBody`. Todos heredan de `Component`
-  y serializan sus datos binarios.
+  `AudioSource`, `Musica`, `InterfaceComponent`, `Grid`, `Script`,
+  `EsfereCollider`, `CubeCollider`, `MallaCollider` y `RigidBody`. Todos heredan
+  de `Component` y serializan sus datos binarios.
 - `ComponentFactory` centraliza la creación por nombre de tipo tanto desde la GUI
   como durante la deserialización (`"CameraComponent"` acepta el alias `"Camera"`).
 - `Component::onLoaded(GameObject&)` es el hook polimórfico de post-carga:
@@ -784,14 +790,18 @@ solo como orquestador de arranque y bucle.
   - El layout `imgui.ini` también se guarda junto al proyecto (no en el CWD).
 - Carpeta de un proyecto: `Proyects/<proyecto>/` con `Memory/` (escena,
   configuración del proyecto e `imgui.ini`) y la raíz de
-  assets `src<proyecto>/` (meshes, texturas, materiales, `Sonidos/`,
-  `Scripts/`). Todas esas rutas salen de `ProjectPaths`
-  (`directorioSrc`, `directorioSonidos`, `directorioScripts`), incluido el
+  assets `src<proyecto>/` (meshes, texturas, materiales y las carpetas de
+  assets que cree el usuario). Esas rutas salen de `ProjectPaths`
+  (`directorioSrc`, `directorioScripts`), incluido el
   exportador del juego standalone, que las pide ahí mediante
   `Exportador/RutasExportacion.h` (lógica pura, header-only) en vez de
   componerlas desde la carpeta del proyecto: componiéndolas a mano las copias
   se saltaban en silencio y el juego exportado salía sin sonidos, sin scripts
   del usuario y sin configuración.
+- El motor solo crea `Memory/`, `src<proyecto>/` y su carpeta global de
+  `Mods/`: las carpetas de assets (`Sonidos/`, `Scripts/`, los `Mods/` del
+  proyecto) las crea el usuario desde el explorador. Los assets se referencian
+  por ruta, así que ninguno depende de una carpeta en concreto.
 - Limitación conocida: la serialización binaria no tiene versionado ni validación
   de tamaños; un cambio en la estructura de atributos invalida escenas guardadas.
 
@@ -806,8 +816,8 @@ solo como orquestador de arranque y bucle.
   `camposReflejados()`; el motor inyecta la tabla `MotorScript::ApiScriptGameObject`
   (nombre, transform completo con getters de rotacion/escala, log y control
   horizontal/salto sobre `RigidBody`) y la tabla
-  `MotorScript::ScriptServices` (audio, busqueda de objetos por nombre, id o
-  etiqueta y
+  `MotorScript::ScriptServices` (audio y musica por ruta, busqueda de objetos
+  por nombre, id o etiqueta y
   consulta de teclado via `InputScripts`, inyectadas por `GameScene` al iniciar
   la simulacion) para que el script no enlace contra el motor. Ambas tablas siguen
   versionado APPEND-ONLY con campo `version` final para guardas en runtime.
@@ -968,14 +978,14 @@ La convención general es un par `.h`/`.cpp` por clase. Las excepciones son:
 al build sin enumerarlos manualmente. Los archivos de ImGui se recopilan por separado
 desde `src/ImGui/` y los de ImGuizmo desde `ImGuizmo/` (fuera de `src/`).
 
-Además del ejecutable, el proyecto define **treinta y cinco targets de prueba
+Además del ejecutable, el proyecto define **treinta y seis targets de prueba
 headless** registrados en CTest (`scripts-java-tests` solo se registra con
 `-DFUNSHI_JAVA=ON`; quince de ellos viven bajo `BUILD_ENGINE=ON`
 —`catalogo-componentes-tests`, `comandos-tests`, `escena-serializacion-tests`,
 `iluminacion-tests`, `interface-component-tests`, `interfaces-juego-tests`,
 `manifiesto-assets-tests`, `orquestador-estado-tests`, `prefab-tests`,
 `serializacion-tests`, `shaders-tests`, `sombras-tests`, `tema-tests`,
-`tilemap-tests` y `webui-runtime-tests`—; los diecinueve restantes compilan
+`tilemap-tests` y `webui-runtime-tests`—; los veinte restantes compilan
 también con `BUILD_ENGINE=OFF`):
 
 - `filemanager-tests` (190 en Linux; 181 en Windows con MinGW, 183 con MSVC): ejercita `GestorDeArchivos`/`FileManager`/`FileSystemWatcher`
@@ -1067,8 +1077,10 @@ también con `BUILD_ENGINE=OFF`):
 - `model-serialization-tests` (16): serialización binaria del componente `Model`
   (path con prefijo de longitud; regresión del core al cargar escenas con paths
   largos).
-- `audio-tests` (16): `AudioEngine`/`AudioClipsManager` con `NullAudioBackend`
-  (contrato de la cola de comandos: clips, handles, encolado, detención, volumen).
+- `audio-tests` (25): `AudioEngine` con `NullAudioBackend` (contrato de la cola
+  de comandos: reproducción por ruta, handles, encolado, detención, volumen) y
+  la cola de música con un backend falso (la lista de pistas por ruta, su
+  reproducción, el bus, el silencio, la detención y el tick de la escena).
 - `interface-component-tests` (16): serialización binaria del `InterfaceComponent`
   (ruta del `.html` + colocación): round-trip del formato nuevo y lectura del
   formato viejo (solo el nombre) sin consumir bytes de más, que desalinearía el
@@ -1092,6 +1104,12 @@ también con `BUILD_ENGINE=OFF`):
   inválidos), el componente `Sombras` con sus ajustes y la selección de
   proyectores (las luces puntuales no soportadas, el límite de mapas y el orden
   en que se eligen).
+- `musica-tests` (84): el reproductor de música con un backend falso: la lista
+  ordenada de pistas (por ruta), la reproducción, el fundido cruzado (la pista
+  que sale baja mientras la que entra sube), el paso automático a la pista
+  siguiente cuando la actual se acaba o cuando le queda justo el fundido, el
+  final de la lista (con o sin repetición), la detención con y sin fundido y el
+  volumen del bus.
 - `iluminacion-tests` (17): la recogida de las luces de la escena (el orden en
   que se recorren, los datos que salen del `Transform` de cada objeto y el límite
   de slots) y el paralelismo entre la lista de luces y la de dueños: el pase de
@@ -1126,7 +1144,7 @@ también con `BUILD_ENGINE=OFF`):
 - `orquestador-estado-tests`: transiciones de Depuración/Juego, pausa, solicitud
   consumible de Reset, fin/Escape por estado, teclas del editor y atajos frente
   a ImGui.
-- `escena-serializacion-tests` (151): round-trip completo de escena (guardar →
+- `escena-serializacion-tests` (358): round-trip completo de escena (guardar →
   recargar → conservar nombre, id y jerarquía), defensas del índice de escena
   (líneas corruptas saltadas con aviso, auto-sanado de hijos con id 0),
   apertura avisada de archivos `Binario` inexistente sin `std::remove()`
@@ -1140,7 +1158,9 @@ también con `BUILD_ENGINE=OFF`):
   agregar un componente crea unicamente el que falta. Cubre ademas el
   reparentado: preserva la pose mundial reescribiendo el local como
   `inverse(padre) × mundo` (los descendientes no saltan), refresca el cuerpo
-  fisico del objeto y deja el local consistente en disco.
+  fisico del objeto y deja el local consistente en disco. Comprueba tambien la
+  tabla de servicios de scripts: la música se reproduce por ruta (con y sin
+  motor de audio conectado) y el volumen del bus y la deteccion se aplican.
 - `diagnostic-registry-tests` (26): `RegistroDiagnosticos`: registro de eventos
   de diagnóstico (nivel, módulo, timestamp UTC), historial JSONL con retención y
   lectura acotada, deduplicación por clave y el volcado de `RuntimeException`.
@@ -1181,8 +1201,8 @@ necesitan glm (`interface-component-tests`, `webui-runtime-tests`,
 (`tema-tests`) y los que usan solo el core de diagnóstico
 (`manifiesto-assets-tests` y `orquestador-estado-tests`). El resto compila sus
 fuentes directamente (`barra-progreso-tests` entre ellas) y corre también con
-`BUILD_ENGINE=OFF`: con el motor hay 33 suites que se ejecutan (35
-registradas, dos deshabilitadas) y sin él 19.
+`BUILD_ENGINE=OFF`: con el motor hay 34 suites que se ejecutan (36
+registradas, dos deshabilitadas) y sin él 20.
 
 La opción `BUILD_ENGINE=OFF` compila solo las pruebas (útil en CI y plataformas
 sin las librerías gráficas), y `ENABLE_ASAN` (ON por defecto en Debug) activa

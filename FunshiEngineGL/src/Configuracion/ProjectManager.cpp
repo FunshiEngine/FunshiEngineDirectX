@@ -70,30 +70,7 @@ bool ProjectManager::crearEstructuraProyecto(const std::string& nombre) {
     std::error_code ec;
     const std::string mem = ProjectPaths::directorioMemory(nombre);
     const std::string src = ProjectPaths::directorioSrc(nombre);
-    const std::string sonidos = ProjectPaths::directorioSonidos(nombre);
     const std::string binScene = ProjectPaths::rutaSceneDir(nombre);
-
-    const std::string proyectoDir = ProjectPaths::directorioProyecto(nombre);
-    const std::string sonidosViejo = proyectoDir + "/Sonidos";
-
-    bool viejoExiste = std::filesystem::exists(sonidosViejo, ec);
-    bool nuevoExiste = std::filesystem::exists(sonidos, ec);
-
-    if (viejoExiste && !nuevoExiste) {
-        std::filesystem::create_directories(ProjectPaths::directorioSrc(nombre), ec);
-        std::filesystem::rename(sonidosViejo, sonidos, ec);
-        if (ec) {
-            // Fallback entre dispositivos (p. ej. Windows con volumenes
-            // distintos): copiar; si la copia funciona, retirar el original.
-            ec.clear();
-            std::filesystem::copy(sonidosViejo, sonidos,
-                                  std::filesystem::copy_options::recursive, ec);
-            if (!ec) {
-                std::error_code ec2;
-                std::filesystem::remove_all(sonidosViejo, ec2);
-            }
-        }
-    }
 
     // Migracion de proyectos legacy que guardaban el descriptor y la escena
     // directamente en la raiz de MotorGrafico/Binarios (estructura anterior a
@@ -112,6 +89,10 @@ bool ProjectManager::crearEstructuraProyecto(const std::string& nombre) {
         }
     }
 
+    // Solo la estructura que el motor usa: los datos del proyecto (Memory) y
+    // la raiz de assets (src<nombre>). Las carpetas de assets del usuario
+    // (sonidos, scripts, mods...) las crea el usuario, desde el explorador,
+    // cuando las necesita.
     return crearDirs(mem + "/Binarios/Scene", ec) &&
            crearDirs(src, ec) &&
            crearDirs(binScene, ec);
@@ -174,7 +155,7 @@ bool ProjectManager::crearProyecto(const std::string& nombre) {
         return true;
     }
 
-    // Proyecto ya existe, pero puede necesitar migración (ej. Sonidos en raiz antigua)
+    // Proyecto ya existe: se completa la estructura que le falta.
     return crearEstructuraProyecto(nombre);
 }
 
@@ -200,12 +181,12 @@ bool ProjectManager::crearProyectoNuevo(const std::string& nombre,
         return false;
     }
 
+    // El motor solo crea sus dos carpetas: los datos del proyecto (Memory) y
+    // la raiz de assets (src<nombre>). Las carpetas de assets del usuario
+    // (sonidos, scripts, mods...) las crea el usuario cuando las necesita.
     const std::vector<fs::path> directorios = {
         fs::path(ProjectPaths::directorioMemory(nombre)) / "Binarios" / "Scene",
-        fs::path(ProjectPaths::directorioSrc(nombre)),
-        fs::path(ProjectPaths::directorioSonidos(nombre)),
-        fs::path(ProjectPaths::directorioScripts(nombre)),
-        fs::path(ProjectPaths::directorioModsProyecto(nombre))};
+        fs::path(ProjectPaths::directorioSrc(nombre))};
     std::vector<fs::path> creados;
     for (const fs::path& directorio : directorios) {
         error.clear();

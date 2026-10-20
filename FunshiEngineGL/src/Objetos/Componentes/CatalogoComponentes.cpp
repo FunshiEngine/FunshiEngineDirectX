@@ -31,6 +31,7 @@
 #include "Light.h"
 #include "Material.h"
 #include "Model.h"
+#include "Musica.h"
 #include "RigidBody/RigidBody.h"
 #include "Script.h"
 #include "Skybox.h"
@@ -45,6 +46,7 @@
 #include "../../GUI/ObjetosGUI/SettingsComponent.h"
 #include "../../GUI/ObjetosGUI/Animador2D/SettingsAnimador2D.h"
 #include "../../GUI/ObjetosGUI/Audio/SettingsAudioSource.h"
+#include "../../GUI/ObjetosGUI/Audio/SettingsMusica.h"
 #include "../../GUI/ObjetosGUI/Camera/SettingsCamera.h"
 #include "../../GUI/ObjetosGUI/Color/SettingsColor.h"
 #include "../../GUI/ObjetosGUI/Colliders/SettingsColliderCubo.h"
@@ -266,6 +268,15 @@ CatalogoComponentes::CatalogoComponentes() {
         },
         [](Component*, GameObject* o, const ContextoPanel& ctx) {
             auto* s = new SettingsAudioSource(o);
+            s->setAudioEngine(ctx.audio);
+            return std::unique_ptr<SettingsComponent>(s);
+        });
+    add("Musica", "Musica", DimensionesComponente::Ambas, "",
+        [](GameObject&) {
+            return std::unique_ptr<Component>(new Musica());
+        },
+        [](Component*, GameObject* o, const ContextoPanel& ctx) {
+            auto* s = new SettingsMusica(o);
             s->setAudioEngine(ctx.audio);
             return std::unique_ptr<SettingsComponent>(s);
         });

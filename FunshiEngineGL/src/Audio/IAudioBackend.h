@@ -21,6 +21,11 @@
 
 #include <string>
 
+// Contrato de musica (ver IMusicaBackend.h). Solo se necesita la
+// declaracion adelantada: el backend de audio puede ofrecer tambien el
+// contrato de musica, que es otro contrato distinto.
+class IMusicaBackend;
+
 // Contrato del backend de audio (patron Strategy, mismo rol que
 // IPhysicsBackend en Fisicas). El motor (AudioEngine) delega aqui TODA la
 // maquinaria de sonido; un backend concreto se oculta detras de esta interfaz
@@ -45,6 +50,13 @@ public:
     // Recolecta las reproducciones que terminaron solas (free resources).
     // deltaTime: segundos desde la ultima llamada.
     virtual void despachar(float deltaTime) = 0;
+
+    // Contrato de musica de este mismo backend, o nullptr si el backend no
+    // ofrece musica. Lo consulta el AudioEngine para entregar el reproductor
+    // de musica (GestorMusica) al backend real: la musica y los efectos de
+    // sonido son contratos distintos porque necesitan cosas distintas
+    // (volumen en curso, fundido, posicion y bus).
+    virtual IMusicaBackend* backendMusica() { return nullptr; }
 };
 
 #endif // IAUDIO_BACKEND_H

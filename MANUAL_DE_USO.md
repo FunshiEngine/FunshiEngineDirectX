@@ -114,10 +114,10 @@ MotorGrafico/
 │       │   ├── Binarios/Scene        ← escenas binarias
 │       │   ├── ConfiguracionProyecto.json
 │       │   └── imgui.ini
-│       # ├── Mods/                     ← mods del proyecto (.fmod, ver seccion 18)
+│       ├── Mods/                     ← mods del proyecto (.fmod, ver seccion 18)
 │       └── src<proyecto>/            ← assets del proyecto (raiz del explorador)
 │           ├── modelos/              ← .obj/.fbx que arrastra el editor
-│           # ├── Sonidos/              ← clips de audio (.wav/.mp3/...)
+│           ├── Sonidos/              ← clips de audio (.wav/.mp3/...)
 │           └── Scripts/              ← scripts del usuario (.cpp/.java)
 # ├── Mods/                             ← mods globales del motor (.fmod, ver seccion 18)
 ├── Configuraciones/
@@ -138,9 +138,13 @@ MotorGrafico/
         └── JuegoExportado.json       ← metadatos del proyecto
 ```
 
-En el arbol, las carpetas marcadas con `#` las crea el motor al crear el proyecto
-(no hace falta hacerlas a mano). La convencion de assets por nombre usa la carpeta
-`src<proyecto>/Sonidos/`, con mayuscula inicial. El arbol de
+En el arbol, las carpetas marcadas con `#` las crea el motor (no hace falta
+hacerlas a mano). El motor crea su carpeta global de `Mods/` y, al crear un
+proyecto, `Memory/` y `src<proyecto>/`: las carpetas de assets (`Sonidos/`,
+`Scripts/`, los `Mods/` del proyecto) las crea el usuario, desde el explorador
+de archivos, donde las necesite. Ningun asset depende de una carpeta en
+concreto: el motor guarda la **ruta** del archivo, asi que el archivo puede
+estar en cualquier carpeta dentro de `src<proyecto>/`. El arbol de
 archivos del editor lista la **raiz del proyecto** (`src<nombre>`).
 
 > **Nota de packaging:** en el instalador Windows el explorador apunta a la
@@ -159,20 +163,19 @@ el mismo. Eliminar pide confirmacion en un dialogo y
 contenido, y el arbol y el grid se refrescan en el acto. El **undo/redo**
 (`Ctrl+Z` / `Ctrl+Y`) no cubre el borrado de archivos.
 
-**Rutas de la escena.** Las mallas, texturas y fuentes de script que usa la
-escena se persisten **relativas** a la carpeta `src<proyecto>/`. Por eso, al
-renombrar un proyecto (menu de inicio) o mover su carpeta completa, las
-escenas siguen cargando sin tocar nada: la raiz `src<nombre>` se desplaza
-entera con el proyecto. Dentro del explorador, al **renombrar** o al **mover**
-un archivo o carpeta el motor reescribe al instante las referencias de la
-escena que apuntaban a esa ruta y guarda la escena modificada. Limitaciones:
+**Rutas de la escena.** Las mallas, texturas, fuentes de script y archivos de
+audio que usa la escena se persisten **relativas** a la carpeta
+`src<proyecto>/`. Por eso, al renombrar un proyecto (menu de inicio) o mover su
+carpeta completa, las escenas siguen cargando sin tocar nada: la raiz
+`src<nombre>` se desplaza entera con el proyecto. Dentro del explorador, al
+**renombrar** o al **mover** un archivo o carpeta el motor reescribe al instante
+las referencias de la escena que apuntaban a esa ruta y guarda la escena
+modificada. Limitaciones:
 una **copia** (arrastre con `Ctrl`) no se rastrea, porque no cambia ninguna de
 las dos rutas; los cambios hechos **fuera** del motor (explorador de Windows,
 una terminal, un `mv`) solo sirven para refrescar el arbol de archivos, no
 reescriben nada, asi que ahi si hay que volver a arrastrar el asset en su
-inspector; y los sonidos de `src<proyecto>/Sonidos/` se
-referencian por **nombre**: un move con el mismo nombre conserva la referencia
-y un rename la rompe (vuelve a seleccionar el clip en su dropdown).
+inspector.
 Si una referencia quedo apuntando a un archivo que ya no existe, al **abrir la
 escena** el motor busca ese archivo por nombre dentro de la carpeta del
 proyecto: con **una sola coincidencia** repara la referencia, lo anota en el
@@ -574,7 +577,8 @@ El explorador de archivos (arbol + grid) emite el payload ImGui
 |---|---|---|
 | Panel **Model** del Inspector | `Model` | path completo (buffer 4096) |
 | Panel **Script** del Inspector | `Script` | path completo del fuente (`std::string`) |
-| Dropdown **Sonido** de AudioSource | `AudioSource` | nombre del clip |
+| Panel **Fuente de audio** del Inspector | `AudioSource` | ruta del archivo de audio |
+| Panel **Musica** del Inspector | `Musica` | ruta de la pista (se anade a la lista) |
 | Campo **Interfaz** de InterfaceComponent | `InterfaceComponent` | ruta del `.html` (no la asigna si no es `.html`) |
 | Panel **Tilemap** del Inspector | `Tilemap` | ruta del tileset JSON (no lo asigna si no valida) |
 | Panel **Prefab** del Inspector | `Prefab` | instancia el prefab completo (jerarquía + componentes) |
@@ -589,8 +593,9 @@ menos 4096 bytes, de modo que paths largos no se truncan (el componente
    "New File"); el FileSystemWatcher rescanea al detectar cambios externos.
 2. Selecciona el objeto y arrastra el asset sobre el control correspondiente
    del panel del componente ("Arrastra modelo", campo Fuente del script,
-   dropdown de Sonido, dropdown de Interfaz).
-3. La escena guarda el path o nombre; al recargar se resuelve de nuevo.
+   boton de la fuente de audio, zona de pistas de Musica, dropdown de
+   Interfaz).
+3. La escena guarda el path; al recargar se resuelve de nuevo.
 
 **Instanciar prefab por drag & drop (nuevo):**
 1. En el explorador, localiza un archivo `.prefab` en `Assets/Prefabs/`.
@@ -650,13 +655,40 @@ menos 4096 bytes, de modo que paths largos no se truncan (el componente
 
 ## 8. Audio
 
-- Crea la carpeta `Sonidos/` (si no existe) y coloca los clips en `Sonidos/` (wav/mp3/etc.). `AudioClipsManager` los
-  descubre y los registra **por nombre** en el `AudioEngine` al escanear.
-- Agrega `AudioSource` a un objeto; en su panel elige el clip del dropdown
-  (o arrastralo desde `Sonidos/` tras crearla), ajusta volumen, loop y
-  "reproduccion automatica". En Depuración y Juego, el AudioEngine reproduce
-  en su hilo de audio.
-- Cambiar de proyecto re-escanea y limpia el registro de clips.
+- Los archivos de audio se referencian **por ruta**: no hay catálogo ni carpeta
+  reservada. El archivo puede estar en cualquier carpeta dentro de
+  `src<proyecto>/` (wav/ogg/mp3/flac).
+- Agrega `AudioSource` a un objeto y **arrastra el archivo de audio** desde el
+  explorador de archivos al panel del componente, igual que se hace con los
+  scripts. El panel muestra la ruta asignada; si el archivo arrastrado no es
+  un formato de audio, el motor lo dice en el log y no lo asigna.
+- Ajusta volumen, loop y "reproduccion automatica". En Depuración y Juego, el
+  `AudioEngine` reproduce el archivo en su hilo de audio.
+- La ruta se guarda en la escena **relativa** a `src<proyecto>/`: al mover o
+  renombrar el proyecto entero, la escena sigue funcionando. En el juego
+  exportado se resuelve contra la carpeta del juego (allí se copia todo
+  `src<proyecto>/`).
+- Si el archivo no existe, el motor avisa en el log y no reproduce: el
+  componente queda sin sonido.
+
+### 8.1 Musica: lista de pistas
+
+- Agrega `Musica` a un objeto y **arrastra los archivos de musica** al panel:
+  cada uno se anade a la **lista ordenada** de pistas del componente. El
+  archivo puede estar en cualquier carpeta dentro de `src<proyecto>/`, igual
+  que los efectos de sonido.
+- El orden de la lista es el orden en que suenan: `^` y `v` mueven una pista y
+  `x` la quita.
+- Ajusta **Volumen**, **Fundido (s)** (cuanto dura el cruce entre dos pistas),
+  **Repetir la lista** (al terminar la ultima vuelve a la primera) y
+  **Reproducir al activar**.
+- En Depuracion y Juego el motor reproduce la primera pista y, cuando se
+  acaba, pasa a la siguiente con un fundido cruzado. El boton **Reproducir**
+  del inspector arranca la lista en cualquier momento; **Detener** la para con
+  el mismo fundido.
+- La lista se guarda en la escena **relativa** a `src<proyecto>/`, como la ruta
+  del `AudioSource`: al mover o renombrar el proyecto entero sigue funcionando,
+  y en el juego exportado se resuelve contra la carpeta del juego.
 
 ---
 
@@ -1121,7 +1153,7 @@ void onUpdate(GameObject* owner, float deltaTime) override {
 }
 ```
 
-### 13.4 Servicios de escena: tabla `servicios` (v4)
+### 13.4 Servicios de escena: tabla `servicios` (v8)
 
 Ademas de `api`, `IScriptBehaviour` expone `this->servicios`: acceso a los
 servicios del motor que **no son del objeto** sino de la escena (audio,
@@ -1135,7 +1167,7 @@ Misma convencion APPEND-ONLY con `servicios->version` al final.
 
 | Funcion | Firma | Descripcion |
 |---|---|---|
-| `servicios->reproducirSonido(clip, vol, loop)` | `int (const char*, float, bool)` | reproduce un clip de `Sonidos/` (la carpeta debe existir) por **nombre**; devuelve handle >= 0, o -1 si el clip no existe |
+| `servicios->reproducirSonido(ruta, vol, loop)` | `int (const char*, float, bool)` | reproduce el archivo de audio de la **ruta** (relativa a `src<proyecto>/` o absoluta); devuelve handle >= 0, o -1 si el archivo no existe |
 | `servicios->detenerSonido(handle)` | `void (int)` | detiene la reproduccion del handle |
 | `servicios->objetoPorNombre("Enemigo")` | `void* (const char*)` | busca un GameObject por nombre en la escena; `nullptr` si no existe. El puntero vale mientras el objeto viva |
 | `servicios->objetoPorId(7)` (v3) | `void* (int)` | busca un GameObject por id de escena; `nullptr` si no existe |
@@ -1161,6 +1193,9 @@ Misma convencion APPEND-ONLY con `servicios->version` al final.
 | `servicios->interfazEstablecerEstado(iface,json)` (v6) | `bool (void*, const char*)` | reemplaza el arbol de estado que el motor entrega a la interfaz; `false` si el texto no es un objeto JSON valido |
 | `servicios->interfazEstablecerValor(iface,ruta,valorJson)` (v6) | `bool (void*, const char*, const char*)` | fija un valor en la ruta (JSON Pointer, p. ej. `"/jugador/vida"`; se acepta sin la barra inicial), creando los objetos intermedios; `valorJson` es un literal JSON de cualquier tipo |
 | `servicios->interfazValor(iface,ruta)` (v6) | `const char* (void*, const char*)` | valor que la interfaz devolvio al motor en esa ruta, como texto JSON, o `nullptr` si no existe |
+| `servicios->reproducirMusica(ruta,vol,fundido)` (v8) | `bool (const char*, float, float)` | reproduce una pista de musica por **ruta** (relativa a `src<proyecto>/` o absoluta); `false` si el archivo no existe. Si la pista no esta en la lista del componente `Musica`, suena sola |
+| `servicios->detenerMusica(fundido)` (v8) | `void (float)` | detiene la musica (con fundido de salida opcional) |
+| `servicios->volumenMusica(vol)` (v8) | `void (float)` | volumen del bus de musica (todas las pistas juntas, de 0 a 1) |
 
 Los deltas del mouse se acumulan durante el frame y se reinician al avanzar al
 siguiente. Se capturan en Juego y cuando el cursor esta bloqueado durante
@@ -1189,7 +1224,7 @@ void onUpdate(GameObject* owner, float deltaTime) override {
 
     // Efecto de sonido al disparar (una sola vez por pulsacion):
     if (servicios->teclaPresionada("SPACE"))
-        servicios->reproducirSonido("disparo.wav", 0.8f, false);
+        servicios->reproducirSonido("sonidos/disparo.wav", 0.8f, false);
 
     // Alcanzar otro objeto por nombre (o usar el campo GameObject*
     // expuesto en el inspector, que es lo recomendado):
@@ -1345,7 +1380,8 @@ Las posiciones consultadas o fijadas por `Nativo.posicionX/Y/Z` y
 | Tags y colliders | `Nativo.etiqueta`, `tieneEtiqueta`, `objetoDeCollider` |
 | Contactos | `colisionInicio`, `colisionPersistencia`, `colisionFin` |
 | Consola | `Nativo.imprimir` |
-| Audio de script | `Nativo.reproducirSonido(clip, volumen, bucle)`, `Nativo.detenerSonido(handle)` |
+| Audio de script | `Nativo.reproducirSonido(ruta, volumen, bucle)`, `Nativo.detenerSonido(handle)` |
+| Musica | `Nativo.reproducirMusica(ruta, volumen, fundido)`, `Nativo.detenerMusica(fundido)`, `Nativo.volumenMusica(volumen)` |
 | Busqueda de objetos | `Nativo.objetoPorNombre(nombre)`, `Nativo.objetoPorId(id)`, `Nativo.objetoPorEtiqueta(etiqueta)`; devuelven `0` si no existe |
 | Gravedad global | `Nativo.fijarGravedadGlobal(x, y, z)`, `Nativo.gravedadGlobalX/Y/Z` |
 | Gestion de objetos | `Nativo.crearObjeto(nombre, padre)`, `Nativo.destruirObjeto(objeto)`, `Nativo.clonarObjeto(original, padre)`, `Nativo.agregarColliderEsfera/cubo(objeto, radio)`, `Nativo.agregarRigidBody(objeto, masa)` |
@@ -1368,7 +1404,7 @@ ejecutar `detener`.
 @Override
 public void actualizar(long objeto, double deltaTime) {
     if (Nativo.teclaPresionada("SPACE")) {
-        int sonido = Nativo.reproducirSonido("disparo.wav", 0.8f, false);
+        int sonido = Nativo.reproducirSonido("sonidos/disparo.wav", 0.8f, false);
         Nativo.detenerSonido(sonido);
     }
     long meta = Nativo.objetoPorNombre("Meta");
