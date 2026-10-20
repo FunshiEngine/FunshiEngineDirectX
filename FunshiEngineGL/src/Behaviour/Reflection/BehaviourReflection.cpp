@@ -748,7 +748,16 @@ std::vector<ValorCampo> alinearValores(std::vector<ValorCampo> leidos,
         bool casado = false;
         for (size_t i = 0; i < leidos.size(); ++i) {
             if (leidos[i].nombre == def.nombre) {
-                resultado.push_back(std::move(leidos[i]));
+                ValorCampo valor = std::move(leidos[i]);
+                if (valor.tag != def.tag) {
+                    // El tipo del campo cambio en el script: el valor guardado
+                    // no se puede reinterpretar (la alternativa activa del
+                    // variant no corresponde a su etiqueta) y el inspector
+                    // lanzaria `std::bad_variant_access` al leerlo. Se usa el
+                    // valor por defecto del campo actual.
+                    valor = valorPorDefecto(def);
+                }
+                resultado.push_back(std::move(valor));
                 casado = true;
                 break;
             }

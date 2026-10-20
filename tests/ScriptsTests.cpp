@@ -567,6 +567,39 @@ static void testAlinearValores() {
     }
 }
 
+// El script cambio el TIPO de un campo entre la guardado y la carga (por
+// ejemplo, un texto que pasa a ser un entero). El valor guardado no se puede
+// reinterpretar: la alternativa activa del variant no corresponde a la
+// etiqueta del campo. Si se conservara tal cual, el inspector haria un
+// std::get sobre la alternativa equivocada y lanzaria
+// std::bad_variant_access DENTRO del render de ImGui (el motor aborta).
+static void testAlinearValoresConTipoDistinto() {
+    std::cout << "-- alinearValores: un campo que cambio de tipo toma el "
+                 "valor por defecto del campo actual"
+              << std::endl;
+
+    DefCampo def;
+    def.nombre = "campo";
+    def.tag = TagTipo::Entero;
+    const std::vector<DefCampo> defs{def};
+
+    ValorCampo leido;
+    leido.nombre = "campo";
+    leido.tag = TagTipo::Texto;
+    leido.contenido = std::string("hola");
+
+    const std::vector<ValorCampo> alineados =
+        alinearValores({leido}, defs);
+    CHECK(alineados.size() == 1, "el campo queda alineado");
+    if (alineados.size() == 1) {
+        CHECK(alineados[0].tag == TagTipo::Entero,
+              "la etiqueta pasa a ser la del campo actual");
+        // El acceso no puede lanzar: la etiqueta y el contenido coinciden.
+        CHECK(alineados[0].como<int>() == 0,
+              "el valor que no se puede reinterpretar pasa al valor por defecto");
+    }
+}
+
 // --- Lectura de un archivo corrupto -------------------------------------------
 // La longitud y la etiqueta las controla el archivo. Si estan corruptas, la
 // lectura se corta con un error limpio: nunca se reserva una memoria absurda
@@ -1261,6 +1294,7 @@ int main(int argc, char** argv) {
     testComponenteResolucion();
     testSerializacionBinaria();
     testAlinearValores();
+    testAlinearValoresConTipoDistinto();
     testLecturaCorrupta();
     testEntradaDeScripts();
     testAudioIniciadoPorScripts();
