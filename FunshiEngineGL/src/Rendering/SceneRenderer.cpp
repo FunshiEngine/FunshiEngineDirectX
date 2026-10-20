@@ -1018,58 +1018,65 @@ void SceneRenderer::dibujarViewportsPrevios(const FrameContext& ctx) {
     auto* gameObjects = ctx.gameObjects;
     std::vector<std::unique_ptr<RenderTarget>> nuevos;
     std::vector<GameObject*> nuevosObjetos;
+
+    auto& backend = Rendering::Backend::activeBackend();
+    // Sin backend no hay nada que dibujar en la vista previa: se sale antes de
+    // crear y enlazar ningun objetivo de render (enlazar uno sin backend
+    // llamaria punteros de funcion nulos).
+    if (!backend.available()) return;
+
     if (gameObjects && !gameObjects->isEmpty()) {
-        Position<GameObject*>* pos = gameObjects->first();
-        while (pos && pos->getElement()) {
+        // El avance del iterador va en la clausula de incremento del for: si
+        // esta en el cuerpo, un `continue` puede saltarselo y el bucle queda
+        // girando sobre el mismo elemento indefinidamente.
+        for (Position<GameObject*>* pos = gameObjects->first();
+             pos && pos->getElement();
+             pos = (pos != gameObjects->last()) ? gameObjects->next(pos)
+                                                : nullptr) {
             GameObject* objeto = pos->getElement();
             CameraComponent* camara = objeto->getComponent<CameraComponent>();
-            if (camara && camara->getPintar()) {
-                camara->setUp(objeto);
+            if (!camara || !camara->getPintar()) continue;
 
-                // Reutilizar el FBO del frame anterior del mismo objeto en
-                // lugar de recrearlo (evita churn de texturas en el GPU).
-                std::unique_ptr<RenderTarget> target;
-                for (size_t i = 0; i < viewportsCamaras_.size(); ++i) {
-                    if (viewportsObjetos_[i] == objeto) {
-                        target.reset(viewportsCamaras_[i].release());
-                        break;
-                    }
+            camara->setUp(objeto);
+
+            // Reutilizar el FBO del frame anterior del mismo objeto en
+            // lugar de recrearlo (evita churn de texturas en el GPU).
+            std::unique_ptr<RenderTarget> target;
+            for (size_t i = 0; i < viewportsCamaras_.size(); ++i) {
+                if (viewportsObjetos_[i] == objeto) {
+                    target.reset(viewportsCamaras_[i].release());
+                    break;
                 }
-                if (!target) target = std::make_unique<RenderTarget>();
-
-                target->resize(kPreviewW, kPreviewH);
-                target->bind();
-
-                auto& backend = Rendering::Backend::activeBackend();
-                if (!backend.available()) continue;  // Guard: backend no disponible
-                backend.setViewport(0, 0, kPreviewW, kPreviewH);
-                // El FBO hereda el estado GL; se fija el fondo del perfil para
-                // que la vista previa use el mismo color que la pasada principal.
-                float fondoPreview[3] = {0.f, 0.f, 0.f};
-                if (ctx.apariencia)
-                    AparienciaUtil::fondoEfectivo(*ctx.apariencia, fondoPreview);
-                backend.clearScreen(fondoPreview);
-
-                float view[16], projection[16];
-                camara->getViewMatrix(view);
-                camara->getProjectionMatrix(
-                    projection,
-                    static_cast<float>(kPreviewW) /
-                        static_cast<float>(kPreviewH),
-                    radioDifuminado(ctx));
-                // La vista previa de camara NO muestra la guia de eje: es una
-                // ayuda del editor sobre la pasada principal (en el preview
-                // ocuparia la imagen sin que el usuario la haya pedido).
-                dibujarEscena(ctx, view, projection, objeto, kPreviewW,
-                              kPreviewH, false);
-
-                if (backend.available()) backend.bindDefaultFramebuffer();
-
-                nuevos.push_back(std::move(target));
-                nuevosObjetos.push_back(objeto);
             }
-            pos = (pos != gameObjects->last()) ? gameObjects->next(pos)
-                                               : nullptr;
+            if (!target) target = std::make_unique<RenderTarget>();
+
+            target->resize(kPreviewW, kPreviewH);
+            target->bind();
+
+            backend.setViewport(0, 0, kPreviewW, kPreviewH);
+            // El FBO hereda el estado GL; se fija el fondo del perfil para
+            // que la vista previa use el mismo color que la pasada principal.
+            float fondoPreview[3] = {0.f, 0.f, 0.f};
+            if (ctx.apariencia)
+                AparienciaUtil::fondoEfectivo(*ctx.apariencia, fondoPreview);
+            backend.clearScreen(fondoPreview);
+
+            float view[16], projection[16];
+            camara->getViewMatrix(view);
+            camara->getProjectionMatrix(
+                projection,
+                static_cast<float>(kPreviewW) / static_cast<float>(kPreviewH),
+                radioDifuminado(ctx));
+            // La vista previa de camara NO muestra la guia de eje: es una
+            // ayuda del editor sobre la pasada principal (en el preview
+            // ocuparia la imagen sin que el usuario la haya pedido).
+            dibujarEscena(ctx, view, projection, objeto, kPreviewW, kPreviewH,
+                          false);
+
+            backend.bindDefaultFramebuffer();
+
+            nuevos.push_back(std::move(target));
+            nuevosObjetos.push_back(objeto);
         }
     }
     viewportsCamaras_ = std::move(nuevos);
