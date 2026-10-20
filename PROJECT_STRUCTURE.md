@@ -1380,6 +1380,12 @@ GameScene → coordina todos los subsistemas del frame
   Linux/Windows con `BUILD_ENGINE=OFF` y el backend Java en Ubuntu con JDK.
 - `.github/workflows/release.yml` y `windows-release.yml` también ejecutan la
   suite (y `estructuras-tests`) al generar los instaladores por tag.
+- La lista de targets que compila cada job tiene que cubrir todas las suites
+  registradas en ese modo de build (30 con `BUILD_ENGINE=ON`, 20 con
+  `BUILD_ENGINE=OFF`): `ctest` ejecuta todos los tests registrados en el build,
+  no solo los compilados, y los que faltan quedan como `Not Run`, lo que hace
+  fallar el job. Las suites con `DISABLED TRUE` se pueden omitir porque `ctest`
+  las salta.
 
 Los bugs de la Fase 2 (cámaras/vistas previas) y sus fixes están documentados en
 [CAMARAS_VISTAS_PREVIAS.md](CAMARAS_VISTAS_PREVIAS.md).
