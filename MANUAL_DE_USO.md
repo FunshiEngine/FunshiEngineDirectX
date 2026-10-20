@@ -1559,21 +1559,72 @@ una ventana propia, titulada con el nombre visible del mod, y llama a
 Cuando el mod se descarga, sus paneles se retiran: el editor nunca dibuja una
 ventana cuyo binario ya está cerrado.
 
-### 18.7 Confianza
+### 18.7 Cómo se crea un mod
+
+Un mod es un **proyecto aparte**: no se compila con el motor ni entra en su
+repositorio ni en el instalador. Se compila por separado y su resultado es un
+`.fmod` que se copia a la carpeta de mods del motor.
+
+**1. El proyecto.** El mod usa solo la API pública del motor
+(`src/Mods/ApiMod.h`, una cabecera con tablas POD) y **su propia copia de
+ImGui**: no puede enlazar contra el motor (es un ejecutable, no una biblioteca)
+y el contexto de ImGui que usa es el del motor, que se le entrega opaco. Por
+eso tiene que compilar **las mismas fuentes de ImGui que usa el motor**, para
+que las estructuras del contexto coincidan en memoria; si el motor actualiza
+ImGui, el mod se recompila.
+
+**2. El código.** El binario exporta un único símbolo, con la interfaz del mod
+en una tabla de punteros a función:
+
+```cpp
+extern "C" FUNSHI_MOD_EXPORT int funshi_mod_api(FunshiMods::IMod** salida);
+```
+
+Devuelve la versión de la API con la que se compiló (`0` si no puede trabajar
+con ese motor). La interfaz tiene `init`, `update`, `dibujar`, `shutdown`,
+`nombre` y `versionStr`, todas opcionales. Desde `init()` el mod registra sus
+paneles con `registrarPanel()` y los dibuja con widgets de ImGui, después de
+fijar el contexto que le entrega el motor:
+
+```cpp
+ImGui::SetCurrentContext(static_cast<ImGuiContext*>(contexto->ctxImgui));
+```
+
+**3. El manifiesto.** El paquete lleva un `ManifiestoMod.json` en la raíz con
+los campos del § 18.4. El campo `puntoEntrada` es la ruta del binario **dentro
+del paquete** (por ejemplo `bin/MiPrimerMod.dll`), con `/` como separador.
+
+**4. El empaquetado.** El `.fmod` es un ZIP (se puede inspeccionar con
+cualquier herramienta ZIP) con esta estructura:
+
+```
+MiPrimerMod.fmod
+├── ManifiestoMod.json
+└── bin/
+    └── MiPrimerMod.dll
+```
+
+**5. La instalación.** Copiar el `.fmod` a la carpeta de mods del motor (junto
+al ejecutable) y reiniciar el editor: los mods se cargan al arrancar.
+
+Un `.fmod` es para un sistema: el paquete lleva un binario por plataforma, así
+que hay que compilarlo en la plataforma destino.
+
+### 18.8 Confianza
 
 Los mods se cargan con **confianza total**: no hay firma ni sandbox, igual que
 en otros motores con mods. Un mod es código que corre dentro del editor, con
 los mismos permisos. Instala solo paquetes de autores en los que confíes; el
 motor no puede distinguir un mod benigno de uno malicioso.
 
-### 18.8 Estado activo
+### 18.9 Estado activo
 
 El estado activo de cada mod se guarda por ámbito: los mods del motor en la
 configuración general del editor (`Configuracion.json`) y los del proyecto en
 la del proyecto (`ConfiguracionProyecto.json`). Un mod que no está en el mapa
 se considera activo por defecto.
 
-### 18.9 Actualización y alcance de esta versión
+### 18.10 Actualización y alcance de esta versión
 
 No hay hot-reload: los mods se cargan al arrancar y se descargan al salir.
 Actualizar un mod es reemplazar su `.fmod` y reiniciar el editor. Esta versión
