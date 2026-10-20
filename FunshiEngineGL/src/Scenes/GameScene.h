@@ -53,6 +53,10 @@ class AudioEngine;
 class MiniAudioBackend;
 class GizmoController;
 
+namespace Rendering {
+class GestorShaders;
+}  // namespace Rendering
+
 class GameScene {
 private:
     GUIManager* managerGUI;
@@ -71,6 +75,11 @@ private:
     // EditorController y SceneSerializer para que cada Modelos3D pida su
     // geometria al cache (Flyweight) en lugar de parsear Assimp por objeto.
     std::unique_ptr<AssetManager> assetManager;
+    // Gestor de shaders del motor (dueno de los programas). Se declara antes
+    // que el SceneRenderer porque C++ destruye los miembros en orden inverso
+    // al de declaracion: el gestor tiene que vivir mas que los renderers que
+    // le piden los programas.
+    std::unique_ptr<Rendering::GestorShaders> gestorShaders;
     // Pasada de render de la escena (Fase 3): el SceneRenderer es dueno del
     // MeshRenderer (VBO/VAO + shader), la grilla y las vistas previas; GameScene
     // solo le pasa el FrameContext por frame (objetos, luces CPU, apariencia).

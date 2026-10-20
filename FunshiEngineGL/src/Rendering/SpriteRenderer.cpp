@@ -28,7 +28,7 @@
 #include "../Assets/Primitivas2D.h"
 #include "../Assets/TextureManager.h"
 #include "Shaders/ShaderProgram.h"
-#include "Shaders/ShaderSources.h"
+#include "Shaders/GestorShaders.h"
 #include "TextureGL.h"
 
 namespace Rendering {
@@ -53,11 +53,11 @@ bool SpriteRenderer::inicializar() {
     if (shaderFallado_) return false;
     auto& backend = Backend::activeBackend();
     if (!backend.init()) return false;
+    // Sin gestor de shaders no hay de donde pedir el programa.
+    if (!gestorShaders_) return false;
 
     try {
-        shader_ = std::make_unique<ShaderProgram>(
-            ShaderProgram::fromSource(kSpriteVertexShader,
-                                      kSpriteFragmentShader));
+        shader_ = gestorShaders_->obtener("sprite");
     } catch (const std::exception& e) {
         registrarExcepcionDiagnostica("Rendering/SpriteRenderer", e,
                                       NivelDiagnostico::Error);
@@ -153,7 +153,7 @@ bool SpriteRenderer::dibujar(const SpriteDraw& sprite) {
     backend.drawMesh(quadMalla_, 6);
     backend.setDepthMask(true);
     backend.setBlendEnabled(false);
-    ShaderProgram::unbind();
+    ShaderProgram::unbind(backend);
     return true;
 }
 

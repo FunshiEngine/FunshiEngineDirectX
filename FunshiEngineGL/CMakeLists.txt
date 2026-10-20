@@ -819,6 +819,34 @@ set_target_properties(webui-runtime-tests PROPERTIES
     CXX_EXTENSIONS OFF
 )
 add_test(NAME webui-runtime-tests COMMAND webui-runtime-tests)
+
+# --- Pruebas headless del sistema de shaders ----------------------------------
+# El preprocesador de #include (resuelto en CPU: OpenGL 3.3 no tiene
+# ARB_shading_language_include) y el gestor de shaders (un programa por
+# nombre, compilado una vez y compartido). El backend es falso: sin pila
+# grafica ni driver.
+# Compilan sueltos (sin funshi_engine), pero el contrato del backend de render
+# usa glm (headers de matematicas), que no esta disponible en un build sin
+# dependencias externas: por eso viven en el bloque del motor y no en el de las
+# pruebas headless.
+add_executable(shaders-tests
+    ${SRC_DIR}/Rendering/Shaders/PreprocesadorShaders.cpp
+    ${SRC_DIR}/Rendering/Shaders/GestorShaders.cpp
+    ${SRC_DIR}/Rendering/Shaders/ShaderProgram.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../tests/ShadersTests.cpp
+)
+target_link_libraries(shaders-tests PRIVATE
+    funshi_diagnostics_core funshi_glm)
+target_include_directories(shaders-tests PRIVATE
+    ${SRC_DIR}
+    ${CMAKE_SOURCE_DIR}/External
+)
+set_target_properties(shaders-tests PROPERTIES
+    CXX_STANDARD 17
+    CXX_STANDARD_REQUIRED ON
+    CXX_EXTENSIONS OFF
+)
+add_test(NAME shaders-tests COMMAND shaders-tests)
 # Deshabilitada: la suite falla en la rama develop por un fallo preexistente
 # de la interfaz web.
 set_tests_properties(webui-runtime-tests PROPERTIES DISABLED TRUE)

@@ -49,6 +49,7 @@
 #include "../Rendering/Backend/IRenderBackend.h"
 #include "../Rendering/RenderTarget.h"
 #include "../Rendering/SceneRenderer.h"
+#include "../Rendering/Shaders/GestorShaders.h"
 #include "../Rendering/GuiaEje.h"
 #include "../Objetos/Prefab.h"
 #include "../Objetos/PrefabLibrary.h"
@@ -81,6 +82,10 @@ GameScene::GameScene(GUIManager* manager)
       phisics(std::make_unique<PhysicsEngine>()),
       assetManager(
           std::make_unique<AssetManager>(std::make_unique<AssimpMeshLoader>())),
+      // El gestor de shaders es el dueno de los programas: el renderer de la
+      // escena y los demas renderers le piden el programa por nombre.
+      gestorShaders(std::make_unique<Rendering::GestorShaders>(
+          Rendering::Backend::activeBackend())),
       sceneRenderer(std::make_unique<SceneRenderer>()),
       textureManager(std::make_unique<TextureManager>(
           std::make_unique<StbImageLoader>())),
@@ -127,12 +132,18 @@ GameScene::GameScene(GUIManager* manager)
     // El renderer resuelve la textura de cada Material con el cache de imagenes
     // de la escena (un solo decode por archivo, imagen compartida).
     sceneRenderer->setTextureManager(textureManager.get());
+    // Los renderers piden los programas al gestor de shaders.
+    sceneRenderer->setGestorShaders(gestorShaders.get());
 }
 
 GameScene::~GameScene() {
     ReflejoScripts::fijarResolverObjetos(nullptr);
     ReflejoScripts::fijarResolverComponentes({});
     eliminarSnapshotSimulacion();
+    // Los renderers sueltan el gestor de shaders antes de que este muera: el
+    // renderer de lineas es un unico global y si guardara el puntero, al
+    // final del programa usaria un gestor ya destruido.
+    if (sceneRenderer) sceneRenderer->setGestorShaders(nullptr);
     // Descarga las vistas web vivas antes de que muera la escena (con un backend
     // real libera sus recursos; con el nulo es no-op).
     vistasWebUI_.vaciar();

@@ -36,6 +36,10 @@ class CameraComponent;
 class RenderTarget;
 class TextureManager;
 class ShaderProgram;
+
+namespace Rendering {
+class GestorShaders;
+}  // namespace Rendering
 struct Apariencia;
 struct LightData;
 class Skybox;
@@ -63,6 +67,10 @@ public:
     // Manager de imagenes compartidas: se inyecta al MeshRenderer para que
     // los materiales con textura se suban una sola vez a GPU.
     void setTextureManager(TextureManager* textureManager) noexcept;
+
+    // Gestor de shaders del motor (dueno de los programas): se reparte a los
+    // renderers de la pasada y a los programas del cielo.
+    void setGestorShaders(Rendering::GestorShaders* gestorShaders) noexcept;
 
     // Datos CPU de la pasada que el renderer necesita de la escena. Los punteros
     // apuntan a memoria del llamador y solo valen durante render().
@@ -203,10 +211,12 @@ private:
     // destruirse. El flag de fallo evita reintentar compilar un shader roto
     // frame a frame (el texto de origen no cambia, no puede pasar de rojo a
     // verde) y con el, tambien, repetir su mensaje de error.
-    std::unique_ptr<ShaderProgram> cieloProgram_;
+    std::shared_ptr<ShaderProgram> cieloProgram_;
     bool cieloShaderFallado_ = false;
-    std::unique_ptr<ShaderProgram> skyboxProgram_;
+    std::shared_ptr<ShaderProgram> skyboxProgram_;
     bool skyboxShaderFallado_ = false;
+    // Gestor de shaders (dueno de los programas de la pasada).
+    Rendering::GestorShaders* gestorShaders_ = nullptr;
     // Cubemap cacheado del componente Skybox: la textura GPU, la malla del cubo
     // y la clave (rutas + fechas de modificacion de las 6 caras) que valido la
     // textura. Se sube una sola vez por conjunto de caras y se reemplaza solo si
