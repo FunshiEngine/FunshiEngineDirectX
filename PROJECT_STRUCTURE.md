@@ -1384,6 +1384,11 @@ GameScene → coordina todos los subsistemas del frame
   las headless en Windows con el **generador multi-config** (Visual Studio),
   donde cada configuración compila en su propia carpeta: lo que el proyecto
   genera en tiempo de configuración tiene que ser por configuración.
+- La CI compila y **enlaza** el engine también en Windows con MSVC (generador
+  por defecto y dependencias de vcpkg), que es lo que hace el job que publica
+  el instalador: sin ese enlace, un fallo que solo aparece con Visual Studio
+  (por ejemplo, un símbolo cuyo nombre depende del *class-key* del tipo) se
+  descubre al publicar, cuando corregirlo obliga a rehacer el tag.
 - El *class-key* (`class` o `struct`) con el que se declara un tipo forma parte
   del nombre del símbolo en MSVC: una declaración adelantada con un key y la
   definición con el otro generan dos símbolos distintos y el enlazado falla
