@@ -27,6 +27,7 @@
 
 #include "Configuracion/EditorConfig.h"
 #include "Estructuras/ListasEnlazadas/ListasDoblementeEnlazada/ListaDE.h"
+#include "Objetos/Componentes/AudioSource.h"
 #include "Objetos/Componentes/Material.h"
 #include "Objetos/Componentes/Model.h"
 #include "Objetos/Componentes/Script.h"
@@ -174,6 +175,10 @@ int paraSlotsDe(Component& componente, Operar&& operar) {
         return operar(
             script->getPath(),
             [script](const std::string& p) { script->setDllPath(p); });
+    }
+    if (auto* audio = dynamic_cast<AudioSource*>(&componente)) {
+        return operar(audio->getRutaClip(),
+                      [audio](const std::string& p) { audio->setRutaClip(p); });
     }
     if (auto* skybox = dynamic_cast<Skybox*>(&componente)) {
         int cambios = 0;

@@ -29,13 +29,16 @@
 //   - reproducir() de un clip conocido devuelve un handle >= 0 y el motor
 //     drena la cola (esperarPilaVacia / pendientes()).
 //   - detener()/detenerTodo()/setVolumenMaestro() encolan y se processan.
-//   - limpiarClips() vacia el catalogo.
+//   - Los efectos de sonido se piden por RUTA: el motor reproduce el archivo
+//     que le pasan; sin archivo (o con un archivo que no existe) devuelve -1.
 //   - La cola de musica: registro de pistas, reproduccion, bus, silencio,
 //     deteccion y el tick de la escena. Con un backend FALSO que registra lo
 //     que le llega, para comprobar que los comandos se ejecutan en el hilo de
 //     audio contra el reproductor.
 
 #include <cmath>
+#include <filesystem>
+#include <fstream>
 #include <iostream>
 #include <memory>
 #include <set>
@@ -45,6 +48,7 @@
 #include "../FunshiEngineGL/src/Audio/AudioEngine.h"
 #include "../FunshiEngineGL/src/Audio/IAudioBackend.h"
 #include "../FunshiEngineGL/src/Audio/IMusicaBackend.h"
+#include "TempPruebas.h"
 
 namespace {
 int total = 0;
@@ -117,33 +121,36 @@ public:
     float duracionPista(int) override { return 0.0f; }
 };
 
+// Los efectos de sonido se piden por RUTA: el motor reproduce el archivo que
+// le pasan. No hay catalogo por nombre ni carpeta fija.
 void probarCicloComandos() {
+    TempPruebas::CarpetaPrueba carpeta("funshi_audio_tests");
+    const std::string click = (carpeta.ruta() / "click.wav").string();
+    const std::string musica = (carpeta.ruta() / "musica.wav").string();
+    std::ofstream(click) << "contenido";
+    std::ofstream(musica) << "contenido";
+
     AudioEngine motor;  // nullptr => NullAudioBackend
     // El ctor encola "Iniciar"; se drena antes de medir pendientes().
     motor.esperarPilaVacia();
-    motor.registrarClip("click", "/tmp/funshi_click.wav");
-    motor.registrarClip("musica", "/tmp/funshi_musica.wav");
 
-    CHECK(motor.clipRegistrado("click"), "clip registrado visible");
-    CHECK(motor.clipRegistrado("musica"), "clip registrado visible 2");
-    CHECK(!motor.clipRegistrado("inexistente"),
-          "clip no registrado no se ve");
-
-    std::vector<std::string> nombres = motor.nombresClips();
-    CHECK(nombres.size() == 2, "nombresClips tiene los dos clips");
-    CHECK(contiene(nombres, "click") && contiene(nombres, "musica"),
-          "nombresClips contiene ambos nombres");
-
-    // Clip desconocido: -1 y no se encola (no bloquea).
-    CHECK(motor.reproducir("no_existo") == -1,
-          "reproducir clip desconocido devuelve -1");
+    // Sin archivo asignado: -1 y no se encola nada.
+    CHECK(motor.reproducir("") == -1, "reproducir sin ruta devuelve -1");
     CHECK(motor.pendientes() == 0,
-          "reproducir desconocido no encola comandos");
+          "reproducir sin ruta no encola comandos");
 
-    // Clip conocido: handle valido y la cola se drena.
-    const int h1 = motor.reproducir("click");
-    CHECK(h1 >= 0, "reproducir clip conocido devuelve handle");
-    const int h2 = motor.reproducir("musica", 0.5f, true);
+    // Con un archivo que no existe: -1 y no se encola nada (queda avisado en
+    // el log del motor).
+    const std::string inexistente = (carpeta.ruta() / "no_existe.wav").string();
+    CHECK(motor.reproducir(inexistente) == -1,
+          "reproducir un archivo inexistente devuelve -1");
+    CHECK(motor.pendientes() == 0,
+          "reproducir un archivo inexistente no encola comandos");
+
+    // Archivo existente: handle valido y la cola se drena.
+    const int h1 = motor.reproducir(click);
+    CHECK(h1 >= 0, "reproducir un archivo existente devuelve handle");
+    const int h2 = motor.reproducir(musica, 0.5f, true);
     CHECK(h2 >= 0 && h2 != h1, "handles distintos por reproduccion");
     motor.esperarPilaVacia();
     CHECK(motor.pendientes() == 0,
@@ -156,18 +163,14 @@ void probarCicloComandos() {
     motor.esperarPilaVacia();
     CHECK(motor.pendientes() == 0,
           "detener/volumen drenan la cola");
-
-    CHECK(motor.eliminarClip("click"), "eliminarClip borra el clip");
-    CHECK(!motor.clipRegistrado("click"),
-          "el clip eliminado ya no se consulta");
-    motor.limpiarClips();
-    CHECK(motor.nombresClips().empty(), "limpiarClips vacia el catalogo");
 }
 
 void probarBackendExplicito() {
+    TempPruebas::CarpetaPrueba carpeta("funshi_audio_backend_tests");
+    const std::string sonido = (carpeta.ruta() / "sonido.wav").string();
+    std::ofstream(sonido) << "contenido";
     auto motor = std::make_unique<AudioEngine>();
-    motor->registrarClip("sonido", "/tmp/funshi_s.wav");
-    const int h = motor->reproducir("sonido", 1.0f, false);
+    const int h = motor->reproducir(sonido, 1.0f, false);
     CHECK(h >= 0, "backend por defecto reproduce y devuelve handle");
     motor->esperarPilaVacia();
     CHECK(motor->pendientes() == 0, "cola drenada con backend por defecto");

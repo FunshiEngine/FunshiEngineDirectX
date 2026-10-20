@@ -75,6 +75,7 @@
 #include "../FunshiEngineGL/src/Objetos/Modelos3D.h"
 #include "../FunshiEngineGL/src/Objetos/TagRegistry.h"
 #include "../FunshiEngineGL/src/Objetos/Componentes/Color.h"
+#include "../FunshiEngineGL/src/Objetos/Componentes/AudioSource.h"
 #include "../FunshiEngineGL/src/Objetos/Componentes/Material.h"
 #include "../FunshiEngineGL/src/Objetos/Componentes/Model.h"
 #include "../FunshiEngineGL/src/Objetos/Componentes/Colliders/EsfereCollider.h"
@@ -1092,6 +1093,8 @@ void reescrituraDeReferencias() {
         EditorConfig::absolutizarRuta("Mallas/Auto.fbx");
     const std::string texturaEnEscena =
         EditorConfig::absolutizarRuta("Texturas/difuso.png");
+    const std::string audioEnEscena =
+        EditorConfig::absolutizarRuta("Audio/disparo.wav");
 
     // 1. Mover `Scripts` dentro de `Assets`: solo la fuente esta bajo el
     //    prefijo movido; malla y textura quedan intactas.
@@ -1116,6 +1119,13 @@ void reescrituraDeReferencias() {
     Material* refMaterial = material.get();
     objeto.addComponent(std::move(material));
 
+    // El archivo de audio es un asset mas: su ruta se reescribe igual que la
+    // de una malla o una textura.
+    auto audio = std::make_unique<AudioSource>();
+    audio->setRutaClip(audioEnEscena);
+    AudioSource* refAudio = audio.get();
+    objeto.addComponent(std::move(audio));
+
     ListaDE<GameObject*> escena;
     escena.addLast(&objeto);
 
@@ -1128,6 +1138,8 @@ void reescrituraDeReferencias() {
           "la malla (fuera del prefijo movido) no se toca");
     CHECK(refMaterial->getDiffuseMapPath() == texturaEnEscena,
           "la textura (fuera del prefijo movido) no se toca");
+    CHECK(refAudio->getRutaClip() == audioEnEscena,
+          "el audio (fuera del prefijo movido) no se toca");
 
     // 2. Renombrar la carpeta de la malla: reescribe la malla y nada mas.
     const int renombrarMalla = RutasReescritura::reescribirEnEscena(
@@ -1153,6 +1165,15 @@ void reescrituraDeReferencias() {
         &escena, raiz + PATH_SEP + "OtraCarpeta",
         raiz + PATH_SEP + "NadaCarpeta");
     CHECK(sinCambios == 0, "prefijo que no matchea no cambia nada");
+
+    // 5. Renombrar la carpeta del audio: reescribe la ruta del componente.
+    const int renombrarAudio = RutasReescritura::reescribirEnEscena(
+        &escena, raiz + PATH_SEP + "Audio", raiz + PATH_SEP + "Sonidos");
+    CHECK(renombrarAudio == 1,
+          "renombrar una carpeta reescribe la ruta del archivo de audio");
+    CHECK(refAudio->getRutaClip() ==
+              raiz + PATH_SEP + "Sonidos/disparo.wav",
+          "el archivo de audio queda bajo el nombre nuevo");
 
     EditorConfig::limpiarRaizAssets();
 }
@@ -1203,14 +1224,29 @@ void sanadoDeRutasRotas() {
     Model* refModelo = modelo.get();
     objeto.addComponent(std::move(modelo));
 
+    // El archivo de audio roto se repara con la misma regla.
+    fs::create_directories(raiz / "Assets" / "Audio", ec);
+    {
+        std::ofstream clip((raiz / "Assets" / "Audio" / "disparo.wav").string());
+        clip << "clip\n";
+    }
+    const fs::path audioReal = raiz / "Assets" / "Audio" / "disparo.wav";
+    auto audio = std::make_unique<AudioSource>();
+    audio->setRutaClip(EditorConfig::absolutizarRuta("Audio/disparo.wav"));
+    AudioSource* refAudio = audio.get();
+    objeto.addComponent(std::move(audio));
+
     ListaDE<GameObject*> escena;
     escena.addLast(&objeto);
 
     const int reparadas = RutasReescritura::sanarRutasInexistentes(&escena);
-    CHECK(reparadas == 1, "con una coincidencia unica se repara");
+    CHECK(reparadas == 2, "con una coincidencia unica se reparan las dos");
     CHECK(fs::path(refScript->getPath()).generic_string() ==
               real.generic_string(),
           "la fuente del script queda apuntando al archivo que existe");
+    CHECK(fs::path(refAudio->getRutaClip()).generic_string() ==
+              audioReal.generic_string(),
+          "el archivo de audio queda apuntando al archivo que existe");
     CHECK(refMaterial->getDiffuseMapPath() ==
               EditorConfig::absolutizarRuta("Texturas/difuso.png"),
           "sin ninguna coincidencia la ruta queda como estaba");

@@ -122,7 +122,7 @@ const char* SRC_NATIVO =
     "    public static native boolean interfazEstablecerValor(long interfaz, String clave, String valorJson);\n"
     "    public static native String interfazValor(long interfaz, String rutaJson);\n"
     "    public static native void imprimir(String texto);\n"
-    "    public static native int reproducirSonido(String clip, float volumen, boolean bucle);\n"
+    "    public static native int reproducirSonido(String ruta, float volumen, boolean bucle);\n"
     "    public static native void detenerSonido(int handle);\n"
     "    public static native long objetoPorNombre(String nombre);\n"
     "    public static native long objetoPorId(int id);\n"
@@ -806,12 +806,12 @@ void nativoImprimir(JNIEnv* env, jclass, jstring texto) {
     const std::string mensaje = leerCadena(env, texto);
     MotorScript::tablaApi()->imprimirConsola(mensaje.c_str());
 }
-jint nativoReproducirSonido(JNIEnv* env, jclass, jstring clip, jfloat volumen,
+jint nativoReproducirSonido(JNIEnv* env, jclass, jstring ruta, jfloat volumen,
                             jboolean bucle) {
-    if (!clip) return -1;
-    const std::string nombre = leerCadena(env, clip);
+    if (!ruta) return -1;
+    const std::string archivo = leerCadena(env, ruta);
     return MotorScript::tablaServicios()->reproducirSonido(
-        nombre.c_str(), volumen, bucle == JNI_TRUE);
+        archivo.c_str(), volumen, bucle == JNI_TRUE);
 }
 void nativoDetenerSonido(JNIEnv*, jclass, jint handle) {
     MotorScript::tablaServicios()->detenerSonido(handle);

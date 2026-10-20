@@ -19,11 +19,13 @@
 #include "SettingsAudioSource.h"
 
 #include "../../../Audio/AudioEngine.h"
+#include "../../../Audio/ExtensionesAudio.h"
 #include "../../../Objetos/GameObject.h"
 #include "../../../Objetos/Componentes/AudioSource.h"
 
 #include <imgui.h>
-#include <cstring>
+#include <iostream>
+#include <string>
 
 SettingsAudioSource::SettingsAudioSource(GameObject* gameObject)
     : SettingsComponent(demangle(typeid(AudioSource).name())), gameObject(gameObject) {}
@@ -34,13 +36,45 @@ void SettingsAudioSource::showDataComponent() {
 
 	ImGui::Text("===Fuente de audio===");
 
-	// Nombre del clip (texto editable): debe coincidir con un clip de la
-	// carpeta Sonidos/ del proyecto. Si no existe, reproducir devuelve -1 y no
-	// suena (tolerante; el clip puede agregarse despues).
-	char buffer[512] = {};
-	std::strncpy(buffer, source->getClip().c_str(), sizeof(buffer) - 1);
-	if (ImGui::InputText("Clip", buffer, sizeof(buffer))) {
-		source->setClip(buffer);
+	// El archivo se asigna arrastrandolo desde el explorador de archivos
+	// (igual que los scripts): el componente guarda la ruta y el motor
+	// reproduce ese archivo. No hay carpeta ni catalogo: el archivo puede estar
+	// en cualquier parte dentro del proyecto.
+	const std::string& ruta = source->getRutaClip();
+	std::string etiqueta = "[Arrastra el audio]";
+	if (!ruta.empty()) {
+		const std::size_t separador = ruta.find_last_of("/\\");
+		etiqueta = (separador != std::string::npos) ? ruta.substr(separador + 1)
+		                                            : ruta;
+	}
+
+	ImGui::PushID(source);
+	if (ImGui::Button(etiqueta.c_str())) {
+		// El boton es el destino del arrastre; el click no hace nada.
+	}
+	if (ImGui::BeginDragDropTarget()) {
+		if (const ImGuiPayload* payload =
+		        ImGui::AcceptDragDropPayload("ARCHIVO_PATH")) {
+			const char* rutaSoltada = static_cast<const char*>(payload->Data);
+			// Se filtra aqui y no en el componente: el componente guarda
+			// cualquier cadena porque todas las rutas se serializan, y el
+			// formato solo importa al elegir el archivo que se va a reproducir.
+			if (rutaSoltada && *rutaSoltada && esArchivoAudio(rutaSoltada)) {
+				source->setRutaClip(rutaSoltada);
+			} else if (rutaSoltada && *rutaSoltada) {
+				std::cerr << "[Audio] el archivo arrastrado no es un formato de "
+				             "audio (wav/ogg/mp3/flac); ruta sin asignar: "
+				          << rutaSoltada << std::endl;
+			}
+		}
+		ImGui::EndDragDropTarget();
+	}
+	ImGui::PopID();
+
+	if (!source->getRutaClip().empty()) {
+		ImGui::PushStyleColor(ImGuiCol_Text, IM_COL32(150, 150, 150, 255));
+		ImGui::TextUnformatted(source->getRutaClip().c_str());
+		ImGui::PopStyleColor();
 	}
 
 	float volume = source->getVolume();

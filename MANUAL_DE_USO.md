@@ -159,20 +159,19 @@ el mismo. Eliminar pide confirmacion en un dialogo y
 contenido, y el arbol y el grid se refrescan en el acto. El **undo/redo**
 (`Ctrl+Z` / `Ctrl+Y`) no cubre el borrado de archivos.
 
-**Rutas de la escena.** Las mallas, texturas y fuentes de script que usa la
-escena se persisten **relativas** a la carpeta `src<proyecto>/`. Por eso, al
-renombrar un proyecto (menu de inicio) o mover su carpeta completa, las
-escenas siguen cargando sin tocar nada: la raiz `src<nombre>` se desplaza
-entera con el proyecto. Dentro del explorador, al **renombrar** o al **mover**
-un archivo o carpeta el motor reescribe al instante las referencias de la
-escena que apuntaban a esa ruta y guarda la escena modificada. Limitaciones:
+**Rutas de la escena.** Las mallas, texturas, fuentes de script y archivos de
+audio que usa la escena se persisten **relativas** a la carpeta
+`src<proyecto>/`. Por eso, al renombrar un proyecto (menu de inicio) o mover su
+carpeta completa, las escenas siguen cargando sin tocar nada: la raiz
+`src<nombre>` se desplaza entera con el proyecto. Dentro del explorador, al
+**renombrar** o al **mover** un archivo o carpeta el motor reescribe al instante
+las referencias de la escena que apuntaban a esa ruta y guarda la escena
+modificada. Limitaciones:
 una **copia** (arrastre con `Ctrl`) no se rastrea, porque no cambia ninguna de
 las dos rutas; los cambios hechos **fuera** del motor (explorador de Windows,
 una terminal, un `mv`) solo sirven para refrescar el arbol de archivos, no
 reescriben nada, asi que ahi si hay que volver a arrastrar el asset en su
-inspector; y los sonidos de `src<proyecto>/Sonidos/` se
-referencian por **nombre**: un move con el mismo nombre conserva la referencia
-y un rename la rompe (vuelve a seleccionar el clip en su dropdown).
+inspector.
 Si una referencia quedo apuntando a un archivo que ya no existe, al **abrir la
 escena** el motor busca ese archivo por nombre dentro de la carpeta del
 proyecto: con **una sola coincidencia** repara la referencia, lo anota en el
@@ -650,13 +649,21 @@ menos 4096 bytes, de modo que paths largos no se truncan (el componente
 
 ## 8. Audio
 
-- Crea la carpeta `Sonidos/` (si no existe) y coloca los clips en `Sonidos/` (wav/mp3/etc.). `AudioClipsManager` los
-  descubre y los registra **por nombre** en el `AudioEngine` al escanear.
-- Agrega `AudioSource` a un objeto; en su panel elige el clip del dropdown
-  (o arrastralo desde `Sonidos/` tras crearla), ajusta volumen, loop y
-  "reproduccion automatica". En Depuración y Juego, el AudioEngine reproduce
-  en su hilo de audio.
-- Cambiar de proyecto re-escanea y limpia el registro de clips.
+- Los archivos de audio se referencian **por ruta**: no hay catálogo ni carpeta
+  reservada. El archivo puede estar en cualquier carpeta dentro de
+  `src<proyecto>/` (wav/ogg/mp3/flac).
+- Agrega `AudioSource` a un objeto y **arrastra el archivo de audio** desde el
+  explorador de archivos al panel del componente, igual que se hace con los
+  scripts. El panel muestra la ruta asignada; si el archivo arrastrado no es
+  un formato de audio, el motor lo dice en el log y no lo asigna.
+- Ajusta volumen, loop y "reproduccion automatica". En Depuración y Juego, el
+  `AudioEngine` reproduce el archivo en su hilo de audio.
+- La ruta se guarda en la escena **relativa** a `src<proyecto>/`: al mover o
+  renombrar el proyecto entero, la escena sigue funcionando. En el juego
+  exportado se resuelve contra la carpeta del juego (allí se copia todo
+  `src<proyecto>/`).
+- Si el archivo no existe, el motor avisa en el log y no reproduce: el
+  componente queda sin sonido.
 
 ---
 
@@ -1135,7 +1142,7 @@ Misma convencion APPEND-ONLY con `servicios->version` al final.
 
 | Funcion | Firma | Descripcion |
 |---|---|---|
-| `servicios->reproducirSonido(clip, vol, loop)` | `int (const char*, float, bool)` | reproduce un clip de `Sonidos/` (la carpeta debe existir) por **nombre**; devuelve handle >= 0, o -1 si el clip no existe |
+| `servicios->reproducirSonido(ruta, vol, loop)` | `int (const char*, float, bool)` | reproduce el archivo de audio de la **ruta** (relativa a `src<proyecto>/` o absoluta); devuelve handle >= 0, o -1 si el archivo no existe |
 | `servicios->detenerSonido(handle)` | `void (int)` | detiene la reproduccion del handle |
 | `servicios->objetoPorNombre("Enemigo")` | `void* (const char*)` | busca un GameObject por nombre en la escena; `nullptr` si no existe. El puntero vale mientras el objeto viva |
 | `servicios->objetoPorId(7)` (v3) | `void* (int)` | busca un GameObject por id de escena; `nullptr` si no existe |
@@ -1189,7 +1196,7 @@ void onUpdate(GameObject* owner, float deltaTime) override {
 
     // Efecto de sonido al disparar (una sola vez por pulsacion):
     if (servicios->teclaPresionada("SPACE"))
-        servicios->reproducirSonido("disparo.wav", 0.8f, false);
+        servicios->reproducirSonido("sonidos/disparo.wav", 0.8f, false);
 
     // Alcanzar otro objeto por nombre (o usar el campo GameObject*
     // expuesto en el inspector, que es lo recomendado):
@@ -1345,7 +1352,7 @@ Las posiciones consultadas o fijadas por `Nativo.posicionX/Y/Z` y
 | Tags y colliders | `Nativo.etiqueta`, `tieneEtiqueta`, `objetoDeCollider` |
 | Contactos | `colisionInicio`, `colisionPersistencia`, `colisionFin` |
 | Consola | `Nativo.imprimir` |
-| Audio de script | `Nativo.reproducirSonido(clip, volumen, bucle)`, `Nativo.detenerSonido(handle)` |
+| Audio de script | `Nativo.reproducirSonido(ruta, volumen, bucle)`, `Nativo.detenerSonido(handle)` |
 | Busqueda de objetos | `Nativo.objetoPorNombre(nombre)`, `Nativo.objetoPorId(id)`, `Nativo.objetoPorEtiqueta(etiqueta)`; devuelven `0` si no existe |
 | Gravedad global | `Nativo.fijarGravedadGlobal(x, y, z)`, `Nativo.gravedadGlobalX/Y/Z` |
 | Gestion de objetos | `Nativo.crearObjeto(nombre, padre)`, `Nativo.destruirObjeto(objeto)`, `Nativo.clonarObjeto(original, padre)`, `Nativo.agregarColliderEsfera/cubo(objeto, radio)`, `Nativo.agregarRigidBody(objeto, masa)` |
@@ -1368,7 +1375,7 @@ ejecutar `detener`.
 @Override
 public void actualizar(long objeto, double deltaTime) {
     if (Nativo.teclaPresionada("SPACE")) {
-        int sonido = Nativo.reproducirSonido("disparo.wav", 0.8f, false);
+        int sonido = Nativo.reproducirSonido("sonidos/disparo.wav", 0.8f, false);
         Nativo.detenerSonido(sonido);
     }
     long meta = Nativo.objetoPorNombre("Meta");

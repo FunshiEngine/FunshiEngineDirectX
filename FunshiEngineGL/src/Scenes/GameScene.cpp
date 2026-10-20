@@ -158,10 +158,8 @@ GameScene::~GameScene() {
 
 void GameScene::configurarProyecto(const std::string& nombreProyecto) {
     EditorConfig::asegurarEstructuraProyecto(nombreProyecto);
-    // Re-escanea Sonidos/ del proyecto: limpia el registro y lo repuebla por
-    // nombre (los widgets de AudioSource hablan por nombre, no ruta).
-    clipsAudio.configurarCarpeta(EditorConfig::directorioSonidos(nombreProyecto),
-                                 audioEngine.get());
+    // No hay catalogo de audio: cada componente guarda la ruta del archivo que
+    // el usuario le asigno, y el motor reproduce esa ruta.
 }
 
 AudioEngine* GameScene::getAudioEngine() const noexcept {

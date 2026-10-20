@@ -19,15 +19,21 @@
 #include "AudioSource.h"
 
 #include "../../Audio/AudioEngine.h"
+#include "../../Configuracion/EditorConfig.h"
 #include "Herramientas/LimitesSerializacion.h"
 
 #include <iostream>
 
 void AudioSource::serializeComponent(std::ofstream* file) {
     if (!file || !file->is_open()) return;
-    const std::size_t len = clip.size();
+    // La ruta del archivo se persiste relativa a la raiz de assets del
+    // proyecto (src<nombre>): asi la escena sigue valida al mover o renombrar
+    // el proyecto entero.
+    const std::string rutaGuardada = EditorConfig::relativizarRuta(rutaClip);
+    const std::size_t len = rutaGuardada.size();
     file->write(reinterpret_cast<const char*>(&len), sizeof(len));
-    if (len > 0) file->write(clip.data(), static_cast<std::streamsize>(len));
+    if (len > 0)
+        file->write(rutaGuardada.data(), static_cast<std::streamsize>(len));
     file->write(reinterpret_cast<const char*>(&volume), sizeof(float));
     file->write(reinterpret_cast<const char*>(&loop), sizeof(bool));
     file->write(reinterpret_cast<const char*>(&reproduccionAutomatica),
@@ -37,22 +43,25 @@ void AudioSource::serializeComponent(std::ofstream* file) {
 void AudioSource::deserializeComponent(std::ifstream* file) {
     if (!file || !file->is_open()) return;
     std::size_t len = 0;
-    // El nombre del clip lo controla el archivo: sin cota, un valor enorme
-    // hace que la reserva lance `std::length_error` y el motor aborte.
+    // La ruta la controla el archivo: sin cota, un valor enorme hace que la
+    // reserva lance `std::length_error` y el motor aborte.
     if (!LimitesSerializacion::leerLongitud(*file, len,
-                                            LimitesSerializacion::kNombre, 1,
+                                            LimitesSerializacion::kRuta, 1,
                                             0)) {
-        std::cerr << "Nombre de clip de audio invalido en el binario (len "
+        std::cerr << "Ruta de clip de audio invalida en el binario (len "
                   << len << "); se corta la lectura del componente\n";
         file->setstate(std::ios::failbit);
         return;
     }
     if (len > 0) {
-        clip.resize(len);
-        file->read(clip.data(), static_cast<std::streamsize>(len));
+        rutaClip.resize(len);
+        file->read(rutaClip.data(), static_cast<std::streamsize>(len));
     } else {
-        clip.clear();
+        rutaClip.clear();
     }
+    // Escena nueva: relativa a la raiz de assets; sin raiz (sin proyecto) la
+    // ruta se queda como esta.
+    rutaClip = EditorConfig::absolutizarRuta(rutaClip);
     file->read(reinterpret_cast<char*>(&volume), sizeof(float));
     file->read(reinterpret_cast<char*>(&loop), sizeof(bool));
     file->read(reinterpret_cast<char*>(&reproduccionAutomatica), sizeof(bool));
@@ -65,7 +74,7 @@ void AudioSource::loadComponent(std::ifstream* file) { deserializeComponent(file
 void AudioSource::reproducir() {
     if (!motor) return;
     detener(); // no apilar probabilidades: un clip, una reproduccion
-    const int handle = motor->reproducir(clip, volume, loop);
+    const int handle = motor->reproducir(rutaClip, volume, loop);
     handleActual = handle;
     sonando = (handle >= 0);
 }

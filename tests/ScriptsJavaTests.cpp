@@ -173,8 +173,8 @@ const ApiScriptGameObject* tablaApi() {
 
 const ScriptServices* tablaServicios() {
     static const ScriptServices servicios = {
-        [](const char* clip, float volumen, bool bucle) {
-            return clip && std::string(clip) == "disparo.wav" &&
+        [](const char* ruta, float volumen, bool bucle) {
+            return ruta && std::string(ruta) == "disparo.wav" &&
                            volumen == 0.5f && !bucle
                        ? 73
                        : -1;

@@ -126,10 +126,12 @@ namespace MotorScript {
 // final para guardas `if (servicios->version >= N)`.
 struct ScriptServices {
     // --- v1 ---
-    // Reproduce un clip de la carpeta Sonidos/ del proyecto (por nombre).
-    // Devuelve -1 si el clip no existe o no hay motor (tolerante, no
-    // bloquea); sino un handle >= 0 usable con detenerSonido().
-    int (*reproducirSonido)(const char* clip, float volumen, bool bucle);
+    // Reproduce un archivo de audio del proyecto (por RUTA). La ruta es
+    // relativa a la raiz de assets (src<nombre>) o absoluta. Devuelve -1 si
+    // no hay motor o el archivo no existe (tolerante, no bloquea); sino un
+    // handle >= 0 usable con detenerSonido().
+    // (v7: la ruta sustituye al nombre del clip del catalogo.)
+    int (*reproducirSonido)(const char* ruta, float volumen, bool bucle);
     void (*detenerSonido)(int handle);
 
     // Busca un GameObject por nombre en la escena (recorrido en preorden del

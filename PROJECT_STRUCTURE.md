@@ -116,7 +116,7 @@ FunshiEngineGL/                          ← raíz del repo
 │   ├── ScriptsTests.cpp                 ← reflexión SerializeField + round-trip binario
 │   ├── ScriptsRuntimeTests.cpp          ← BackendCpp end-to-end (compila y dlopen un .so)
 │   ├── ScriptsJavaTests.cpp             ← BackendJava end-to-end (solo con FUNSHI_JAVA)
-│   ├── AudioEngineTests.cpp             ← AudioEngine/AudioClipsManager con NullAudioBackend
+│   ├── AudioEngineTests.cpp             ← AudioEngine con NullAudioBackend (por ruta)
 │   ├── SceneSerializationTests.cpp      ← round-trip de escena + nombres por defecto
 │   └── UserInterfaceTests.cpp           ← modelo del Creador de interfaces (round-trip JSON)
 └── FunshiEngineGL/                      ← proyecto CMake principal
@@ -154,13 +154,12 @@ FunshiEngineGL/                          ← raíz del repo
         │                                   archivo sin decodificar
         ├── Audio/                       ← audio del motor (backend inyectable)
         │   ├── AudioEngine.h/.cpp       ← fachada thread-safe (cola de comandos + hilo)
-        │   ├── AudioClipsManager.h/.cpp ← descubre clips en Sonidos/ y registra por nombre
+        │   ├── ExtensionesAudio.h       ← extensiones de audio comparadas normalizadas
         │   ├── IAudioBackend.h          ← contrato Strategy del backend de audio
         │   ├── IMusicaBackend.h         ← contrato del backend de música (pista, bus, fundido)
         │   ├── GestorMusica.h/.cpp      ← reproductor de música (fundido cruzado, bus, playlist)
         │   ├── MiniAudioBackend.*       ← backend concreto (miniaudio vendoriado)
         │   ├── NullAudioBackend.h       ← backend nulo para pruebas headless
-        │   └── AudioClip.h              ← handle/metadata del clip
         ├── Behaviour/
         │   ├── IScriptBehaviour.h       ← interfaz de scripts (onStart/onUpdate/onStop, campos)
         │   ├── ScriptGameObject.*       ← tablas versionadas de GameObject y servicios
@@ -283,8 +282,8 @@ FunshiEngineGL/                          ← raíz del repo
         │   │   ├── Camera/SettingsCamera.*       ← FOV, planos, velocidad, vista previa
         │   │   ├── Grid/SettingsGrid.*           ← visible y color de la grilla (infinita,
         │   │   │                                 densidad fija: no hay tamaño/separación)
-        │   │   ├── AudioSource/SettingsAudioSource.* ← dropdown de clip (src<proyecto>/Sonidos/),
-        │   │   │                                 volumen, loop
+        │   │   ├── AudioSource/SettingsAudioSource.* ← ruta del archivo de audio
+        │   │   │                                 (drag & drop), volumen, loop
         │   │   ├── Interface/SettingsInterface.* ← ruta del .html de la interfaz
         │   │   │                                 (drag & drop) + activa, ancla, tamaño y z
         │   │   ├── Skybox/SettingsSkybox.*       ← visible + las seis caras del cubemap
@@ -1069,9 +1068,9 @@ también con `BUILD_ENGINE=OFF`):
 - `model-serialization-tests` (16): serialización binaria del componente `Model`
   (path con prefijo de longitud; regresión del core al cargar escenas con paths
   largos).
-- `audio-tests` (31): `AudioEngine`/`AudioClipsManager` con `NullAudioBackend`
-  (contrato de la cola de comandos: clips, handles, encolado, detención, volumen)
-  y la cola de música con un backend falso (registro de pistas, reproducción,
+- `audio-tests` (25): `AudioEngine` con `NullAudioBackend` (contrato de la cola
+  de comandos: reproducción por ruta, handles, encolado, detención, volumen) y
+  la cola de música con un backend falso (registro de pistas, reproducción,
   bus, silencio, detención y el tick de la escena).
 - `interface-component-tests` (16): serialización binaria del `InterfaceComponent`
   (ruta del `.html` + colocación): round-trip del formato nuevo y lectura del

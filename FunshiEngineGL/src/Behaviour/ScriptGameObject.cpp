@@ -37,6 +37,7 @@
 #include "../Objetos/Componentes/Colliders/CubeCollider.h"
 #include "../Objetos/Componentes/Colliders/EsfereCollider.h"
 #include "../Audio/AudioEngine.h"
+#include "../Configuracion/EditorConfig.h"
 #include "../Scenes/SceneRegistry.h"
 #include "../Scenes/EditorController.h"
 #include "../Objetos/Prefab.h"
@@ -274,9 +275,13 @@ EditorController* g_editor = nullptr;
 EstadoInterfaces* g_interfaces = nullptr;
 ScriptAudioHandles g_sonidosScript;
 
-int serviciosReproducirSonido(const char* clip, float volumen, bool bucle) {
-    if (!g_audio || !clip) return -1;
-    const int handle = g_audio->reproducir(clip, volumen, bucle);
+int serviciosReproducirSonido(const char* ruta, float volumen, bool bucle) {
+    if (!g_audio || !ruta) return -1;
+    // La ruta se resuelve contra la raiz de assets del proyecto (src<nombre>):
+    // el script pide "sonidos/disparo.wav" sin saber donde esta el proyecto.
+    // Una ruta absoluta se deja tal cual.
+    const std::string archivo = EditorConfig::absolutizarRuta(ruta);
+    const int handle = g_audio->reproducir(archivo, volumen, bucle);
     g_sonidosScript.registrar(handle);
     return handle;
 }
@@ -620,7 +625,7 @@ const ScriptServices* tablaServicios() {
         /* .interfazEstablecerEstado = */ serviciosInterfazEstablecerEstado,
         /* .interfazEstablecerValor  = */ serviciosInterfazEstablecerValor,
         /* .interfazValor     = */ serviciosInterfazValor,
-        /* .version           = */ 6,
+        /* .version           = */ 7,
     };
     return &tabla;
 }

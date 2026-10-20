@@ -25,6 +25,8 @@
 
 #include <chrono>
 #include <condition_variable>
+#include <filesystem>
+#include <iostream>
 #include <mutex>
 #include <queue>
 #include <thread>
@@ -72,8 +74,6 @@ struct AudioEngine::Impl {
     mutable std::mutex mtx;
     std::condition_variable cv;
     std::queue<Comando> pila;
-    // nombre del clip -> ruta (registro del asset; el hilo del juego lo lee).
-    std::unordered_map<std::string, std::string> clips;
     // nombre de la pista de musica -> ruta (mismo criterio que los clips).
     std::unordered_map<std::string, std::string> musicas;
     // handle propio del motor -> id devuelto por el backend.
@@ -223,46 +223,25 @@ AudioEngine::~AudioEngine() {
     if (impl_->hilo.joinable()) impl_->hilo.join();
 }
 
-void AudioEngine::registrarClip(const std::string& nombre,
-                                const std::string& ruta) {
-    std::lock_guard<std::mutex> lock(impl_->mtx);
-    impl_->clips[nombre] = ruta;
-}
-
-bool AudioEngine::clipRegistrado(const std::string& nombre) const {
-    std::lock_guard<std::mutex> lock(impl_->mtx);
-    return impl_->clips.count(nombre) > 0;
-}
-
-bool AudioEngine::eliminarClip(const std::string& nombre) {
-    std::lock_guard<std::mutex> lock(impl_->mtx);
-    return impl_->clips.erase(nombre) > 0;
-}
-
-void AudioEngine::limpiarClips() {
-    std::lock_guard<std::mutex> lock(impl_->mtx);
-    impl_->clips.clear();
-}
-
-std::vector<std::string> AudioEngine::nombresClips() const {
-    std::lock_guard<std::mutex> lock(impl_->mtx);
-    std::vector<std::string> nombres;
-    nombres.reserve(impl_->clips.size());
-    for (const auto& [nombre, ruta] : impl_->clips) nombres.push_back(nombre);
-    return nombres;
-}
-
-int AudioEngine::reproducir(const std::string& clip, float volumen, bool bucle) {
+int AudioEngine::reproducir(const std::string& ruta, float volumen, bool bucle) {
+    if (ruta.empty()) return -1; // sin archivo asignado
+    // El archivo se comprueba aqui (hilo de juego) para poder avisar al que
+    // lo pidio: el backend solo puede fallar en su hilo, y entonces el que
+    // reproduce creeria que el sonido salio.
+    std::error_code ec;
+    if (!std::filesystem::is_regular_file(ruta, ec)) {
+        std::cerr << "[Audio] No se reproduce '" << ruta
+                  << "': el archivo no existe\n";
+        return -1;
+    }
     Comando c;
     c.tipo = TipoComando::Reproducir;
     c.volumen = volumen;
     c.bucle = bucle;
+    c.ruta = ruta;
     int handle = -1;
     {
         std::lock_guard<std::mutex> lock(impl_->mtx);
-        const auto it = impl_->clips.find(clip);
-        if (it == impl_->clips.end()) return -1; // clip no registrado
-        c.ruta = it->second;
         handle = impl_->proximoHandle++;
         c.handle = handle;
         impl_->pila.push(std::move(c));

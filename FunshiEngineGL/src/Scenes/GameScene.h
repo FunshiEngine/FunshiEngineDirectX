@@ -31,7 +31,6 @@
 #include "../Input/InputScripts.h"
 #include "../Configuracion/Apariencia.h"
 #include "../Configuracion/DimensionProyecto.h"
-#include "../Audio/AudioClipsManager.h"
 #include "../WebUI/VistasWebUI.h"
 #include "../WebUI/EstadoInterfaces.h"
 class CameraComponent;
@@ -106,8 +105,6 @@ private:
     // main.cpp para la camara; este es un canal independiente de solo lectura
     // que se alimenta de los mismos callbacks.
     InputScripts inputScripts;
-    // Catalogo de clips del proyecto (explora Sonidos/ y registra por nombre).
-    AudioClipsManager clipsAudio;
     float deltaTime = 0.0f;
     bool start = false;
     // version anterior de start: detecta la transicion false->true para

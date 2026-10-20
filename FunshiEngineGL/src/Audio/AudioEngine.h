@@ -35,9 +35,10 @@ class IAudioBackend;
 // de audio, y detras, miniaudio mezcla en el hilo de su device. Asi la
 // reproduccion nunca frena el bucle del editor.
 //
-// Los clips se referencian por NOMBRE (registrados con registrarClip); la GUI y
-// los componentes hablan en terminos de nombres, nunca de rutas. Lo mismo con
-// las pistas de musica (registradas con registrarMusica).
+// Los archivos de audio se referencian por RUTA: el componente que lo pide
+// guarda la ruta del archivo (la que el usuario arrastro al componente) y el
+// motor reproduce ese archivo. No hay catalogo por nombre ni carpeta fija: el
+// archivo puede estar en cualquier lado dentro del proyecto.
 class AudioEngine {
 public:
     // Con nullptr monta NullAudioBackend (headless/tests/CI). El ctor sin
@@ -51,17 +52,11 @@ public:
     AudioEngine(const AudioEngine&) = delete;
     AudioEngine& operator=(const AudioEngine&) = delete;
 
-    // Registro nombre->ruta de clips (hilo de juego). Sobrescribe si el nombre
-    // ya existia; el playback de un clip no registrado devuelve -1.
-    void registrarClip(const std::string& nombre, const std::string& ruta);
-    bool clipRegistrado(const std::string& nombre) const;
-    bool eliminarClip(const std::string& nombre);
-    void limpiarClips();
-    std::vector<std::string> nombresClips() const; // snapshot para la GUI
-
     // Comandos no bloqueantes (hilo de juego).
-    // Devuelve -1 si el clip no existe, sino un handle >= 0 para detener().
-    int reproducir(const std::string& clip, float volumen = 1.0f,
+    // Reproduce el archivo de la ruta dada. Devuelve -1 si la ruta esta vacia o
+    // el archivo no existe (queda avisado en el log), sino un handle >= 0 para
+    // detener().
+    int reproducir(const std::string& ruta, float volumen = 1.0f,
                    bool bucle = false);
     void detener(int handle);
     void detenerTodo();

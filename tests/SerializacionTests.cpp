@@ -219,7 +219,7 @@ static void testAudioSourceSerializacion() {
     // Round-trip.
     {
         AudioSource original;
-        original.setClip("disparo");
+        original.setRutaClip("disparo.wav");
         original.setVolume(0.5f);
         original.setLoop(true);
         {
@@ -231,14 +231,14 @@ static void testAudioSourceSerializacion() {
             std::ifstream in(ruta, std::ios::binary);
             leido.loadComponent(&in);
         }
-        CHECK(leido.getClip() == "disparo",
-              "el round-trip conserva el nombre del clip");
+        CHECK(leido.getRutaClip() == "disparo.wav",
+              "el round-trip conserva la ruta del clip");
         CHECK(std::fabs(leido.getVolume() - 0.5f) < 1e-5f,
               "el round-trip conserva el volumen");
         CHECK(leido.isLoop(), "el round-trip conserva el loop");
     }
 
-    // Archivo corrupto: la longitud del nombre del clip es absurda.
+    // Archivo corrupto: la longitud de la ruta del clip es absurda.
     {
         std::ofstream out(ruta, std::ios::binary | std::ios::trunc);
         const size_t len = static_cast<size_t>(0xFFFFFFFFFFFFFFF0ull);
@@ -248,7 +248,7 @@ static void testAudioSourceSerializacion() {
         AudioSource leido;
         std::ifstream in(ruta, std::ios::binary);
         leido.loadComponent(&in);
-        CHECK(leido.getClip().empty(),
+        CHECK(leido.getRutaClip().empty(),
               "una longitud de clip invalida deja el componente sin clip");
         CHECK(!in.good(), "el stream queda marcado como fallido");
     }
