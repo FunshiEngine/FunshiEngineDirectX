@@ -1523,29 +1523,63 @@ opcionales. El motor no expone objetos: le pasa una tabla de servicios y, en
 cada dibujo, un contexto con el contexto de ImGui y el tamaño del área. El mod
 que dibuja hace `ImGui::SetCurrentContext(ctxImgui)` antes de pintar.
 
-La tabla del motor es *append-only*: los campos nuevos van al final y la
-versión de la API se incrementa al agregar funcionalidad.
+La tabla de servicios es *append-only*: los campos nuevos van al final. La
+única diferencia con las tablas de API de scripts es que **la versión va al
+principio**, para que un mod compilado contra una versión anterior lea siempre
+su versión en el mismo offset. Los servicios que ofrece son:
 
-### 18.6 Confianza
+| Servicio | Qué hace |
+|---|---|
+| `version` | Versión de la API de mods que ofrece el motor (primero, offset fijo). |
+| `registrarPanel(id, titulo, dibujar, datos)` | Registra un panel de GUI del mod. Devuelve si se registró. |
+| `contarObjetos()` | Objetos que hay en la escena abierta. |
+| `obtenerObjeto(indice, salida)` | Datos de un objeto (nombre, id, si tiene collider, cuántos componentes tiene). |
+| `contarComponentes(indiceObjeto)` | Componentes que tiene un objeto de la escena. |
+| `obtenerComponente(indiceObjeto, indiceComponente, salida)` | Datos de un componente (su tipo). |
+| `nombreProyecto()` | Nombre del proyecto abierto (cadena vacía si no hay ninguno). |
+| `contextoImGui()` | Contexto de ImGui del motor, opaco: el mod lo pasa a `ImGui::SetCurrentContext()` para dibujar con él. |
+
+### 18.6 Paneles de los mods
+
+Un mod puede abrir sus propias ventanas dentro del editor. Se registran con
+`registrarPanel()` desde `init()` (o desde `update()`, en caliente): cada panel
+recibe un identificador (único dentro del mod), un título visible y el callback
+que dibuja su contenido.
+
+El motor abre la ventana del panel, le entrega el contexto de dibujo (el
+contexto de ImGui, el tamaño del área disponible y el delta del frame) y guarda
+el estado abierto/cerrado junto al resto de ventanas del editor. Por eso las
+ventanas de los mods aparecen también en el menú **Ventanas** de la barra
+principal, con su casilla, y su estado se guarda con el proyecto.
+
+Un mod que implementa `dibujar()` no necesita registrar nada: el motor le abre
+una ventana propia, titulada con el nombre visible del mod, y llama a
+`dibujar()` dentro en cada frame.
+
+Cuando el mod se descarga, sus paneles se retiran: el editor nunca dibuja una
+ventana cuyo binario ya está cerrado.
+
+### 18.7 Confianza
 
 Los mods se cargan con **confianza total**: no hay firma ni sandbox, igual que
 en otros motores con mods. Un mod es código que corre dentro del editor, con
 los mismos permisos. Instala solo paquetes de autores en los que confíes; el
 motor no puede distinguir un mod benigno de uno malicioso.
 
-### 18.7 Estado activo
+### 18.8 Estado activo
 
 El estado activo de cada mod se guarda por ámbito: los mods del motor en la
 configuración general del editor (`Configuracion.json`) y los del proyecto en
 la del proyecto (`ConfiguracionProyecto.json`). Un mod que no está en el mapa
 se considera activo por defecto.
 
-### 18.8 Actualización y alcance de esta versión
+### 18.9 Actualización y alcance de esta versión
 
 No hay hot-reload: los mods se cargan al arrancar y se descargan al salir.
 Actualizar un mod es reemplazar su `.fmod` y reiniciar el editor. Esta versión
-cubre el **envase y la carga**: descubre, valida y ordena los paquetes, extrae
-el binario de cada uno a la caché, lo abre y lo inicializa. El registro de los
-paneles de GUI que aportan los mods llega en una etapa siguiente.
+cubre el **envase, la carga y los paneles**: descubre, valida y ordena los
+paquetes, extrae el binario de cada uno a la caché, lo abre y lo inicializa; el
+mod recibe la tabla de servicios, se actualiza una vez por frame y puede
+registrar paneles de GUI propios.
 
 ---

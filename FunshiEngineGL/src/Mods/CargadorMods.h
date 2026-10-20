@@ -81,6 +81,11 @@ public:
     // (si el mod lo implementa) y cierra el binario. Deja la lista vacia.
     static void descargar(std::vector<ModCargado>& modsCargados);
 
+    // Actualiza los mods cargados (una vez por frame): llama update() de cada
+    // mod que lo implemente. Un mod puede registrar un panel desde aqui.
+    static void actualizar(std::vector<ModCargado>& modsCargados,
+                           float deltaTime);
+
     // Vuelca el resultado al registro de diagnosticos: un evento de error por
     // cada mod que no se pudo cargar (con su causa) y un resumen de cuantos
     // quedaron en memoria.

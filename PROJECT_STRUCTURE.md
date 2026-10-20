@@ -248,6 +248,12 @@ FunshiEngineGL/                          ← raíz del repo
         │   │                                  libjvm) y estado de scripts (compilando/cargado/error)
         │   ├── Terminal/
         │   │   └── TerminalInterface.h/.cpp ← panel de shell integrado con cwd del proyecto
+        │   ├── ModsGUI/                   ← paneles que aportan los mods cargados
+        │   │   ├── PanelModInterface.h/.cpp  ← ventana de un panel de mod: abre la ventana de
+        │   │   │                              ImGui y llama al callback que entrego el mod
+        │   │   └── PanelesModsInterface.h/.cpp ← colección de esos paneles; se sincroniza con
+        │   │                                  Mods/RegistroPanelesMods cada frame (los mods
+        │   │                                  pueden registrar paneles en caliente)
         │   ├── Tema/
         │   │   └── TemaEditor.h/.cpp      ← aplica el perfil Apariencia al estilo ImGui en vivo
         │   │                                  (tema claro/oscuro, acento RGB en TODOS los roles de ImGui
@@ -316,14 +322,25 @@ FunshiEngineGL/                          ← raíz del repo
         │   ├── LectorZip.h/.cpp          ← manifiesto desde el .fmod y extracción anti zip-slip
         │   ├── GestorMods.h/.cpp         ← descubrimiento en Mods/, orden topológico, ciclos,
         │   │                                ámbito motor/proyecto y reporte a diagnósticos
-        │   ├── ApiMod.h                  ← API pública v0 del mod (POD, tabla de punteros a
-        │   │                                función; append-only con `version` al final)
+        │   ├── ApiMod.h                  ← API pública del mod (POD, tabla de punteros a
+        │   │                                función; append-only, y en la tabla de servicios
+        │   │                                `version` va primero para que su offset no se mueva)
         │   ├── CargaDinamica.h           ← macros multiplataforma de carga de bibliotecas
         │   │                                compartidas (dlopen/LoadLibrary), compartidas con
         │   │                                Behaviour/Backends/BackendCpp.cpp
-        │   └── CargadorMods.h/.cpp       ← carga nativa: extrae el .fmod a la caché, abre el
-        │                                    binario, pide la interfaz por `funshi_mod_api` e
-        │                                    inicializa; descarga en orden inverso al salir
+        │   ├── CargadorMods.h/.cpp       ← carga nativa: extrae el .fmod a la caché, abre el
+        │   │                                binario, pide la interfaz por `funshi_mod_api` e
+        │   │                                inicializa; descarga en orden inverso al salir
+        │   ├── RegistroPanelesMods.h/.cpp ← registro de los paneles de GUI que aportan los
+        │   │                                mods (sin ImGui: testeable headless). Atribuye cada
+        │   │                                panel al mod que lo registró y guarda su estado
+        │   │                                abierto/cerrado por clave de ventana
+        │   ├── ServiciosMods.h/.cpp      ← tabla de servicios que el motor entrega al mod
+        │   │                                (POD, punteros a función). Solo inyecta lo que
+        │   │                                recibe: fuente de datos de la escena, nombre del
+        │   │                                proyecto y contexto de ImGui
+        │   └── DatosEscenaMods.h/.cpp    ← fuente de datos real de la escena para los mods
+        │                                    (única unidad que conoce GameObject/GameScene)
         ├── Rendering/
         │   ├── SceneRenderer.h/.cpp       ← renderizador de la escena: skybox, modelos,
         │   │                                  iluminación, horizonte común de grilla/render,
@@ -1046,7 +1063,7 @@ headless** registrados en CTest (`scripts-java-tests` solo se registra con
 - `manifiesto-assets-tests` (37): manifiesto `SceneAssets.json` (JSON round-trip de
   malla, texturas, script y las seis caras del cubemap, tolerancia a manifiestos
   corruptos y precedencia sobre el `.db`).
-- `mods-tests` (182): sistema de mods `.fmod`: parseo y
+- `mods-tests` (243): sistema de mods `.fmod`: parseo y
   validación de `ManifiestoMod.json` (campos obligatorios, `esquemaVersion`,
   `id` con formato `Autor.Nombre`, `tipo` nativo), semver y rangos
   (`versionMotor`, `versionMin`), lectura del manifiesto desde el ZIP y
@@ -1059,7 +1076,12 @@ headless** registrados en CTest (`scripts-java-tests` solo se registra con
   exportan `funshi_mod_api`) y `mods-test-plugin-sin-simbolo` se empaquetan
   como `.fmod` y se cargan de verdad, cubriendo la extracción a la caché, la
   inicialización, el orden inverso de descarga y los rechazos (sin punto de
-  entrada, sin binario en el paquete, sin el símbolo exportado).
+  entrada, sin binario en el paquete, sin el símbolo exportado). El registro de
+  paneles y la tabla de servicios se cubren aparte: alta de paneles (con su
+  clave de ventana única por mod y panel), atribución al mod en ejecución,
+  estado abierto/cerrado por ventana, retirada de los paneles al descargar el
+  mod, `version` en offset fijo, y el reparto de las consultas de datos de la
+  escena a la fuente inyectada.
 - `orquestador-estado-tests`: transiciones de Depuración/Juego, pausa, solicitud
   consumible de Reset, fin/Escape por estado, teclas del editor y atajos frente
   a ImGui.

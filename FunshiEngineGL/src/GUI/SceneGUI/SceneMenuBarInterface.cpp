@@ -50,6 +50,11 @@ void SceneMenuBarInterface::setVentanas(const std::map<std::string, bool>& estad
     ventanas_ = estados;
 }
 
+void SceneMenuBarInterface::setPanelesMods(
+    const std::vector<std::pair<std::string, std::string>>& paneles) {
+    panelesMods_ = paneles;
+}
+
 void SceneMenuBarInterface::setProyectoActual(const std::string& proyecto) {
     proyectoActual_ = proyecto;
     if (exportDialog_) {
@@ -130,6 +135,26 @@ void SceneMenuBarInterface::contentGUI() {
                 ev.nombreVentana = nombre;
                 ev.abierta = !abierta;
                 busEditor->publish(ev);
+            }
+        }
+        // Paneles que aportan los mods cargados: su lista no es fija (depende
+        // de los mods cargados y de los paneles que cada uno registro), asi que
+        // llega desde afuera. El estado viaja en el mismo mapa de ventanas.
+        if (!panelesMods_.empty()) {
+            ImGui::Separator();
+            ImGui::TextDisabled("Paneles de mods");
+            for (const auto& panel : panelesMods_) {
+                auto it = ventanas_.find(panel.first);
+                const bool abierta =
+                    it != ventanas_.end() ? it->second : true;
+                if (ImGui::MenuItem(panel.second.c_str(), nullptr, abierta) &&
+                    busEditor) {
+                    EditorEvent ev;
+                    ev.type = EditorEventType::VentanaEstadoCambio;
+                    ev.nombreVentana = panel.first.c_str();
+                    ev.abierta = !abierta;
+                    busEditor->publish(ev);
+                }
             }
         }
         ImGui::EndMenu();

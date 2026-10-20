@@ -731,6 +731,8 @@ add_executable(mods-tests
     ${SRC_DIR}/Mods/LectorZip.cpp
     ${SRC_DIR}/Mods/GestorMods.cpp
     ${SRC_DIR}/Mods/CargadorMods.cpp
+    ${SRC_DIR}/Mods/RegistroPanelesMods.cpp
+    ${SRC_DIR}/Mods/ServiciosMods.cpp
     ${SRC_DIR}/Configuracion/ProjectPaths.cpp
     ${SRC_DIR}/Configuracion/ProjectManager.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../tests/ModsTests.cpp

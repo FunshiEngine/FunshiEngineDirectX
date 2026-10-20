@@ -24,7 +24,9 @@
 // ausentes, cortafuegos de esquemaVersion, dependencias/conflictos y paquetes
 // generados en el momento con miniz.
 
+#include <cstdio>
 #include <cstdlib>
+#include <cstddef>
 #include <filesystem>
 #include <fstream>
 #include <iostream>
@@ -43,6 +45,8 @@
 #include "../FunshiEngineGL/src/Mods/LectorZip.h"
 #include "../FunshiEngineGL/src/Mods/ManifiestoMod.h"
 #include "../FunshiEngineGL/src/Mods/ModVersion.h"
+#include "../FunshiEngineGL/src/Mods/RegistroPanelesMods.h"
+#include "../FunshiEngineGL/src/Mods/ServiciosMods.h"
 
 namespace fs = std::filesystem;
 
@@ -167,6 +171,52 @@ void fijarVariableEntorno(const std::string& nombre, const std::string& valor) {
 #else
     setenv(nombre.c_str(), valor.c_str(), 1);
 #endif
+}
+
+// Callback de panel de prueba: no dibuja nada, solo cuenta que se lo llamo.
+int gLlamadasAlPanel = 0;
+void panelDePrueba(const FunshiMods::ContextoMod* contexto, void* datos) {
+    (void)contexto;
+    (void)datos;
+    ++gLlamadasAlPanel;
+}
+
+// Fuente de datos de escena falsa: dos objetos con componentes, para probar
+// que la tabla de servicios reparte las consultas al motor sin conocerlo.
+struct ObjetoFalso {
+    const char* nombre;
+    int componentes;
+};
+const ObjetoFalso kObjetosFalsos[] = {{"Cubo", 2}, {"Esfera", 1}};
+
+int falsoContarObjetos(void*) { return 2; }
+
+bool falsoObtenerObjeto(void*, int indice,
+                         FunshiMods::ApiModGameObject* salida) {
+    if (indice < 0 || indice >= 2) return false;
+    std::snprintf(salida->nombre, sizeof(salida->nombre), "%s",
+                  kObjetosFalsos[indice].nombre);
+    salida->id = indice + 1;
+    salida->cantidadComponentes = kObjetosFalsos[indice].componentes;
+    salida->tieneCollider = indice == 0 ? 1 : 0;
+    return true;
+}
+
+int falsoContarComponentes(void*, int indice) {
+    if (indice < 0 || indice >= 2) return 0;
+    return kObjetosFalsos[indice].componentes;
+}
+
+bool falsoObtenerComponente(void*, int indiceObjeto, int indiceComponente,
+                             FunshiMods::ApiModComponente* salida) {
+    if (indiceObjeto < 0 || indiceObjeto >= 2) return false;
+    if (indiceComponente < 0 ||
+        indiceComponente >= kObjetosFalsos[indiceObjeto].componentes) {
+        return false;
+    }
+    std::snprintf(salida->tipo, sizeof(salida->tipo), "Componente%d",
+                  indiceComponente);
+    return true;
 }
 
 } // namespace
@@ -815,7 +865,7 @@ int main() {
         CHECK(contiene(traza, "A:entrada"),
               "el motor llama la funcion de entrada del mod");
         CHECK(contiene(traza, "A:init"), "el motor inicializa el mod");
-        CHECK(contiene(traza, "A:servicios=1"),
+        CHECK(contiene(traza, "A:servicios=2"),
               "el mod recibe la version de la API de mods");
         CHECK(contiene(traza, "B:init"), "el motor inicializa el segundo mod");
         CHECK(traza.find("A:init") < traza.find("B:init"),
@@ -930,6 +980,252 @@ int main() {
               "el reporte dice que mod no se cargo");
         CHECK(contiene(texto, "funshi_mod_api"),
               "el reporte incluye la causa del fallo");
+    }
+
+    // 13. Registro de paneles de mods: alta de paneles, estado por ventana de
+    //     panel y atribucion al mod que los registra.
+    {
+        using FunshiMods::RegistroPanelesMods;
+        auto& registro = RegistroPanelesMods::global();
+        registro.limpiar();
+
+        CHECK(registro.registrar("Mod.Uno", "panel", "Panel de uno",
+                                  &panelDePrueba, nullptr),
+              "un mod puede registrar un panel");
+        CHECK(registro.paneles().size() == 1,
+              "el panel registrado queda en el registro");
+        CHECK(!registro.paneles().empty() &&
+                  registro.paneles()[0].modId == "Mod.Uno",
+              "el panel guarda el mod al que pertenece");
+        CHECK(!registro.paneles().empty() &&
+                  registro.paneles()[0].titulo == "Panel de uno",
+              "el panel guarda su titulo visible");
+        CHECK(!registro.paneles().empty() &&
+                  registro.paneles()[0].nombreVentana ==
+                      "Mod:Mod.Uno:panel",
+              "la clave de ventana del panel es unica por mod y panel");
+        CHECK(!registro.paneles().empty() && registro.paneles()[0].abierta,
+              "un panel recien registrado se abre");
+
+        CHECK(!registro.registrar("Mod.Uno", "panel", "Otro", &panelDePrueba,
+                                  nullptr),
+              "el mismo id no se puede registrar dos veces en un mod");
+        CHECK(registro.paneles().size() == 1,
+              "el registro no crece con un id repetido");
+        CHECK(registro.registrar("Mod.Dos", "panel", "Panel de dos",
+                                  &panelDePrueba, nullptr),
+              "otro mod puede usar el mismo id de panel");
+        CHECK(registro.paneles().size() == 2,
+              "el panel del segundo mod queda en el registro");
+
+        CHECK(!registro.registrar("Mod.Uno", "", "Sin id", &panelDePrueba,
+                                  nullptr),
+              "un panel sin id no se registra");
+        CHECK(!registro.registrar("Mod.Uno", "otro", "", &panelDePrueba,
+                                  nullptr),
+              "un panel sin titulo no se registra");
+        CHECK(!registro.registrar("Mod.Uno", "otro", "Sin callback", nullptr,
+                                  nullptr),
+              "un panel sin callback no se registra");
+        CHECK(registro.paneles().size() == 2,
+              "los paneles invalidos no llegan al registro");
+
+        // Estado por ventana de panel: es lo que se persiste y lo que alterna
+        // el menu "Ventanas".
+        const std::string ventana = "Mod:Mod.Uno:panel";
+        CHECK(registro.buscarPorVentana(ventana) != nullptr,
+              "el panel se busca por su clave de ventana");
+        CHECK(registro.buscarPorVentana("Mod:Mod.Nadie:panel") == nullptr,
+              "una ventana que no existe no se encuentra");
+        CHECK(registro.establecerEstado(ventana, true),
+              "se puede abrir un panel por su clave de ventana");
+        CHECK(registro.buscarPorVentana(ventana) != nullptr &&
+                  registro.buscarPorVentana(ventana)->abierta,
+              "el panel queda abierto");
+        CHECK(!registro.establecerEstado("Mod:Mod.Nadie:panel", true),
+              "no se puede abrir un panel inexistente");
+        CHECK(registro.establecerEstado(ventana, false),
+              "se puede cerrar un panel por su clave de ventana");
+        CHECK(registro.buscarPorVentana(ventana) != nullptr &&
+                  !registro.buscarPorVentana(ventana)->abierta,
+              "el panel queda cerrado");
+
+        // Atribucion: mientras un mod esta en ejecucion, los paneles que
+        // registra son suyos.
+        CHECK(!registro.registrarDelModEnEjecucion("x", "X", &panelDePrueba,
+                                                    nullptr),
+              "sin mod en ejecucion no se registra ningun panel");
+        registro.fijarModEnEjecucion("Mod.Uno");
+        CHECK(registro.registrarDelModEnEjecucion("propio", "Panel propio",
+                                                    &panelDePrueba, nullptr),
+              "el mod en ejecucion puede registrar un panel");
+        CHECK(registro.paneles().size() == 3,
+              "el panel del mod en ejecucion queda en el registro");
+        CHECK(!registro.paneles().empty() &&
+                  registro.paneles().back().modId == "Mod.Uno",
+              "el panel se atribuye al mod en ejecucion");
+        registro.limpiarModEnEjecucion();
+        CHECK(registro.modEnEjecucion().empty(),
+              "al salir se limpia el mod en ejecucion");
+
+        // Al descargar un mod se van sus paneles, y solo los suyos.
+        registro.quitarMod("Mod.Uno");
+        CHECK(registro.paneles().size() == 1,
+              "los paneles del mod descargado se van");
+        CHECK(!registro.paneles().empty() &&
+                  registro.paneles()[0].modId == "Mod.Dos",
+              "los paneles de los otros mods siguen");
+        registro.limpiar();
+        CHECK(registro.paneles().empty(),
+              "el registro se puede vaciar por completo");
+    }
+
+    // 14. Tabla de servicios de mods: version en offset fijo, registro de
+    //     paneles y consultas de datos de la escena.
+    {
+        using FunshiMods::RegistroPanelesMods;
+        auto& registro = RegistroPanelesMods::global();
+        registro.limpiar();
+
+        const FunshiMods::ApiModServicios* servicios =
+            FunshiMods::tablaServicios();
+        CHECK(servicios != nullptr, "la tabla de servicios existe");
+        CHECK(servicios->version == FunshiMods::versionApiMod,
+              "la tabla ofrece la version actual de la API de mods");
+        CHECK(offsetof(FunshiMods::ApiModServicios, version) == 0,
+              "la version va en el primer campo: un mod compilado contra una "
+              "version anterior lee su version en el offset de siempre");
+        CHECK(servicios->registrarPanel != nullptr &&
+                  servicios->contarObjetos != nullptr &&
+                  servicios->obtenerObjeto != nullptr &&
+                  servicios->contarComponentes != nullptr &&
+                  servicios->obtenerComponente != nullptr &&
+                  servicios->nombreProyecto != nullptr &&
+                  servicios->contextoImGui != nullptr,
+              "la tabla ofrece los servicios de la API v2");
+
+        // Registro de paneles desde la tabla: se atribuye al mod en ejecucion.
+        registro.fijarModEnEjecucion("Mod.Servicios");
+        CHECK(servicios->registrarPanel("panel", "Panel del servicio",
+                                        &panelDePrueba, nullptr),
+              "el mod registra un panel por la tabla de servicios");
+        CHECK(registro.paneles().size() == 1 &&
+                  registro.paneles()[0].modId == "Mod.Servicios",
+              "el panel de la tabla pertenece al mod en ejecucion");
+        CHECK(!servicios->registrarPanel(nullptr, "Sin id", &panelDePrueba,
+                                         nullptr),
+              "un panel sin id se rechaza");
+        registro.limpiarModEnEjecucion();
+
+        // Datos de la escena: sin fuente conectada no hay datos, y no se cae.
+        FunshiMods::inyectarDatosEscena(nullptr);
+        CHECK(servicios->contarObjetos() == 0,
+              "sin escena conectada no hay objetos");
+        FunshiMods::ApiModGameObject objeto;
+        CHECK(!servicios->obtenerObjeto(0, &objeto),
+              "sin escena conectada no se obtiene ningun objeto");
+        CHECK(servicios->contarComponentes(0) == 0,
+              "sin escena conectada no hay componentes");
+        FunshiMods::ApiModComponente componente;
+        CHECK(!servicios->obtenerComponente(0, 0, &componente),
+              "sin escena conectada no se obtiene ningun componente");
+
+        // Con la fuente conectada, las consultas llegan al motor.
+        const FunshiMods::FuenteDatosEscena fuente = {
+            /* .contarObjetos     = */ falsoContarObjetos,
+            /* .obtenerObjeto     = */ falsoObtenerObjeto,
+            /* .contarComponentes = */ falsoContarComponentes,
+            /* .obtenerComponente = */ falsoObtenerComponente,
+            /* .contexto          = */ nullptr,
+        };
+        FunshiMods::inyectarDatosEscena(&fuente);
+        CHECK(servicios->contarObjetos() == 2,
+              "la tabla cuenta los objetos de la escena");
+        CHECK(servicios->obtenerObjeto(0, &objeto),
+              "la tabla obtiene los datos de un objeto");
+        CHECK(std::string(objeto.nombre) == "Cubo",
+              "el objeto trae su nombre");
+        CHECK(objeto.id == 1, "el objeto trae su id");
+        CHECK(objeto.tieneCollider == 1,
+              "el objeto indica si tiene collider");
+        CHECK(objeto.cantidadComponentes == 2,
+              "el objeto indica cuantos componentes tiene");
+        CHECK(!servicios->obtenerObjeto(5, &objeto),
+              "un indice de objeto que no existe se rechaza");
+        CHECK(servicios->contarComponentes(1) == 1,
+              "la tabla cuenta los componentes de un objeto");
+        CHECK(servicios->obtenerComponente(0, 1, &componente),
+              "la tabla obtiene los datos de un componente");
+        CHECK(std::string(componente.tipo) == "Componente1",
+              "el componente trae el nombre de su tipo");
+        CHECK(!servicios->obtenerComponente(0, 9, &componente),
+              "un indice de componente que no existe se rechaza");
+        FunshiMods::inyectarDatosEscena(nullptr);
+
+        // Nombre del proyecto y contexto de ImGui.
+        FunshiMods::fijarNombreProyecto("Mi Juego");
+        CHECK(std::string(servicios->nombreProyecto()) == "Mi Juego",
+              "el mod ve el nombre del proyecto abierto");
+        int contextoFalso = 0;
+        FunshiMods::fijarContextoImGui(&contextoFalso);
+        CHECK(servicios->contextoImGui() == &contextoFalso,
+              "el mod recibe el contexto de ImGui del motor");
+        FunshiMods::fijarContextoImGui(nullptr);
+        CHECK(servicios->contextoImGui() == nullptr,
+              "sin contexto de ImGui la tabla lo entrega vacio");
+        FunshiMods::fijarNombreProyecto("");
+        registro.limpiar();
+    }
+
+    // 15. CargadorMods: los panels de un mod cargado, su actualizacion por
+    //     frame y su retirada al descargarlo.
+    {
+        using FunshiMods::RegistroPanelesMods;
+        auto& registro = RegistroPanelesMods::global();
+        registro.limpiar();
+
+        const fs::path pluginA = FUNSHI_MODS_PLUGIN_A;
+        TempPruebas::CarpetaPrueba carpeta("funshi_mods_paneles_tests");
+        const fs::path mods = carpeta.ruta() / "Mods";
+        const fs::path cache = carpeta.ruta() / "cache";
+        const fs::path archivoLog = carpeta.ruta() / "plugin.log";
+        fijarVariableEntorno("FUNSHI_MODS_TEST_LOG", archivoLog.string());
+
+        const std::string binarioA = leerArchivoTexto(pluginA.string());
+        const std::string entradaA = "bin/" + pluginA.filename().string();
+        CHECK(crearPaqueteConBinario(mods, "a.fmod",
+                                      manifiestoConEntrada("Prueba.ModA", "1.0.0",
+                                                            entradaA),
+                                      entradaA, binarioA),
+              "se empaqueta el mod A con su binario");
+
+        const GestorMods::Resultado descubrimiento = GestorMods::descubrir(
+            {{mods.string(), AmbitoMod::Motor}});
+        CargadorMods::ResultadoCarga carga =
+            CargadorMods::cargar(descubrimiento, cache);
+        CHECK(carga.fallos.empty(), "el mod de prueba se carga sin fallos");
+        CHECK(carga.modsCargados.size() == 1, "se carga el mod de prueba");
+
+        // El mod implementa dibujar(): el motor le abre su propia ventana.
+        CHECK(registro.paneles().size() == 1,
+              "el mod cargado deja un panel en el registro");
+        CHECK(!registro.paneles().empty() &&
+                  registro.paneles()[0].modId == "Prueba.ModA",
+              "el panel pertenece al mod cargado");
+        CHECK(!registro.paneles().empty() &&
+                  registro.paneles()[0].titulo == "Mod de prueba",
+              "el panel propio se titula con el nombre del mod");
+
+        // Actualizacion por frame: el mod recibe update().
+        CargadorMods::actualizar(carga.modsCargados, 0.016f);
+        const std::string traza = leerArchivoTexto(archivoLog.string());
+        CHECK(contiene(traza, "A:update"),
+              "el motor actualiza el mod una vez por frame");
+
+        // Al descargar el mod, sus paneles se van del registro.
+        CargadorMods::descargar(carga.modsCargados);
+        CHECK(registro.paneles().empty(),
+              "los paneles del mod se retiran al descargarlo");
     }
 
     std::cout << (fallos == 0 ? "OK" : "FALLOS") << ": " << (total - fallos)

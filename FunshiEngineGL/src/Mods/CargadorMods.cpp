@@ -21,6 +21,8 @@
 
 #include "CargaDinamica.h"
 #include "LectorZip.h"
+#include "RegistroPanelesMods.h"
+#include "ServiciosMods.h"
 #include "../Configuracion/ProjectPaths.h"
 #include "Diagnosticos/RegistroDiagnosticos.h"
 
@@ -80,11 +82,15 @@ std::filesystem::path localizarBinario(
     return std::filesystem::path();
 }
 
-// La tabla de servicios que el motor entrega a los mods. Es la misma para
-// todos: hoy solo lleva la version de la API.
-const FunshiMods::ApiModServicios& tablaServicios() {
-    static const FunshiMods::ApiModServicios servicios{};
-    return servicios;
+// Id del panel propio del mod: la ventana que el motor abre para el cuando
+// implementa IMod::dibujar.
+constexpr const char* ID_PANEL_PROPIO = "__propio";
+
+// Dibuja el panel propio de un mod (su IMod::dibujar) dentro de la ventana que
+// el motor abre para el. La interfaz del mod viaja como datos opacos.
+void dibujarPanelPropio(const FunshiMods::ContextoMod* contexto, void* datos) {
+    auto* interfaz = static_cast<FunshiMods::IMod*>(datos);
+    if (interfaz && interfaz->dibujar) interfaz->dibujar(contexto);
 }
 
 } // namespace
@@ -219,19 +225,40 @@ CargadorMods::ResultadoCarga CargadorMods::cargar(
         }
 
         // El mod queda inicializado: a partir de aqui el motor lo llama cada
-        // frame y lo descarga al salir.
-        if (interfaz->init) interfaz->init(&tablaServicios());
+        // frame y lo descarga al salir. Durante la llamada el mod es "el mod
+        // en ejecucion": los paneles que registre se atribuyen a el.
+        auto& registroPaneles = FunshiMods::RegistroPanelesMods::global();
+        registroPaneles.fijarModEnEjecucion(manifiesto.id);
+        if (interfaz->init) interfaz->init(FunshiMods::tablaServicios());
+        registroPaneles.limpiarModEnEjecucion();
 
         ModCargado cargado;
         cargado.id = manifiesto.id;
+        // Nombre visible del mod: el que entrega el propio mod (es el que
+        // muestra el menu y los diagnosticos); si no lo da, el del manifiesto
+        // y, en ultimo caso, su id.
         cargado.nombre = manifiesto.nombre.empty() ? manifiesto.id
                                                     : manifiesto.nombre;
+        if (interfaz->nombre) {
+            const char* nombrePropio = interfaz->nombre();
+            if (nombrePropio && *nombrePropio) cargado.nombre = nombrePropio;
+        }
         cargado.version = manifiesto.version;
         cargado.rutaPaquete = paquete.paquete.string();
         cargado.directorioExtraido = carpeta;
         cargado.rutaBinario = binario;
         cargado.handleDll = handle;
         cargado.interfaz = interfaz;
+
+        // Un mod que implementa dibujar() tiene su propia ventana: el motor la
+        // abre con el nombre del mod y llama al callback dentro. Un mod que
+        // registra sus propios paneles puede omitir dibujar().
+        if (interfaz->dibujar) {
+            registroPaneles.registrar(cargado.id, ID_PANEL_PROPIO,
+                                       cargado.nombre, &dibujarPanelPropio,
+                                       interfaz);
+        }
+
         resultado.modsCargados.push_back(std::move(cargado));
     }
 
@@ -244,6 +271,9 @@ void CargadorMods::descargar(std::vector<ModCargado>& modsCargados) {
     for (auto iterador = modsCargados.rbegin();
          iterador != modsCargados.rend(); ++iterador) {
         ModCargado& mod = *iterador;
+        // Los paneles del mod salen del registro antes de cerrar su binario:
+        // sus callbacks apuntan a codigo del mod que ya no estara disponible.
+        FunshiMods::RegistroPanelesMods::global().quitarMod(mod.id);
         if (mod.interfaz && mod.interfaz->shutdown) mod.interfaz->shutdown();
         mod.interfaz = nullptr;
         if (mod.handleDll) {
@@ -252,6 +282,19 @@ void CargadorMods::descargar(std::vector<ModCargado>& modsCargados) {
         }
     }
     modsCargados.clear();
+}
+
+void CargadorMods::actualizar(std::vector<ModCargado>& modsCargados,
+                              float deltaTime) {
+    auto& registroPaneles = FunshiMods::RegistroPanelesMods::global();
+    for (ModCargado& mod : modsCargados) {
+        if (!mod.interfaz || !mod.interfaz->update) continue;
+        // Durante la llamada el mod es "el mod en ejecucion": los paneles que
+        // registre desde aqui se atribuyen a el.
+        registroPaneles.fijarModEnEjecucion(mod.id);
+        mod.interfaz->update(deltaTime);
+        registroPaneles.limpiarModEnEjecucion();
+    }
 }
 
 void CargadorMods::reportar(const ResultadoCarga& resultado,

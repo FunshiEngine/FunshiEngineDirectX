@@ -22,6 +22,7 @@
 #include "../Objetos/Modelos3D.h"
 #include "../Scenes/EditorController.h"
 #include "../Scenes/SceneRegistry.h"
+#include "../Mods/RegistroPanelesMods.h"
 
 #include <cstdlib>
 #include <vector>
@@ -50,6 +51,7 @@ GUIManager::GUIManager(GLFWwindow* window)
     menuBarGUI->setIconosGUI(iconosGUI.get());
     statusBarGUI = std::make_unique<StatusBarInterface>(true);
     terminalGUI = std::make_unique<TerminalInterface>(true);
+    panelesModsGUI = std::make_unique<PanelesModsInterface>();
     treeFilesGUI->setIconosGUI(iconosGUI.get());
     contentOfThisFolder->setIconosGUI(iconosGUI.get());
     selecteableGUI->setIconosGUI(iconosGUI.get());
@@ -135,6 +137,16 @@ void GUIManager::restaurarEstadosVentanas(const std::map<std::string, bool>& est
         auto it = estados.find(ventana->getNameGui());
         if (it != estados.end()) ventana->setStateGui(it->second);
     }
+    // Los paneles de los mods no son ventanas del registro central: su estado
+    // vive en el registro de paneles de mods (por su clave de ventana).
+    for (const FunshiMods::PanelMod& panel :
+         FunshiMods::RegistroPanelesMods::global().paneles()) {
+        auto it = estados.find(panel.nombreVentana);
+        if (it != estados.end()) {
+            FunshiMods::RegistroPanelesMods::global().establecerEstado(
+                panel.nombreVentana, it->second);
+        }
+    }
 }
 
 std::vector<GeneralUserInterface*> GUIManager::ventanasPersistentes() const {
@@ -151,6 +163,12 @@ std::map<std::string, bool> GUIManager::obtenerEstadosVentanas() const {
         if (!ventana) continue;
         estados[ventana->getNameGui()] = ventana->getStateGui();
     }
+    // Los paneles de los mods se persisten con la misma clave con la que se
+    // registra la ventana (unica por mod y panel).
+    for (const FunshiMods::PanelMod& panel :
+         FunshiMods::RegistroPanelesMods::global().paneles()) {
+        estados[panel.nombreVentana] = panel.abierta;
+    }
     return estados;
 }
 
@@ -161,10 +179,17 @@ void GUIManager::setEstadoVentana(const std::string& nombre, bool abierta) {
             return;
         }
     }
+    // Si no es una ventana del registro central, puede ser el panel de un
+    // mod: su estado vive en el registro de paneles de mods.
+    FunshiMods::RegistroPanelesMods::global().establecerEstado(nombre, abierta);
 }
 
 void GUIManager::sincronizarVentanasMenu() {
-    if (menuBarGUI) menuBarGUI->setVentanas(obtenerEstadosVentanas());
+    if (!menuBarGUI) return;
+    menuBarGUI->setVentanas(obtenerEstadosVentanas());
+    // Los paneles de los mods no son ventanas fijas: su lista cambia con los
+    // mods que se cargan y descargan, asi que el menu la recibe cada frame.
+    if (panelesModsGUI) menuBarGUI->setPanelesMods(panelesModsGUI->etiquetas());
 }
 
 void GUIManager::configurarProyecto(const std::string& nombreProyecto) {
