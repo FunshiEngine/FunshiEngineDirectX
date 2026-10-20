@@ -92,15 +92,43 @@ GameExporter::~GameExporter() {
 }
 
 void GameExporter::iniciar() {
-    terminado_ = false;
+    // Un exportador no puede tener dos exportaciones vivas: si la anterior
+    // sigue en curso, se espera a que termine. Asignar a un std::thread que ya
+    // es joinable termina el proceso.
+    if (hiloExportacion_.joinable()) hiloExportacion_.join();
+    terminado_.store(false, std::memory_order_release);
+    exito_.store(false, std::memory_order_release);
+    {
+        std::lock_guard<std::mutex> bloqueo(mutexEstado_);
+        mensajeFinal_.clear();
+    }
     hiloExportacion_ = std::thread(&GameExporter::runExportacion, this);
 }
 
 bool GameExporter::haTerminado() const noexcept {
-    return terminado_;
+    return terminado_.load(std::memory_order_acquire);
+}
+
+std::string GameExporter::mensajeFinal() const {
+    std::lock_guard<std::mutex> bloqueo(mutexEstado_);
+    return mensajeFinal_;
 }
 
 void GameExporter::runExportacion() {
+    try {
+        runExportacionInterna();
+    } catch (const std::exception& excepcion) {
+        // La excepcion no puede escapar al hilo: dejaria el exportador sin
+        // marcar como terminado y quien espera (el dialogo) no sabria
+        // cuando acabar.
+        finalizar(false, std::string("Error inesperado en la exportación: ") +
+                             excepcion.what());
+    } catch (...) {
+        finalizar(false, "Error inesperado en la exportación");
+    }
+}
+
+void GameExporter::runExportacionInterna() {
     log("Iniciando exportación de: " + cfg_.nombreProyectoExportado);
     progreso(0.05f, "Preparando directorio de build");
 
@@ -474,8 +502,13 @@ void GameExporter::progreso(float p, const std::string& etapa) {
 }
 
 void GameExporter::finalizar(bool ok, const std::string& msg) {
-    terminado_ = true;
-    exito_ = ok;
-    mensajeFinal_ = msg;
+    exito_.store(ok, std::memory_order_release);
+    {
+        std::lock_guard<std::mutex> bloqueo(mutexEstado_);
+        mensajeFinal_ = msg;
+    }
+    // El mensaje se escribe antes del indicador: quien vea que la
+    // exportacion termino ve tambien el mensaje final.
+    terminado_.store(true, std::memory_order_release);
     if (cfg_.onFinalizado) cfg_.onFinalizado(ok, msg);
 }

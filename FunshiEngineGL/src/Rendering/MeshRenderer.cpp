@@ -85,9 +85,15 @@ void MeshRenderer::clearCache() {
 
 void MeshRenderer::setLuces(const LightData* luces, int lucesCount,
                             const float* globalAmbient) {
-    globalAmbient_[0] = globalAmbient[0];
-    globalAmbient_[1] = globalAmbient[1];
-    globalAmbient_[2] = globalAmbient[2];
+    // El ambiente global puede no venir (el contexto de frame lo deja en
+    // null por defecto): leerlo sin comprobar seria desreferenciar un
+    // puntero nulo. Sin ambiente se usa el mismo valor por defecto que
+    // declara el sistema de luces.
+    static const float kAmbientePorDefecto[3] = {0.15f, 0.15f, 0.15f};
+    const float* ambiente = globalAmbient ? globalAmbient : kAmbientePorDefecto;
+    globalAmbient_[0] = ambiente[0];
+    globalAmbient_[1] = ambiente[1];
+    globalAmbient_[2] = ambiente[2];
 
     luces_.clear();
     if (luces && lucesCount > 0)

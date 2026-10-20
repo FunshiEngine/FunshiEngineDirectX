@@ -19,6 +19,8 @@
 #ifndef GAMEEXPORTER_H
 #define GAMEEXPORTER_H
 
+#include <atomic>
+#include <mutex>
 #include <string>
 #include <functional>
 #include <thread>
@@ -56,14 +58,21 @@ public:
     // Verifica si la exportación terminó (para polling desde el editor).
     bool haTerminado() const noexcept;
 
+    // Mensaje final de la exportación (vacío mientras no haya terminado).
+    std::string mensajeFinal() const;
+
 private:
     Config cfg_;
     std::thread hiloExportacion_;
-    bool terminado_ = false;
-    bool exito_ = false;
+    // El hilo de exportacion escribe el estado y el hilo del editor lo lee:
+    // los indicadores son atomicos y el mensaje va con un candado.
+    std::atomic<bool> terminado_{false};
+    std::atomic<bool> exito_{false};
+    mutable std::mutex mutexEstado_;
     std::string mensajeFinal_;
 
     void runExportacion();
+    void runExportacionInterna();
     bool generarProyectoCMake(const std::string& buildDir);
     bool compilarEngineRuntime(const std::string& buildDir);
     bool compilarJuego(const std::string& buildDir);

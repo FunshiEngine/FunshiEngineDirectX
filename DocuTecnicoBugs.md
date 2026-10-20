@@ -113,6 +113,10 @@ recorrer(destFolder); // Ahora SÍ re-lee porque cache inválido
 | **R18 — Generar por configuración lo que depende de la configuración** | Un generador multi-config (Visual Studio, Ninja Multi-Config) evalúa lo generado una vez por configuración: lo que dependa de la configuración (la ruta de un binario, `$<TARGET_FILE:...>`) no puede vivir en un único archivo compartido, o CMake aborta con `Evaluation file to be written multiple times with different content`. El archivo va a `.../$<CONFIG>/...` y el include del consumidor a la carpeta de su configuración | `FunshiEngineGL/CMakeLists.txt` (cabecera generada de los plugins de prueba; ver §14.4) |
 | **R19 — Declarar cada tipo con el mismo class-key en la definición y en la declaración adelantada** | MSVC mete el class-key (`class`/`struct`) en el nombre del símbolo: si un header adelanta el tipo con un key y otro lo define con el otro, la definición y la referencia se llaman distinto y el enlazado falla con LNK2019 aunque el código sea idéntico (GCC y Clang lo ignoran). La declaración adelantada copia el key de la definición y el aviso que lo anticipa (C4099 en MSVC, `-Wmismatched-tags` en GCC y Clang) se convierte en error | `FunshiEngineGL/src/Rendering/MeshRenderer.h`, `FunshiEngineGL/src/Rendering/DibujoModelo.h` (ver §15.4) |
 | **R21 — Identificar por el tipo propio de la biblioteca, no por RTTI** | Una biblioteca compilada sin información de tipos (`/GR-` en MSVC) emite sus tablas de métodos virtuales sin puntero a typeinfo: el `dynamic_cast` lee ese puntero y el proceso aborta con un *access violation* dentro de `__RTDynamicCast`. El paquete de Bullet de vcpkg se compila así a propósito (la feature `rtti` está invertida). Para reconocer una clase hay que usar la API propia de la biblioteca (en Bullet, el "shape type" que devuelve `getShapeType()`) y un `static_cast` tras la comprobación | `FunshiEngineGL/src/Objetos/Componentes/Colliders/TiposShapeBullet.h` (ver §17.4) |
+| **R22 — Acotar toda longitud leída del disco** | La longitud de un bloque la controla el archivo: usarla tal cual como tamaño de reserva lanza `std::length_error` o agota la memoria, y las dos terminan en `std::terminate`. Toda longitud se acota con un máximo por tipo **y** se contrasta con el contenido que queda en el stream; un dato inválido corta la lectura con un error, nunca aborta | `FunshiEngineGL/src/Herramientas/LimitesSerializacion.h` (ver §18.4) |
+| **R23 — La etiqueta manda sobre el dato guardado** | Un `std::variant` solo admite una alternativa activa: si el tipo del campo cambió desde que se guardó, el valor guardado ya no se puede reinterpretar y leerlo lanza `std::bad_variant_access`. Al emparejar por nombre, si la etiqueta no coincide con la del campo, se usa el valor por defecto del campo | `FunshiEngineGL/src/Behaviour/Reflection/BehaviourReflection.cpp` (ver §19.4) |
+| **R24 — El avance del iterador va en la cláusula de incremento** | En un bucle sobre una lista enlazada, con el avance al final del cuerpo, un `continue` lo salta y el bucle gira sobre el mismo elemento para siempre. Con el avance en la cláusula de incremento del `for`, ninguna sentencia del cuerpo puede saltárselo | `FunshiEngineGL/src/Rendering/SceneRenderer.cpp` (ver §20.4) |
+| **R25 — La consulta de disponibilidad es el resultado de la carga** | Si la carga de punteros a funciones comprueba treinta funciones y la consulta de disponibilidad mira una sola, existe un estado en el que la carga falló y la consulta dice que todo está bien: el motor llama a un puntero nulo. La consulta devuelve el resultado de la carga | `FunshiEngineGL/src/Rendering/Backend/GLFuncs.h` (ver §21.4) |
 
 ---
 
@@ -1212,7 +1216,243 @@ invertida `bullet3[rtti]`.
 
 ---
 
-## 18. Historial de Cambios
+## 18. Decimocuarto concepto: **Una longitud leída del binario usada como tamaño de reserva**
+
+### 18.1 Patrón
+
+El motor serializa cada bloque de datos precededido de su longitud: la ruta de
+un script, el nombre de un clip, la cantidad de valores de un campo
+reflejado. Esa longitud la **controla el archivo**: si el archivo está
+corrupto o desalineado, el valor puede ser enorme.
+
+Usarla tal cual como tamaño de reserva hace que `std::string::resize` lance
+`std::length_error` (por encima del máximo de `size_t`) o que `bad_alloc`
+agote la memoria (por debajo). Las dos excepciones terminan en
+`std::terminate`: el motor **aborta** en vez de rechazar el archivo.
+
+### 18.2 Síntomas
+
+- El motor muere al cargar una escena, un proyecto o un script: `terminate
+  called after throwing an instance of 'std::length_error'`, sin traza útil.
+- Solo ocurre con archivos dañados; con archivos válidos nunca se ve.
+- El fallo parece aleatorio: depende de qué byte del archivo quedó
+  desalineado.
+
+### 18.3 Causa
+
+La longitud se leía del archivo y se pasaba directamente al `resize` o al
+constructor del `std::vector`, sin cota ni contraste con el contenido que
+quedaba en el stream.
+
+### 18.4 Fix canónico (Patrón R22 — acotar la longitud y contrastarla con el contenido restante)
+
+Toda longitud o cantidad leída del disco se valida con **dos** filtros:
+
+1. **Una cota por tipo de dato** (ruta, nombre, texto, cantidad de elementos),
+   en un único sitio compartido: `Herramientas/LimitesSerializacion.h`.
+2. **El contenido restante**: la longitud no puede anunciar más bytes de los
+   que quedan en el archivo.
+
+Un dato inválido **corta la lectura del objeto con un error claro** (el stream
+queda marcado como fallido y el llamador abandona) y el proceso sigue vivo.
+
+El helper `leerLongitud` centraliza la operación:
+
+```cpp
+LimitesSerializacion::leerLongitud(archivo, longitud,
+                                    LimitesSerializacion::kRuta, 1, 0);
+```
+
+El último parámetro es el mínimo admisible: `1` para un texto (no puede
+estar vacío) y `0` para una cantidad (una colección puede estar vacía).
+
+### 18.5 Checklist de mitigación
+
+- [ ] Toda longitud o cantidad leída del disco pasa por `leerLongitud`.
+- [ ] La cota depende del **tipo** del dato, no es un número único.
+- [ ] Un dato inválido corta la lectura con un error; nunca aborta.
+- [ ] Hay un test headless que escribe un archivo con longitudes absurdas y
+      comprueba que la lectura se corta y el proceso sigue vivo.
+
+### 18.6 Registro de Instancias
+
+| # | Ubicación | Operación | Herramienta | Fix Aplicado | Commit |
+|---|-----------|-----------|-------------|--------------|--------|
+| 1 | `FunshiEngineGL/src/Objetos/Componentes/Script.cpp` | Leer la ruta del fuente y el nombre de la clase de un script serializado | GCC/Clang y MSVC | Las tres longitudes se leen con `leerLongitud` (Patrón R22) | `fix(serializacion): acotar las longitudes leidas del binario` |
+| 2 | `FunshiEngineGL/src/Objetos/Componentes/AudioSource.cpp` | Leer el nombre del clip de una fuente de audio | GCC/Clang y MSVC | La longitud se lee con `leerLongitud` (Patrón R22) | `fix(serializacion): acotar las longitudes leidas del binario` |
+| 3 | `FunshiEngineGL/src/Behaviour/Reflection/BehaviourReflection.cpp` | Leer el árbol de valores de un comportamiento (nombres, cantidades, grupos) | GCC/Clang y MSVC | Longitudes acotadas, cantidad de elementos acotada y tope de anidamiento (Patrón R22) | `fix(serializacion): acotar las longitudes leidas del binario` |
+
+---
+
+## 19. Decimoquinto concepto: **La etiqueta de un valor guardado deja de corresponder a su campo**
+
+### 19.1 Patrón
+
+Un valor serializado guarda **su tipo** junto al dato. Si el tipo del campo
+cambia en el código (un texto que pasa a ser un entero, una lista que pasa a
+ser un grupo), el archivo conserva la etiqueta vieja: el valor guardado y la
+etiqueta que el código espera ya no coinciden.
+
+El `std::variant` que envuelve el dato solo admite **una** alternativa
+activa. Leerlo con el tipo que espera el código lanza `std::bad_variant_access`.
+
+### 19.2 Síntomas
+
+- El motor aborta **dentro del render de la interfaz** (el `std::get` se
+  ejecuta al dibujar el panel del inspector): `terminate called after
+  throwing an instance of 'std::bad_variant_access'`.
+- El fallo aparece al abrir una escena guardada antes de un cambio de tipo en
+  un script, no al guardar.
+- El proceso muere en vez de descartar el dato que ya no es válido.
+
+### 19.3 Causa
+
+Al emparejar los valores guardados con los campos del script, el motor
+conservaba el valor tal cual, incluida su etiqueta. El emparejado es por
+nombre (a propósito, para sobrevivir a reordenamientos), pero no comprobaba
+que el tipo del valor guardado fuera el que declara el campo.
+
+### 19.4 Fix canónico (Patrón R23 — cuando el tipo guardado no es el del campo, se usa el valor por defecto)
+
+Al emparejar, si la etiqueta del valor guardado **no** coincide con la del
+campo actual, el valor guardado se descarta y se usa el valor por defecto del
+campo: un dato que ya no se puede reinterpretar no se arrastra.
+
+La regla general: **la etiqueta manda sobre el dato**. El valor guardado solo
+se conserva cuando su tipo sigue siendo válido.
+
+Como segunda barrera, el Inspector no debe leer el `variant` con un `std::get`
+a ciegas: el acceso se hace sobre el tipo que la etiqueta declara.
+
+### 19.5 Checklist de mitigación
+
+- [ ] El emparejado por nombre comprueba también el tipo.
+- [ ] Un valor cuyo tipo ya no es válido se sustituye por el valor por
+      defecto del campo.
+- [ ] Ningún `std::get` sobre un `variant` cuya alternativa activa no se ha
+      comprobado antes.
+- [ ] Hay un test headless que empareja un valor guardado con un tipo distinto
+      al del campo y comprueba que el acceso no lanza.
+
+### 19.6 Registro de Instancias
+
+| # | Ubicación | Operación | Herramienta | Fix Aplicado | Commit |
+|---|-----------|-----------|-------------|--------------|--------|
+| 1 | `FunshiEngineGL/src/Behaviour/Reflection/BehaviourReflection.cpp` | Emparejar el árbol de valores de la escena con los campos del script | GCC/Clang y MSVC | Si la etiqueta no coincide, se usa el valor por defecto del campo (Patrón R23) | `fix(reflexion): el valor guardado con otro tipo no se arrastra` |
+
+---
+
+## 20. Decimosexto concepto: **Un `continue` salta el avance del iterador y el bucle no termina**
+
+### 20.1 Patrón
+
+En un bucle que recorre una lista enlazada, el avance al siguiente elemento
+suele escribirse **al final del cuerpo**. Un `continue` dentro del cuerpo
+salta ese avance: el bucle vuelve a la condición con el **mismo** elemento y
+no progresa nunca.
+
+### 20.2 Síntomas
+
+- La aplicación se cuelga (no termina) en una operación concreta.
+- El bucle repite el mismo trabajo: se ven crear y destruir el mismo recurso
+  una y otra vez.
+- El cuelgue depende del estado (si la condición que dispara el `continue` se
+  cumple), así que no aparece siempre.
+
+### 20.3 Causa
+
+El avance del iterador estaba al final del cuerpo del `while`, y una guarda
+interior usaba `continue` para saltarlo.
+
+### 20.4 Fix canónico (Patrón R24 — el avance va en la cláusula de incremento)
+
+El avance del iterador se escribe en la **cláusula de incremento** del `for`.
+Así, ninguna sentencia del cuerpo puede saltárselo: el `continue` pasa a la
+siguiente vuelta, que avanza el iterador por construcción.
+
+```cpp
+for (auto* pos = lista->first(); pos && pos->getElement();
+     pos = (pos != lista->last()) ? lista->next(pos) : nullptr) {
+    ...
+}
+```
+
+Además, la guarda que significa "no hay backend" se evalúa **antes** de crear
+o enlazar recursos: salir del bucle a mitad de una operación deja el estado
+gráfico a medias.
+
+### 20.5 Checklist de mitigación
+
+- [ ] Los bucles sobre listas del motor avanzan en la cláusula de incremento.
+- [ ] Ningún `continue` en un bucle con avance manual al final del cuerpo.
+- [ ] Las guardas que abandonan el bucle se evalúan antes de tocar recursos.
+- [ ] Cuando el fallo depende del estado, hay un test headless o una sonda
+      que lo reproduce de forma determinista.
+
+### 20.6 Registro de Instancias
+
+| # | Ubicación | Operación | Herramienta | Fix Aplicado | Commit |
+|---|-----------|-----------|-------------|--------------|--------|
+| 1 | `FunshiEngineGL/src/Rendering/SceneRenderer.cpp` | Dibujar las vistas previas de cámara en el editor | GCC/Clang y MSVC | El avance va en la cláusula de incremento del `for` y la guarda se evalúa antes de crear el objetivo de render (Patrón R24) | `fix(render): el avance del iterador no puede quedar detras de un continue` |
+
+---
+
+## 21. Decimoséptimo concepto: **Una comprobación de disponibilidad más débil que la inicialización que la respalda**
+
+### 21.1 Patrón
+
+Un subsistema carga funciones por puntero (OpenGL, Vulkan, un driver) y expone
+dos cosas: el resultado de la carga (qué funciones se resolvieron) y una
+consulta de disponibilidad. Si la consulta comprueba **menos** que la
+carga, entonces hay un estado en el que la carga falló y la consulta dice que
+todo está bien.
+
+### 21.2 Síntomas
+
+- Un fallo que solo aparece en máquinas con un driver concreto: el motor
+  sigue el camino de dibujo y llama a un puntero de función **nulo**.
+- El symptoms no apunta al subsistema: el crash ocurre dentro de la llamada
+  nula, lejos de la causa.
+
+### 21.3 Causa
+
+La carga comprobaba los treinta punteros que el motor usa, pero la consulta de
+disponibilidad miraba **uno solo**.
+
+### 21.4 Fix canónico (Patrón R25 — la consulta de disponibilidad es el resultado de la carga)
+
+La carga guarda su resultado en una variable y la consulta la devuelve tal
+cual. Las dos respuestas no pueden discrepar.
+
+```cpp
+inline bool inicializado = false;
+
+inline bool init() {
+    // ... carga de las funciones ...
+    inicializado = pfnA && pfnB && /* todas las que se usan */;
+    return inicializado;
+}
+
+inline bool available() { return inicializado; }
+```
+
+### 21.5 Checklist de mitigación
+
+- [ ] La consulta de disponibilidad devuelve el resultado de la carga, no una
+      comprobación parcial propia.
+- [ ] Toda función cargada por puntero se consulta antes de usarla.
+- [ ] Un estado "no disponible" se comprueba **antes** de crear o enlazar
+      recursos.
+
+### 21.6 Registro de Instancias
+
+| # | Ubicación | Operación | Herramienta | Fix Aplicado | Commit |
+|---|-----------|-----------|-------------|--------------|--------|
+| 1 | `FunshiEngineGL/src/Rendering/Backend/GLFuncs.h` | Decidir si el backend de OpenGL puede dibujar | GCC/Clang y MSVC | `available()` devuelve el resultado de `init()`, que exige las treinta funciones (Patrón R25) | `fix(render): la disponibilidad del backend comprueba todas las funciones` |
+
+---
+
+## 22. Historial de Cambios
 
 | Fecha | Autor | Cambio |
 |-------|-------|--------|
@@ -1233,10 +1473,14 @@ invertida `bullet3[rtti]`.
 | 2026-10-20 | Gianfranco Ivan Enrique | Añadido el undécimo concepto (Patrón R19, un tipo declarado con un class-key distinto al de su definición produce dos símbolos distintos) con sus instancias #1–#2, a raíz del LNK2019 al enlazar el motor con Visual Studio: `Mesh` e `Image` se adelantaban como `class` y se definen como `struct`, y MSVC distingue los dos nombres de símbolo. |
 | 2026-10-20 | Gianfranco Ivan Enrique | Añadido el duodécimo concepto (Patrón R20, el nombre de un tipo persistido depende del compilador) con sus instancias #1–#5, a raíz del fallo de `prefab-tests` en Windows: MSVC escribe `"class Transform"` en `typeid().name()` y el recorte manual del mangling de GCC truncaba los nombres con `E`. |
 | 2026-10-20 | Gianfranco Ivan Enrique | Añadido el decimotercer concepto (Patrón R21, una biblioteca de terceros compilada sin RTTI invalida el `dynamic_cast`) con sus instancias #1–#2, a raíz del aborto de `tilemap-tests` en Windows: el paquete de Bullet de vcpkg se compila con `USE_MSVC_DISABLE_RTTI=ON` y el `dynamic_cast` sobre una shape leía un typeinfo nulo. |
+| 2026-10-20 | Gianfranco Ivan Enrique | Añadido el decimocuarto concepto (Patrón R22, una longitud leída del binario usada como tamaño de reserva) con sus instancias #1–#3: las longitudes de la ruta del script, del nombre del clip y del árbol de valores se acotaban y se contrastaban con el contenido restante; sin cota, un archivo corrupto abortaba el motor con `std::length_error`. |
+| 2026-10-20 | Gianfranco Ivan Enrique | Añadido el decimoquinto concepto (Patrón R23, la etiqueta de un valor guardado deja de corresponder a su campo) con su instancia #1: un script que cambia el tipo de un campo dejaba el `std::variant` del inspector con la alternativa vieja y el render de ImGui abortaba con `std::bad_variant_access`. |
+| 2026-10-20 | Gianfranco Ivan Enrique | Añadido el decimosexto concepto (Patrón R24, un `continue` salta el avance del iterador y el bucle no termina) con su instancia #1: la pasada de vistas previas del editor giraba sobre el mismo elemento si el backend no estaba disponible. |
+| 2026-10-20 | Gianfranco Ivan Enrique | Añadido el decimoséptimo concepto (Patrón R25, una comprobación de disponibilidad más débil que la inicialización que la respalda) con su instancia #1: `available()` del backend de OpenGL comprobaba una sola de las treinta funciones que la carga exige. |
 
 ---
 
-*Este documento es vivo: cada nuevo bug de esta clase debe registrarse en la tabla de su concepto (§2 para el primero, §6.5 para el segundo, §7.5 para el tercero, §8.5 para el cuarto, §9.5 para el quinto), §14.6 para el décimo, §15.6 para el undécimo, §16.6 para el duodécimo, §17.6 para el decimotercer y, si revela un patrón nuevo, añadirse a §4.*
+*Este documento es vivo: cada nuevo bug de esta clase debe registrarse en la tabla de su concepto (§2 para el primero, §6.5 para el segundo, §7.5 para el tercero, §8.5 para el cuarto, §9.5 para el quinto), §14.6 para el décimo, §15.6 para el undécimo, §16.6 para el duodécimo, §17.6 para el decimotercer, §18.6 para el decimocuarto, §19.6 para el decimoquinto, §20.6 para el decimosexto y §21.6 para el decimoséptimo; si revela un patrón nuevo, añadirse a §4.*
 ## CEF: "Invalid file descriptor to ICU data received" en InitializeICU
 
 - **Síntoma**: al arrancar el motor con `FUNSHI_CEF=ON`, `CefInitialize` aborta en

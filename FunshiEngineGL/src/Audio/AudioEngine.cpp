@@ -205,16 +205,18 @@ int AudioEngine::reproducir(const std::string& clip, float volumen, bool bucle) 
     c.tipo = TipoComando::Reproducir;
     c.volumen = volumen;
     c.bucle = bucle;
+    int handle = -1;
     {
         std::lock_guard<std::mutex> lock(impl_->mtx);
         const auto it = impl_->clips.find(clip);
         if (it == impl_->clips.end()) return -1; // clip no registrado
         c.clip = it->second;
-        c.handle = impl_->proximoHandle++;
+        handle = impl_->proximoHandle++;
+        c.handle = handle;
         impl_->pila.push(std::move(c));
     }
     impl_->cv.notify_one();
-    return c.handle;
+    return handle;
 }
 
 void AudioEngine::detener(int handle) {
@@ -251,7 +253,11 @@ void AudioEngine::setVolumenMaestro(float volumen) {
 
 void AudioEngine::esperarPilaVacia() {
     std::unique_lock<std::mutex> lock(impl_->mtx);
-    impl_->cv.wait(lock, [this] { return impl_->pila.empty() && !impl_->enEjecucion; });
+    // Con el motor cerrado ya nobody drena la cola: seguir esperando seria
+    // esperar forever.
+    impl_->cv.wait(lock, [this] {
+        return impl_->cerrado || (impl_->pila.empty() && !impl_->enEjecucion);
+    });
 }
 
 std::size_t AudioEngine::pendientes() const {
