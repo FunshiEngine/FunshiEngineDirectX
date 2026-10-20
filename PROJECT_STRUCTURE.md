@@ -913,7 +913,9 @@ el patrón Strategy + registro de los backends de audio y de scripts:
   estado JSON a la página), `leerSalida` (recoge `FunshiUI.salida`), `render`
   (que devuelve el handle de textura para ImGui), el input neutral (ratón con
   `BotonRatonWebUI`, rueda, teclado por código GLFW y foco), `descargar` y
-  `apagar`.
+  `apagar`. Ninguno de esos métodos tiene comportamiento por defecto: cada
+  backend los declara, de modo que un backend incompleto no compila en vez de
+  heredar un silencio que el motor no ve.
 - `WebUIRuntime` es la fachada de despacho: mantiene un registro de backends y
   selecciona el activo (por configuración, con fallback al nulo ante un nombre
   desconocido). Expone el ciclo global (`ejecutarSubproceso`, `inicializar`,
@@ -1330,7 +1332,9 @@ cargar, así que mover la raíz no invalida las escenas existentes.
   GUI, selección, física y vistas lineales solo mantienen referencias raw no propietarias.
 - `PhysicsEngine` es una fachada PIMPL con el backend inyectado (`IPhysicsBackend`):
   el header no expone Bullet y la fachada puede existir sin mundo (útil para pruebas
-  y para el editor sin simulación).
+  y para el editor sin simulación). El contrato no tiene comportamiento por
+  defecto: el backend declara los contactos que entrega y la gravedad global que
+  maneja, así que uno incompleto no compila.
 - `GameScene` sigue siendo un coordinador amplio: mezcla ciclo de frame, render,
   GUI, física, gizmo y vistas previas. La extracción de `SceneRenderer`,
   `PhysicsSystem` y `ScriptSystem` aliviaría esa responsabilidad.
