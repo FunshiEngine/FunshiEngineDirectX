@@ -34,6 +34,11 @@
 class GestorMusica {
 public:
     explicit GestorMusica(IMusicaBackend& backend);
+    // Cierra las pistas que sigan abiertas (las que el reproductor abrio).
+    ~GestorMusica();
+
+    GestorMusica(const GestorMusica&) = delete;
+    GestorMusica& operator=(const GestorMusica&) = delete;
 
     // --- catalogo ---
     // Registra una pista del proyecto (nombre -> ruta). El orden de registro

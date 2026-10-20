@@ -32,6 +32,18 @@ float limitar(float valor, float minimo, float maximo) {
 
 GestorMusica::GestorMusica(IMusicaBackend& backend) : backend_(backend) {}
 
+GestorMusica::~GestorMusica() {
+    // Las pistas que el reproductor abrio se cierran aqui: si no, quedan
+    // abiertas en el backend.
+    const int ids[] = {idActual_, idSiguiente_, fundido_.idSaliente,
+                       fundido_.idEntrante};
+    for (const int id : ids) {
+        if (id == 0) continue;
+        backend_.detenerPista(id);
+        backend_.cerrarPista(id);
+    }
+}
+
 // --- catalogo ---
 
 void GestorMusica::registrarPista(const std::string& nombre,

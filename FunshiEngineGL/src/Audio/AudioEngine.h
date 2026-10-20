@@ -36,7 +36,8 @@ class IAudioBackend;
 // reproduccion nunca frena el bucle del editor.
 //
 // Los clips se referencian por NOMBRE (registrados con registrarClip); la GUI y
-// los componentes hablan en terminos de nombres, nunca de rutas.
+// los componentes hablan en terminos de nombres, nunca de rutas. Lo mismo con
+// las pistas de musica (registradas con registrarMusica).
 class AudioEngine {
 public:
     // Con nullptr monta NullAudioBackend (headless/tests/CI). El ctor sin
@@ -65,6 +66,34 @@ public:
     void detener(int handle);
     void detenerTodo();
     void setVolumenMaestro(float volumen);
+
+    // --- Musica -------------------------------------------------------
+    // La musica es un contrato aparte del de los efectos (IMusicaBackend):
+    // una pista sona mucho rato, su volumen cambia mientras suena, se funde
+    // con otra y se puede consultar su posicion. El reproductor (GestorMusica)
+    // vive en el hilo de audio, asi que todo esto se encola igual que los
+    // efectos y el hilo del juego nunca toca el hardware de audio.
+    //
+    // Registro nombre->ruta de pistas (hilo de juego), igual que los clips.
+    void registrarMusica(const std::string& nombre, const std::string& ruta);
+    bool musicaRegistrada(const std::string& nombre) const;
+    void limpiarMusicas();
+    std::vector<std::string> nombresMusicas() const; // snapshot para la GUI
+
+    // Reproduce una pista del catalogo. Devuelve false si la pista no esta
+    // registrada. duracionFundido negativo usa la duracion por defecto del
+    // reproductor; 0 cambia de pista de inmediato.
+    bool reproducirMusica(const std::string& pista, float volumen = 1.0f,
+                           float duracionFundido = -1.0f);
+    // Detiene la musica (con fundido de salida opcional).
+    void detenerMusica(float duracionFundido = 0.0f);
+    // Volumen del bus de musica (todas las pistas juntas).
+    void setVolumenMusica(float volumen);
+    // Silencia el bus sin perder el volumen pedido.
+    void silenciarMusica(bool silenciado);
+    // Avanza el reproductor: el fundido en curso y el paso automatico a la
+    // pista siguiente. Lo llama la escena con su deltaTime.
+    void actualizarMusica(float deltaTime);
 
     // Solo tests/cierre: bloquea hasta procesar toda la pila encolada.
     void esperarPilaVacia();

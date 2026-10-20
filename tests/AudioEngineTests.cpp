@@ -30,12 +30,21 @@
 //     drena la cola (esperarPilaVacia / pendientes()).
 //   - detener()/detenerTodo()/setVolumenMaestro() encolan y se processan.
 //   - limpiarClips() vacia el catalogo.
+//   - La cola de musica: registro de pistas, reproduccion, bus, silencio,
+//     deteccion y el tick de la escena. Con un backend FALSO que registra lo
+//     que le llega, para comprobar que los comandos se ejecutan en el hilo de
+//     audio contra el reproductor.
 
+#include <cmath>
 #include <iostream>
+#include <memory>
+#include <set>
 #include <string>
 #include <vector>
 
 #include "../FunshiEngineGL/src/Audio/AudioEngine.h"
+#include "../FunshiEngineGL/src/Audio/IAudioBackend.h"
+#include "../FunshiEngineGL/src/Audio/IMusicaBackend.h"
 
 namespace {
 int total = 0;
@@ -56,6 +65,57 @@ bool contiene(const std::vector<std::string>& v, const std::string& s) {
         if (x == s) return true;
     return false;
 }
+
+bool casiIgual(float a, float b) { return std::fabs(a - b) < 1e-4f; }
+
+// Backend falso que registra las llamadas del contrato de musica: sirve para
+// comprobar que la cola del motor llega al backend (y que se ejecuta en el
+// hilo de audio, no en el de juego).
+class BackendFalso : public IAudioBackend, public IMusicaBackend {
+public:
+    std::vector<std::string> llamadas;
+    std::set<int> abiertas;
+    int consultasEstado = 0;
+    float volumenDelBus = 1.0f;
+    bool silenciado = false;
+
+    bool iniciar() override { return true; }
+    void cerrar() override {}
+    int reproducirArchivo(const std::string&, float, bool) override { return 1; }
+    void detener(int) override {}
+    void detenerTodo() override {}
+    void setVolumenMaestro(float) override {}
+    void despachar(float) override {}
+
+    IMusicaBackend* backendMusica() override { return this; }
+
+    int abrirPista(const std::string& ruta) override {
+        llamadas.push_back("abrir:" + ruta);
+        const int id = static_cast<int>(abiertas.size()) + 1;
+        abiertas.insert(id);
+        return id;
+    }
+    void cerrarPista(int id) override {
+        llamadas.push_back("cerrar:" + std::to_string(id));
+        abiertas.erase(id);
+    }
+    bool reproducirPista(int id, float) override {
+        llamadas.push_back("reproducir:" + std::to_string(id));
+        return true;
+    }
+    void detenerPista(int id) override {
+        llamadas.push_back("detener:" + std::to_string(id));
+    }
+    void volumenPista(int, float) override {}
+    void volumenBus(float volumen) override { volumenDelBus = volumen; }
+    void silenciarBus(bool estado) override { silenciado = estado; }
+    EstadoPista estadoPista(int) override {
+        ++consultasEstado;
+        return EstadoPista::Reproduciendo;
+    }
+    float posicionPista(int) override { return 0.0f; }
+    float duracionPista(int) override { return 0.0f; }
+};
 
 void probarCicloComandos() {
     AudioEngine motor;  // nullptr => NullAudioBackend
@@ -113,12 +173,80 @@ void probarBackendExplicito() {
     CHECK(motor->pendientes() == 0, "cola drenada con backend por defecto");
 }
 
+// El catalogo de musica se registra y se consulta por nombre.
+void probarRegistroMusica() {
+    AudioEngine motor;
+    motor.esperarPilaVacia();
+
+    motor.registrarMusica("tema", "/tmp/funshi_tema.ogg");
+    motor.registrarMusica("coda", "/tmp/funshi_coda.ogg");
+
+    CHECK(motor.musicaRegistrada("tema"), "pista de musica registrada visible");
+    CHECK(!motor.musicaRegistrada("desconocida"),
+          "pista no registrada no se ve");
+    const std::vector<std::string> nombres = motor.nombresMusicas();
+    CHECK(nombres.size() == 2, "nombresMusicas tiene las dos pistas");
+    CHECK(contiene(nombres, "tema") && contiene(nombres, "coda"),
+          "nombresMusicas contiene ambas pistas");
+
+    motor.limpiarMusicas();
+    CHECK(motor.nombresMusicas().empty(), "limpiarMusicas vacia el catalogo");
+}
+
+// Los comandos de musica llegan al backend desde el hilo de audio.
+void probarColaMusica() {
+    auto backend = std::make_unique<BackendFalso>();
+    BackendFalso* observador = backend.get();
+    AudioEngine motor(std::move(backend));
+    motor.esperarPilaVacia();  // el comando Iniciar crea el reproductor
+
+    motor.registrarMusica("tema", "/tmp/funshi_tema.ogg");
+    motor.esperarPilaVacia();
+
+    CHECK(!motor.reproducirMusica("desconocida"),
+          "una pista no registrada no se reproduce");
+    CHECK(motor.pendientes() == 0,
+          "la pista desconocida no encola ningun comando");
+
+    CHECK(motor.reproducirMusica("tema", 0.8f, 0.0f),
+          "la pista registrada se reproduce");
+    motor.esperarPilaVacia();
+    CHECK(contiene(observador->llamadas, "abrir:/tmp/funshi_tema.ogg"),
+          "el backend abrio la pista");
+    CHECK(contiene(observador->llamadas, "reproducir:1"),
+          "el backend arranco la pista");
+
+    // El tick de la escena llega al reproductor: este consulta el estado de
+    // la pista que suena.
+    const int consultasAntes = observador->consultasEstado;
+    motor.actualizarMusica(0.25f);
+    motor.esperarPilaVacia();
+    CHECK(observador->consultasEstado > consultasAntes,
+          "el tick de la escena avanza el reproductor");
+
+    motor.setVolumenMusica(0.5f);
+    motor.esperarPilaVacia();
+    CHECK(casiIgual(observador->volumenDelBus, 0.5f),
+          "el bus de musica recibe el volumen");
+
+    motor.silenciarMusica(true);
+    motor.esperarPilaVacia();
+    CHECK(observador->silenciado, "el bus de musica recibe el silencio");
+
+    motor.detenerMusica(0.0f);
+    motor.esperarPilaVacia();
+    CHECK(observador->abiertas.empty(), "detener cierra la pista");
+    CHECK(contiene(observador->llamadas, "detener:1"), "el backend detiene la pista");
+}
+
 }  // namespace
 
 int main() {
     std::cout << "== AUDIO ENGINE TESTS ==" << std::endl;
     probarCicloComandos();
     probarBackendExplicito();
+    probarRegistroMusica();
+    probarColaMusica();
     std::cout << "Pruebas: " << total << ", fallos: " << fallos << std::endl;
     if (fallos == 0) std::cout << "AUDIO ENGINE TESTS OK" << std::endl;
     return fallos == 0 ? 0 : 1;

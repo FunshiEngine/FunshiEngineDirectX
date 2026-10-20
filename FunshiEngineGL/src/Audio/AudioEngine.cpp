@@ -18,7 +18,9 @@
 */
 #include "AudioEngine.h"
 
+#include "GestorMusica.h"
 #include "IAudioBackend.h"
+#include "IMusicaBackend.h"
 #include "NullAudioBackend.h"
 
 #include <chrono>
@@ -39,15 +41,27 @@ enum class TipoComando {
     Detener,      // handle
     DetenerTodo,
     Volumen,      // volumen maestro
-    Cierre        // apaga el hilo
+    Cierre,       // apaga el hilo
+    // --- musica (se ejecutan en el hilo de audio, sobre el reproductor) ---
+    RegistrarMusica, // nombre, ruta
+    LimpiarMusicas,
+    ReproducirMusica,// nombre, volumen, duracion del fundido
+    DetenerMusica,   // duracion del fundido de salida
+    VolumenMusica,   // volumen del bus
+    SilenciarMusica, // silencio del bus
+    TickMusica       // deltaTime de la escena
 };
 
 struct Comando {
     TipoComando tipo = TipoComando::Iniciar;
     int handle = -1;
-    std::string clip;
+    std::string ruta;   // ruta del archivo (clip de efecto o pista de musica)
+    std::string nombre; // nombre de la pista de musica
     float volumen = 1.0f;
+    float duracionFundido = 0.0f;
+    float deltaTime = 0.0f;
     bool bucle = false;
+    bool silenciado = false;
 };
 
 void ejecutarComando(struct AudioEngine::Impl* imp, const Comando& c);
@@ -60,8 +74,15 @@ struct AudioEngine::Impl {
     std::queue<Comando> pila;
     // nombre del clip -> ruta (registro del asset; el hilo del juego lo lee).
     std::unordered_map<std::string, std::string> clips;
+    // nombre de la pista de musica -> ruta (mismo criterio que los clips).
+    std::unordered_map<std::string, std::string> musicas;
     // handle propio del motor -> id devuelto por el backend.
     std::unordered_map<int, int> handleAId;
+    // Reproductor de musica. Vive en el hilo de audio (lo crea el comando
+    // Iniciar y solo se usa desde ese hilo), asi que su estado no necesita
+    // candados. Se declara DESPUES de backend para destruirse antes que el
+    // backend del que depende.
+    std::unique_ptr<GestorMusica> gestorMusica;
     std::unique_ptr<IAudioBackend> backend;
     std::thread hilo;
     int proximoHandle = 0;
@@ -78,13 +99,19 @@ void ejecutarComando(AudioEngine::Impl* imp, const Comando& c) {
     switch (c.tipo) {
         case TipoComando::Iniciar:
             imp->backend->iniciar();
+            // El reproductor de musica necesita el backend de musica: se crea
+            // aqui, en el hilo de audio, y a partir de aqui solo se usa desde
+            // este hilo.
+            if (IMusicaBackend* musica = imp->backend->backendMusica()) {
+                imp->gestorMusica = std::make_unique<GestorMusica>(*musica);
+            }
             break;
         case TipoComando::Reproducir:
             // El handle del motor ya esta asignado; se traduce al id del backend
             // (que puede fallar con 0 si el archivo no existe o no hay driver).
             if (c.handle >= 0) {
                 const int id = imp->backend->reproducirArchivo(
-                    c.clip, c.volumen, c.bucle);
+                    c.ruta, c.volumen, c.bucle);
                 imp->handleAId[c.handle] = id;
             }
             break;
@@ -106,6 +133,31 @@ void ejecutarComando(AudioEngine::Impl* imp, const Comando& c) {
             break;
         case TipoComando::Cierre:
             imp->backend->cerrar();
+            break;
+        // --- musica ---
+        case TipoComando::RegistrarMusica:
+            if (imp->gestorMusica)
+                imp->gestorMusica->registrarPista(c.nombre, c.ruta);
+            break;
+        case TipoComando::LimpiarMusicas:
+            if (imp->gestorMusica) imp->gestorMusica->limpiarCatalogo();
+            break;
+        case TipoComando::ReproducirMusica:
+            if (imp->gestorMusica)
+                imp->gestorMusica->reproducir(c.nombre, c.volumen,
+                                              c.duracionFundido);
+            break;
+        case TipoComando::DetenerMusica:
+            if (imp->gestorMusica) imp->gestorMusica->detener(c.duracionFundido);
+            break;
+        case TipoComando::VolumenMusica:
+            if (imp->gestorMusica) imp->gestorMusica->volumenBus(c.volumen);
+            break;
+        case TipoComando::SilenciarMusica:
+            if (imp->gestorMusica) imp->gestorMusica->silenciarBus(c.silenciado);
+            break;
+        case TipoComando::TickMusica:
+            if (imp->gestorMusica) imp->gestorMusica->actualizar(c.deltaTime);
             break;
     }
 }
@@ -161,7 +213,7 @@ AudioEngine::AudioEngine(std::unique_ptr<IAudioBackend> backend)
 AudioEngine::~AudioEngine() {
     Comando c;
     c.tipo = TipoComando::Cierre;
-    c.clip.clear();
+    c.ruta.clear();
     {
         std::lock_guard<std::mutex> lock(impl_->mtx);
         impl_->cerrado = true;
@@ -210,7 +262,7 @@ int AudioEngine::reproducir(const std::string& clip, float volumen, bool bucle) 
         std::lock_guard<std::mutex> lock(impl_->mtx);
         const auto it = impl_->clips.find(clip);
         if (it == impl_->clips.end()) return -1; // clip no registrado
-        c.clip = it->second;
+        c.ruta = it->second;
         handle = impl_->proximoHandle++;
         c.handle = handle;
         impl_->pila.push(std::move(c));
@@ -244,6 +296,119 @@ void AudioEngine::setVolumenMaestro(float volumen) {
     Comando c;
     c.tipo = TipoComando::Volumen;
     c.volumen = volumen;
+    {
+        std::lock_guard<std::mutex> lock(impl_->mtx);
+        impl_->pila.push(std::move(c));
+    }
+    impl_->cv.notify_one();
+}
+
+// ---------------------------------------------------------------------------
+// Musica
+// ---------------------------------------------------------------------------
+
+void AudioEngine::registrarMusica(const std::string& nombre,
+                                   const std::string& ruta) {
+    {
+        std::lock_guard<std::mutex> lock(impl_->mtx);
+        impl_->musicas[nombre] = ruta;
+    }
+    Comando c;
+    c.tipo = TipoComando::RegistrarMusica;
+    c.nombre = nombre;
+    c.ruta = ruta;
+    {
+        std::lock_guard<std::mutex> lock(impl_->mtx);
+        impl_->pila.push(std::move(c));
+    }
+    impl_->cv.notify_one();
+}
+
+bool AudioEngine::musicaRegistrada(const std::string& nombre) const {
+    std::lock_guard<std::mutex> lock(impl_->mtx);
+    return impl_->musicas.count(nombre) > 0;
+}
+
+void AudioEngine::limpiarMusicas() {
+    {
+        std::lock_guard<std::mutex> lock(impl_->mtx);
+        impl_->musicas.clear();
+    }
+    Comando c;
+    c.tipo = TipoComando::LimpiarMusicas;
+    {
+        std::lock_guard<std::mutex> lock(impl_->mtx);
+        impl_->pila.push(std::move(c));
+    }
+    impl_->cv.notify_one();
+}
+
+std::vector<std::string> AudioEngine::nombresMusicas() const {
+    std::lock_guard<std::mutex> lock(impl_->mtx);
+    std::vector<std::string> nombres;
+    nombres.reserve(impl_->musicas.size());
+    for (const auto& [nombre, ruta] : impl_->musicas) nombres.push_back(nombre);
+    return nombres;
+}
+
+bool AudioEngine::reproducirMusica(const std::string& pista, float volumen,
+                                    float duracionFundido) {
+    {
+        std::lock_guard<std::mutex> lock(impl_->mtx);
+        if (impl_->musicas.find(pista) == impl_->musicas.end())
+            return false; // pista no registrada
+    }
+    Comando c;
+    c.tipo = TipoComando::ReproducirMusica;
+    c.nombre = pista;
+    c.volumen = volumen;
+    c.duracionFundido = duracionFundido;
+    {
+        std::lock_guard<std::mutex> lock(impl_->mtx);
+        impl_->pila.push(std::move(c));
+    }
+    impl_->cv.notify_one();
+    return true;
+}
+
+void AudioEngine::detenerMusica(float duracionFundido) {
+    Comando c;
+    c.tipo = TipoComando::DetenerMusica;
+    c.duracionFundido = duracionFundido;
+    {
+        std::lock_guard<std::mutex> lock(impl_->mtx);
+        impl_->pila.push(std::move(c));
+    }
+    impl_->cv.notify_one();
+}
+
+void AudioEngine::setVolumenMusica(float volumen) {
+    Comando c;
+    c.tipo = TipoComando::VolumenMusica;
+    c.volumen = volumen;
+    {
+        std::lock_guard<std::mutex> lock(impl_->mtx);
+        impl_->pila.push(std::move(c));
+    }
+    impl_->cv.notify_one();
+}
+
+void AudioEngine::silenciarMusica(bool silenciado) {
+    Comando c;
+    c.tipo = TipoComando::SilenciarMusica;
+    c.silenciado = silenciado;
+    {
+        std::lock_guard<std::mutex> lock(impl_->mtx);
+        impl_->pila.push(std::move(c));
+    }
+    impl_->cv.notify_one();
+}
+
+void AudioEngine::actualizarMusica(float deltaTime) {
+    if (deltaTime < 0.0f) return;
+    Comando c;
+    c.tipo = TipoComando::TickMusica;
+    c.deltaTime = deltaTime;
     {
         std::lock_guard<std::mutex> lock(impl_->mtx);
         impl_->pila.push(std::move(c));

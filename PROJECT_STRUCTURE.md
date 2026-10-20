@@ -1069,8 +1069,10 @@ también con `BUILD_ENGINE=OFF`):
 - `model-serialization-tests` (16): serialización binaria del componente `Model`
   (path con prefijo de longitud; regresión del core al cargar escenas con paths
   largos).
-- `audio-tests` (16): `AudioEngine`/`AudioClipsManager` con `NullAudioBackend`
-  (contrato de la cola de comandos: clips, handles, encolado, detención, volumen).
+- `audio-tests` (31): `AudioEngine`/`AudioClipsManager` con `NullAudioBackend`
+  (contrato de la cola de comandos: clips, handles, encolado, detención, volumen)
+  y la cola de música con un backend falso (registro de pistas, reproducción,
+  bus, silencio, detención y el tick de la escena).
 - `interface-component-tests` (16): serialización binaria del `InterfaceComponent`
   (ruta del `.html` + colocación): round-trip del formato nuevo y lectura del
   formato viejo (solo el nombre) sin consumir bytes de más, que desalinearía el

@@ -1338,6 +1338,7 @@ set_tests_properties(scripts-runtime-tests PROPERTIES SKIP_RETURN_CODE 77)
 # volumen y limpieza. Necesita hilos (El worker thread del motor).
 add_executable(audio-tests
     ${SRC_DIR}/Audio/AudioEngine.cpp
+    ${SRC_DIR}/Audio/GestorMusica.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../tests/AudioEngineTests.cpp
 )
 target_include_directories(audio-tests PRIVATE ${SRC_DIR})
