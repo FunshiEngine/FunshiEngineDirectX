@@ -664,6 +664,97 @@ void* OpenGL3Backend::imguiTextureId(Handle texture) const {
 }
 
 // ---------------------------------------------------------------------------
+// Objetivo de profundidad (mapa de sombras)
+// ---------------------------------------------------------------------------
+
+Handle OpenGL3Backend::createDepthTarget(int size) {
+    if (size <= 0) return kInvalidHandle;
+    if (!fboFuncionesCargadas()) {
+        std::cerr << "[Sombras] FBO no disponible en este GPU.\n";
+        return kInvalidHandle;
+    }
+
+    GLuint fbo = 0, depthTex = 0;
+    pfnGenFramebuffers(1, &fbo);
+    glGenTextures(1, &depthTex);
+
+    glBindTexture(GL_TEXTURE_2D, depthTex);
+    // El modo de comparacion es lo que hace que la textura se pueda leer con
+    // un sampler2DShadow: el hardware compara la profundidad del fragmento con
+    // la del mapa y devuelve el porcentaje de cobertura (y con el filtrado
+    // lineal hace el PCF de 2x2 solo).
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_COMPARE_MODE,
+                    GL_COMPARE_REF_TO_TEXTURE);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_COMPARE_FUNC, GL_LEQUAL);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    // Fuera del mapa no hay sombra: con el borde a 1 (el plano lejano) la
+    // comparacion da "iluminado" y la sombra no se repite en el borde.
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_BORDER);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_BORDER);
+    const float borde[4] = {1.f, 1.f, 1.f, 1.f};
+    glTexParameterfv(GL_TEXTURE_2D, GL_TEXTURE_BORDER_COLOR, borde);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_DEPTH_COMPONENT24, size, size, 0,
+                 GL_DEPTH_COMPONENT, GL_UNSIGNED_INT, nullptr);
+    glBindTexture(GL_TEXTURE_2D, 0);
+
+    pfnBindFramebuffer(GL_FRAMEBUFFER, fbo);
+    pfnFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_TEXTURE_2D,
+                            depthTex, 0);
+    // El mapa de sombras no tiene color: sin esto, algunos drivers escriben en
+    // el attachment 0 y el resultado es indefinido.
+    glDrawBuffer(GL_NONE);
+    glReadBuffer(GL_NONE);
+
+    const GLenum estado = pfnCheckFramebufferStatus(GL_FRAMEBUFFER);
+    if (estado != GL_FRAMEBUFFER_COMPLETE) {
+        std::cerr << "[Sombras] Framebuffer de profundidad incompleto: " << estado
+                  << "\n";
+        pfnBindFramebuffer(GL_FRAMEBUFFER, 0);
+        if (pfnDeleteFramebuffers) pfnDeleteFramebuffers(1, &fbo);
+        glDeleteTextures(1, &depthTex);
+        return kInvalidHandle;
+    }
+    pfnBindFramebuffer(GL_FRAMEBUFFER, 0);
+
+    const Handle handle = static_cast<Handle>(fbo);
+    depthTargets_[handle] = GpuDepthTarget{fbo, depthTex, size};
+    return handle;
+}
+
+void OpenGL3Backend::destroyDepthTarget(Handle target) {
+    if (target == kInvalidHandle) return;
+    const auto it = depthTargets_.find(target);
+    if (it == depthTargets_.end()) return;
+
+    // Los valores se copian antes de borrar la entrada del mapa: el erase
+    // destruye el GpuDepthTarget y las referencias quedarian colgando.
+    const GLuint fbo = it->second.fbo;
+    const GLuint depthTex = it->second.depthTex;
+
+    depthTargets_.erase(it);
+
+    if (pfnDeleteFramebuffers) pfnDeleteFramebuffers(1, &fbo);
+    if (depthTex) glDeleteTextures(1, &depthTex);
+}
+
+void OpenGL3Backend::bindDepthTarget(Handle target) {
+    if (target == kInvalidHandle || !pfnBindFramebuffer) return;
+    const auto it = depthTargets_.find(target);
+    if (it == depthTargets_.end()) return;
+    pfnBindFramebuffer(GL_FRAMEBUFFER, static_cast<GLuint>(target));
+    // El mapa de sombras es cuadrado: el viewport tiene que ser el suyo, no el
+    // de la pantalla.
+    glViewport(0, 0, it->second.size, it->second.size);
+}
+
+Handle OpenGL3Backend::depthTargetTexture(Handle target) const {
+    const auto it = depthTargets_.find(target);
+    if (it == depthTargets_.end()) return kInvalidHandle;
+    return static_cast<Handle>(it->second.depthTex);
+}
+
+// ---------------------------------------------------------------------------
 // Estado de la pasada y del framebuffer
 // ---------------------------------------------------------------------------
 

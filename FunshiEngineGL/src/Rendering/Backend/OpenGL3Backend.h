@@ -85,6 +85,12 @@ public:
     Handle renderTargetColorTexture(Handle target) const override;
     void* imguiTextureId(Handle texture) const override;
 
+    // --- Objetivo de profundidad (mapa de sombras) ---
+    Handle createDepthTarget(int size) override;
+    void destroyDepthTarget(Handle target) override;
+    void bindDepthTarget(Handle target) override;
+    Handle depthTargetTexture(Handle target) const override;
+
     // --- Estado de la pasada y del framebuffer ---
     void setViewport(int x, int y, int width, int height) override;
     void clearScreen(const float color[3]) override;
@@ -112,11 +118,19 @@ private:
         unsigned int rbo;
         unsigned int colorTex;
     };
+    // Mapa de sombras: FBO con una textura de profundidad (sin color) y el
+    // lado del mapa (es cuadrado).
+    struct GpuDepthTarget {
+        unsigned int fbo;
+        unsigned int depthTex;
+        int size;
+    };
 
     bool fboFuncionesCargadas();
     std::unordered_map<Handle, GpuMesh> meshes_;
     std::unordered_map<Handle, GpuLineBatch> lineBatches_;
     std::unordered_map<Handle, GpuTarget> targets_;
+    std::unordered_map<Handle, GpuDepthTarget> depthTargets_;
     // Dimensiones vigentes de cada textura 2D creada: updateTexture2D las
     // consulta para decidir entre glTexSubImage2D (mismo tamano) y reasignar
     // (tamano distinto). Sin este registro no se puede saber el tamano actual

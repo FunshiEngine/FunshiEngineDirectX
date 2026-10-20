@@ -63,6 +63,22 @@ typedef char GLchar;
 #ifndef GL_CLAMP_TO_EDGE
 #define GL_CLAMP_TO_EDGE 0x812F
 #endif
+// Recorte al borde: lo usa la textura de profundidad del mapa de sombras (lo
+// que hay fuera del mapa no esta en sombra).
+#ifndef GL_CLAMP_TO_BORDER
+#define GL_CLAMP_TO_BORDER 0x812D
+#endif
+// Modo de comparacion de la textura de profundidad: es lo que permite leerla
+// con un sampler2DShadow (el hardware compara y devuelve la cobertura).
+#ifndef GL_TEXTURE_COMPARE_MODE
+#define GL_TEXTURE_COMPARE_MODE 0x884C
+#endif
+#ifndef GL_TEXTURE_COMPARE_FUNC
+#define GL_TEXTURE_COMPARE_FUNC 0x884D
+#endif
+#ifndef GL_COMPARE_REF_TO_TEXTURE
+#define GL_COMPARE_REF_TO_TEXTURE 0x884E
+#endif
 #ifndef GL_TEXTURE0
 #define GL_TEXTURE0 0x84C0
 #endif

@@ -292,6 +292,8 @@ FunshiEngineGL/                          ← raíz del repo
         │   │   │                                `inline` puras fuera del dibujo, para que
         │   │   │                                las ejercite un target headless sin ImGui
         │   │   ├── RigidBody/SettingsRigidBody.*
+        │   │   ├── Sombras/SettingsSombras.*   ← resolución del mapa, sesbio, fuerza, radio
+        │   │   │                                y distancia de la sombra de la luz
         │   │   └── Colliders/ (Esfera, Cubo, Malla, Tilemap) ← sync transform/shape con física
         │   ├── Export/
         │   │   └── ExportDialog.h/.cpp           ← diálogo de exportación del juego standalone
@@ -309,7 +311,10 @@ FunshiEngineGL/                          ← raíz del repo
         │   ├── TreeGUI/TreeGUI.h         ← widget de árbol genérico para ImGui
         │   └── IconosGUI/                ← carga de íconos con stb_image
         ├── Iluminacion/
-        │   └── LightSystem.h/.cpp        ← dueño del estado GL de luces (GL_LIGHT0..7) por frame
+        │   ├── LightSystem.h/.cpp        ← dueño del estado GL de luces (GL_LIGHT0..7) por frame
+        │   └── MatrizLuz.h/.cpp          ← matriz de luz del mapa de sombras (CPU puro):
+        │                                  vista desde la luz, proyección ortográfica
+        │                                  y frustum de foco posicional/direccional
         ├── Input/
         │   └── EditorInput.h/.cpp       ← callbacks GLFW de teclado/mouse + máquina de
         │                                  movimiento de cámara (extraídas de main.cpp)
@@ -363,7 +368,8 @@ FunshiEngineGL/                          ← raíz del repo
         │   ├── CacheCubemap.h             ← caché de caras del cubemap
         │   ├── Backend/                    ← abstracción de backend gráfico (Strategy)
         │   │   ├── IRenderBackend.h        ← contrato (handles opacos, MeshData, Image2D,
-        │   │   │                              DepthFunc, recursos GPU, estados, FBO)
+        │   │   │                              DepthFunc, recursos GPU, estados, FBO,
+        │   │   │                              objetivo de profundidad del mapa de sombras)
         │   │   ├── OpenGL3Backend.h/.cpp   ← implementación OpenGL 3.3 core
         │   │   └── GLFuncs.h                ← carga perezosa de funciones GL
         │   └── Shaders/                    ← sistema de shaders (gestor + GLSL embebido)
@@ -391,6 +397,8 @@ FunshiEngineGL/                          ← raíz del repo
         │       ├── CameraComponent.h/.cpp ← cámara componente: vista, FPS, flag de vista previa
         │       ├── Material.h/.cpp       ← AMBIENT/DIFFUSE/SPECULAR/EMISSION/SHININESS
         │       ├── Light.h/.cpp          ← luz puntual serializable
+        │       ├── Sombras/Sombras.h/.cpp ← ajustes de la sombra que proyecta la luz de su
+        │       │                           objeto: resolución, sesbio, fuerza, radio y distancia
         │       ├── Grid.h/.cpp           ← grilla del suelo: pasada independiente, visible/color
         │       │                            (los campos tam/separacion quedan solo para que las
         │       │                            escenas viejas se lean igual; no se dibujan con ellos)

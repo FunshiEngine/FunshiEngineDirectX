@@ -113,6 +113,11 @@ public:
     Handle renderTargetColorTexture(Handle) const override { return 6; }
     void* imguiTextureId(Handle) const override { return nullptr; }
 
+    Handle createDepthTarget(int) override { return 7; }
+    void destroyDepthTarget(Handle) override {}
+    void bindDepthTarget(Handle) override {}
+    Handle depthTargetTexture(Handle) const override { return 8; }
+
     void setViewport(int, int, int, int) override {}
     void clearScreen(const float[3]) override {}
     void applyBaseState() override {}
