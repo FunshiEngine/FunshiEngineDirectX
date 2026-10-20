@@ -945,11 +945,12 @@ desde `src/ImGui/` y los de ImGuizmo desde `ImGuizmo/` (fuera de `src/`).
 
 Además del ejecutable, el proyecto define **treinta targets de prueba
 headless** registrados en CTest (`scripts-java-tests` solo se registra con
-`-DFUNSHI_JAVA=ON`; nueve de ellos viven bajo `BUILD_ENGINE=ON`
+`-DFUNSHI_JAVA=ON`; once de ellos viven bajo `BUILD_ENGINE=ON`
 —`comandos-tests`, `escena-serializacion-tests`, `catalogo-componentes-tests`,
 `tilemap-tests`, `interfaces-juego-tests`,
-`prefab-tests`, `manifiesto-assets-tests`, `orquestador-estado-tests` y
-`tema-tests`—, y el resto compila también con `BUILD_ENGINE=OFF`):
+`prefab-tests`, `manifiesto-assets-tests`, `orquestador-estado-tests`,
+`tema-tests`, `interface-component-tests` y `webui-runtime-tests`—; los
+dieciocho restantes compilan también con `BUILD_ENGINE=OFF`):
 
 - `filemanager-tests` (190 en Linux; 181 en Windows con MinGW, 183 con MSVC): ejercita `GestorDeArchivos`/`FileManager`/`FileSystemWatcher`
   contra un proyecto temporal, sin ventanas ni pila gráfica; incluye el arrastre
@@ -1131,13 +1132,15 @@ headless** registrados en CTest (`scripts-java-tests` solo se registra con
   su salida por el PTY, y que `detener()` no se cuelga ni pierde la salida
   emitida durante el cierre (SKIP 77 si ConPTY no está disponible).
 
-Las **nueve** suites que dependen del engine (`comandos-tests`,
+Las **once** suites que dependen del engine (`comandos-tests`,
 `escena-serializacion-tests`, `catalogo-componentes-tests`, `tilemap-tests`,
 `interfaces-juego-tests`, `prefab-tests`, `manifiesto-assets-tests`,
-`orquestador-estado-tests` y `tema-tests`) enlazan `funshi_engine` y solo se
-registran con `BUILD_ENGINE=ON`. El resto compila sus fuentes directamente
-(`interface-component-tests`, `barra-progreso-tests` y `webui-runtime-tests`
-entre ellos) y corre también con `BUILD_ENGINE=OFF`.
+`orquestador-estado-tests` y `tema-tests` enlazan `funshi_engine`;
+`interface-component-tests` y `webui-runtime-tests` compilan sueltas, pero el
+`InterfaceComponent` usa glm) solo se registran con `BUILD_ENGINE=ON`. El resto
+compila sus fuentes directamente (`barra-progreso-tests` entre ellas) y corre
+también con `BUILD_ENGINE=OFF`: con el motor hay 30 suites registradas y sin él
+18.
 
 La opción `BUILD_ENGINE=OFF` compila solo las pruebas (útil en CI y plataformas
 sin las librerías gráficas), y `ENABLE_ASAN` (ON por defecto en Debug) activa
@@ -1381,7 +1384,7 @@ GameScene → coordina todos los subsistemas del frame
 - `.github/workflows/release.yml` y `windows-release.yml` también ejecutan la
   suite (y `estructuras-tests`) al generar los instaladores por tag.
 - La lista de targets que compila cada job tiene que cubrir todas las suites
-  registradas en ese modo de build (30 con `BUILD_ENGINE=ON`, 20 con
+  registradas en ese modo de build (30 con `BUILD_ENGINE=ON`, 18 con
   `BUILD_ENGINE=OFF`): `ctest` ejecuta todos los tests registrados en el build,
   no solo los compilados, y los que faltan quedan como `Not Run`, lo que hace
   fallar el job. Las suites con `DISABLED TRUE` se pueden omitir porque `ctest`
