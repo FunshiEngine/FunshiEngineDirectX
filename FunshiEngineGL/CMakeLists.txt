@@ -847,6 +847,28 @@ set_target_properties(shaders-tests PROPERTIES
     CXX_EXTENSIONS OFF
 )
 add_test(NAME shaders-tests COMMAND shaders-tests)
+
+# --- Pruebas headless del sistema de sombras ----------------------------------
+# La matriz de la luz (CPU puro), el componente de sombras y la seleccion de
+# proyectores. La matriz se construye con glm (headers de matematicas), que no
+# esta disponible en un build sin dependencias externas: por eso vive en el
+# bloque del motor y no en el de las pruebas headless.
+add_executable(sombras-tests
+    ${SRC_DIR}/Iluminacion/MatrizLuz.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../tests/SombrasTests.cpp
+)
+target_link_libraries(sombras-tests PRIVATE
+    funshi_diagnostics_core funshi_glm)
+target_include_directories(sombras-tests PRIVATE
+    ${SRC_DIR}
+    ${CMAKE_SOURCE_DIR}/External
+)
+set_target_properties(sombras-tests PROPERTIES
+    CXX_STANDARD 17
+    CXX_STANDARD_REQUIRED ON
+    CXX_EXTENSIONS OFF
+)
+add_test(NAME sombras-tests COMMAND sombras-tests)
 # Deshabilitada: la suite falla en la rama develop por un fallo preexistente
 # de la interfaz web.
 set_tests_properties(webui-runtime-tests PROPERTIES DISABLED TRUE)
