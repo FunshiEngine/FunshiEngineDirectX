@@ -48,6 +48,13 @@ cd FunshiEngineGL/build && ctest --output-on-failure
   `scripts-java-tests` si no hay JDK resoluble (`JAVAC`/`JAVA_HOME`/PATH).
   `ctest` los reporta como *skipped* aparte; no son tests rotos. El skip es por
   **familia de toolchain**, nunca por sistema operativo (H-14).
+- **GLSL embebido**: los shaders van dentro del binario
+  (`src/Rendering/Shaders/ShaderSources.h`), así que un error de sintaxis no lo
+  ve el compilador de C++: solo aparece cuando el driver compila el programa,
+  con la app ya abierta. El pipeline lo comprueba con `glslangValidator`
+  (`.github/scripts/validar-glsl.py`, job de Ubuntu). Si se toca
+  `ShaderSources.h`, ese script tiene que dar verde: `python
+  .github/scripts/validar-glsl.py` (sale con 77 si no hay validador).
 
 ## Depuración de bugs: instrumentación y validación
 

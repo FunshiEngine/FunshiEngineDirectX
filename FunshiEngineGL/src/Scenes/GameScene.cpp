@@ -1408,8 +1408,12 @@ void GameScene::gameScene() {
     // Luces CPU de la pasada (misma semantica que GL_LIGHT0..7): la escena
     // recoge y el SceneRenderer las aplica al backend y a los uniforms.
     LightData luces[LightSystem::kMaxLights];
+    // Dueno de cada luz, en el mismo orden que las luces: lo necesita el pase
+    // de sombras para leer los ajustes que tiene adjuntos la luz.
+    GameObject* duenosLuces[LightSystem::kMaxLights] = {};
     int numLuces = 0;
-    lightSystem.collectLights(getGameObjectsScene(), luces, numLuces);
+    lightSystem.collectLights(getGameObjectsScene(), luces, numLuces,
+                              duenosLuces);
 
     SceneRenderer::FrameContext ctx;
     ctx.gameObjects = getGameObjectsScene();
@@ -1420,6 +1424,7 @@ void GameScene::gameScene() {
         editorController ? editorController->getSelectedObject() : nullptr;
     ctx.lights = luces;
     ctx.lightCount = numLuces;
+    ctx.lightOwners = duenosLuces;
     ctx.globalAmbient = lightSystem.getGlobalAmbient();
     ctx.framebufferWidth = fbW;
     ctx.framebufferHeight = fbH;

@@ -292,6 +292,8 @@ FunshiEngineGL/                          ← raíz del repo
         │   │   │                                `inline` puras fuera del dibujo, para que
         │   │   │                                las ejercite un target headless sin ImGui
         │   │   ├── RigidBody/SettingsRigidBody.*
+        │   │   ├── Sombras/SettingsSombras.*   ← resolución del mapa, sesbio, fuerza, radio
+        │   │   │                                y distancia de la sombra de la luz
         │   │   └── Colliders/ (Esfera, Cubo, Malla, Tilemap) ← sync transform/shape con física
         │   ├── Export/
         │   │   └── ExportDialog.h/.cpp           ← diálogo de exportación del juego standalone
@@ -309,7 +311,11 @@ FunshiEngineGL/                          ← raíz del repo
         │   ├── TreeGUI/TreeGUI.h         ← widget de árbol genérico para ImGui
         │   └── IconosGUI/                ← carga de íconos con stb_image
         ├── Iluminacion/
-        │   └── LightSystem.h/.cpp        ← dueño del estado GL de luces (GL_LIGHT0..7) por frame
+        │   ├── LightSystem.h/.cpp        ← dueño del estado GL de luces (GL_LIGHT0..7) por frame
+        │   │                              (además devuelve el objeto dueño de cada luz)
+        │   └── MatrizLuz.h/.cpp          ← matriz de luz del mapa de sombras (CPU puro):
+        │                                  vista desde la luz, proyección ortográfica
+        │                                  y frustum de foco posicional/direccional
         ├── Input/
         │   └── EditorInput.h/.cpp       ← callbacks GLFW de teclado/mouse + máquina de
         │                                  movimiento de cámara (extraídas de main.cpp)
@@ -344,8 +350,11 @@ FunshiEngineGL/                          ← raíz del repo
         ├── Rendering/
         │   ├── SceneRenderer.h/.cpp       ← renderizador de la escena: skybox, modelos,
         │   │                                  iluminación, horizonte común de grilla/render,
-        │   │                                  ejes y gizmos (pipeline de líneas)
+        │   │                                  ejes y gizmos (pipeline de líneas) y el pase
+        │   │                                  de sombras (elige proyectores, dibuja la escena
+        │   │                                  desde cada luz y deja los mapas para el shader)
         │   ├── MeshRenderer.h/.cpp         ← dibujo de meshes con difuminado radial al horizonte
+        │   │                                  y el pase de profundidad del mapa de sombras
         │   ├── TilemapRenderer.h/.cpp      ← sube la malla horneada del Tilemap a GPU (caché
         │   │                                  por revisión) y la dibuja con el shader de sprites
         │   ├── LineRenderer.h/.cpp         ← líneas, wireframes y gizmos recortados al mismo horizonte
@@ -363,9 +372,13 @@ FunshiEngineGL/                          ← raíz del repo
         │   ├── CacheCubemap.h             ← caché de caras del cubemap
         │   ├── Backend/                    ← abstracción de backend gráfico (Strategy)
         │   │   ├── IRenderBackend.h        ← contrato (handles opacos, MeshData, Image2D,
-        │   │   │                              DepthFunc, recursos GPU, estados, FBO)
+        │   │   │                              DepthFunc, recursos GPU, estados, FBO,
+        │   │   │                              objetivo de profundidad del mapa de sombras)
         │   │   ├── OpenGL3Backend.h/.cpp   ← implementación OpenGL 3.3 core
         │   │   └── GLFuncs.h                ← carga perezosa de funciones GL
+        │   ├── Sombras/                    ← mapa de sombras de las luces
+        │   │   └── MapaSombras.h/.cpp     ← selección de proyectores (luces que proyectan)
+        │   │                              y dueño de los objetivos de profundidad por luz
         │   └── Shaders/                    ← sistema de shaders (gestor + GLSL embebido)
         │       ├── GestorShaders.h/.cpp   ← dueño de los programas: uno por nombre,
         │       │                              compilado una vez y compartido
@@ -373,7 +386,9 @@ FunshiEngineGL/                          ← raíz del repo
         │       │                              (GL 3.3 no tiene ARB_shading_language_include)
         │       ├── ShaderProgram.h/.cpp    ← programa compilado (backend inyectado)
         │       ├── ShaderException.h      ← errores de compilación e inclusión
-        │       └── ShaderSources.h        ← GLSL embebido (inline) de los 5 programas
+        │       └── ShaderSources.h        ← GLSL embebido (inline) de los 6 programas
+        │                                  (malla, linea, sprite, cielo, cubemap y el de
+        │                                  profundidad del mapa de sombras)
         ├── Objetos/
         │   ├── GameObject.h/.cpp         ← id, nombre, tag, estado, update y serialización binaria
         │   ├── TagRegistry.h             ← registro dinámico de tags para el Inspector
@@ -391,6 +406,8 @@ FunshiEngineGL/                          ← raíz del repo
         │       ├── CameraComponent.h/.cpp ← cámara componente: vista, FPS, flag de vista previa
         │       ├── Material.h/.cpp       ← AMBIENT/DIFFUSE/SPECULAR/EMISSION/SHININESS
         │       ├── Light.h/.cpp          ← luz puntual serializable
+        │       ├── Sombras/Sombras.h/.cpp ← ajustes de la sombra que proyecta la luz de su
+        │       │                           objeto: resolución, sesbio, fuerza, radio y distancia
         │       ├── Grid.h/.cpp           ← grilla del suelo: pasada independiente, visible/color
         │       │                            (los campos tam/separacion quedan solo para que las
         │       │                            escenas viejas se lean igual; no se dibujan con ellos)
@@ -951,14 +968,15 @@ La convención general es un par `.h`/`.cpp` por clase. Las excepciones son:
 al build sin enumerarlos manualmente. Los archivos de ImGui se recopilan por separado
 desde `src/ImGui/` y los de ImGuizmo desde `ImGuizmo/` (fuera de `src/`).
 
-Además del ejecutable, el proyecto define **treinta targets de prueba
+Además del ejecutable, el proyecto define **treinta y cinco targets de prueba
 headless** registrados en CTest (`scripts-java-tests` solo se registra con
-`-DFUNSHI_JAVA=ON`; once de ellos viven bajo `BUILD_ENGINE=ON`
-—`comandos-tests`, `escena-serializacion-tests`, `catalogo-componentes-tests`,
-`tilemap-tests`, `interfaces-juego-tests`,
-`prefab-tests`, `manifiesto-assets-tests`, `orquestador-estado-tests`,
-`tema-tests`, `interface-component-tests` y `webui-runtime-tests`—; los
-dieciocho restantes compilan también con `BUILD_ENGINE=OFF`):
+`-DFUNSHI_JAVA=ON`; quince de ellos viven bajo `BUILD_ENGINE=ON`
+—`catalogo-componentes-tests`, `comandos-tests`, `escena-serializacion-tests`,
+`iluminacion-tests`, `interface-component-tests`, `interfaces-juego-tests`,
+`manifiesto-assets-tests`, `orquestador-estado-tests`, `prefab-tests`,
+`serializacion-tests`, `shaders-tests`, `sombras-tests`, `tema-tests`,
+`tilemap-tests` y `webui-runtime-tests`—; los diecinueve restantes compilan
+también con `BUILD_ENGINE=OFF`):
 
 - `filemanager-tests` (190 en Linux; 181 en Windows con MinGW, 183 con MSVC): ejercita `GestorDeArchivos`/`FileManager`/`FileSystemWatcher`
   contra un proyecto temporal, sin ventanas ni pila gráfica; incluye el arrastre
@@ -1065,6 +1083,20 @@ dieciocho restantes compilan también con `BUILD_ENGINE=OFF`):
   redimensionado y descarte de las que dejan de estar activas), el estado por
   interfaz por rutas JSON Pointer y el intercambio del estado pendiente/olvido
   en el ciclo de vistas.
+- `shaders-tests` (35): el preprocesador de `#include` del GLSL embebido (el
+  include se inserta en su sitio, los anidados, el include inexistente, el ciclo
+  y el tope de anidamiento dan error limpio) y el gestor de shaders (un programa
+  por nombre, compilado una vez y compartido entre los que lo piden).
+- `sombras-tests` (75): la matriz de la luz (vista desde la luz y proyección
+  ortográfica, con los casos degenerados: luz sin dirección, radio o alcance
+  inválidos), el componente `Sombras` con sus ajustes y la selección de
+  proyectores (las luces puntuales no soportadas, el límite de mapas y el orden
+  en que se eligen).
+- `iluminacion-tests` (17): la recogida de las luces de la escena (el orden en
+  que se recorren, los datos que salen del `Transform` de cada objeto y el límite
+  de slots) y el paralelismo entre la lista de luces y la de dueños: el pase de
+  sombras usa el índice de la luz para saber a qué luz pertenece cada mapa, así
+  que las dos listas no pueden separarse.
 - `tema-tests` (28): `TemaEditor` (aplicación del perfil `Apariencia`): el acento
   llega a todos los roles de ImGui y el modo B/N deja la paleta monocroma.
 - `comandos-tests` (77): undo/redo del editor (7 comandos, cadena de redo
@@ -1140,15 +1172,17 @@ dieciocho restantes compilan también con `BUILD_ENGINE=OFF`):
   su salida por el PTY, y que `detener()` no se cuelga ni pierde la salida
   emitida durante el cierre (SKIP 77 si ConPTY no está disponible).
 
-Las **once** suites que dependen del engine (`comandos-tests`,
-`escena-serializacion-tests`, `catalogo-componentes-tests`, `tilemap-tests`,
-`interfaces-juego-tests`, `prefab-tests`, `manifiesto-assets-tests`,
-`orquestador-estado-tests` y `tema-tests` enlazan `funshi_engine`;
-`interface-component-tests` y `webui-runtime-tests` compilan sueltas, pero el
-`InterfaceComponent` usa glm) solo se registran con `BUILD_ENGINE=ON`. El resto
-compila sus fuentes directamente (`barra-progreso-tests` entre ellas) y corre
-también con `BUILD_ENGINE=OFF`: con el motor hay 30 suites registradas y sin él
-18.
+Los **quince** targets que solo existen con `BUILD_ENGINE=ON` son los que
+enlazan `funshi_engine` (`comandos-tests`, `escena-serializacion-tests`,
+`serializacion-tests`, `catalogo-componentes-tests`, `tilemap-tests`,
+`interfaces-juego-tests`, `prefab-tests` e `iluminacion-tests`), los que
+necesitan glm (`interface-component-tests`, `webui-runtime-tests`,
+`shaders-tests` y `sombras-tests`), los que compilan las fuentes de ImGui
+(`tema-tests`) y los que usan solo el core de diagnóstico
+(`manifiesto-assets-tests` y `orquestador-estado-tests`). El resto compila sus
+fuentes directamente (`barra-progreso-tests` entre ellas) y corre también con
+`BUILD_ENGINE=OFF`: con el motor hay 33 suites que se ejecutan (35
+registradas, dos deshabilitadas) y sin él 19.
 
 La opción `BUILD_ENGINE=OFF` compila solo las pruebas (útil en CI y plataformas
 sin las librerías gráficas), y `ENABLE_ASAN` (ON por defecto en Debug) activa

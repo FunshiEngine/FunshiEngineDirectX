@@ -150,6 +150,21 @@ public:
     virtual void bindDefaultFramebuffer() = 0;
     // Handle de la textura de color del target (para mostrarla como ImTextureID).
     virtual Handle renderTargetColorTexture(Handle target) const = 0;
+
+    // --- Objetivo de profundidad (mapa de sombras) ---------------------------
+    // FBO con una textura de profundidad y sin color: el pase de sombras
+    // dibuja en el la profundidad de la escena y el shader de mallas la
+    // consulta con comparacion (sampler2DShadow, que es lo que permite el
+    // filtrado por hardware).
+    virtual Handle createDepthTarget(int size) = 0;
+    virtual void destroyDepthTarget(Handle target) = 0;
+    // Liga el target como framebuffer de destino y ajusta el viewport a su
+    // lado (el mapa de sombras es cuadrado).
+    virtual void bindDepthTarget(Handle target) = 0;
+    // Handle de la textura de profundidad del target: la que consulta el
+    // shader de mallas.
+    virtual Handle depthTargetTexture(Handle target) const = 0;
+
     // Handle como descriptor opaco para la GUI (ImGui::Image): en GL vuelve el
     // GLuint como puntero. La GUI nunca ve el valor concreto, solo lo reenvia
     // como ImTextureID.

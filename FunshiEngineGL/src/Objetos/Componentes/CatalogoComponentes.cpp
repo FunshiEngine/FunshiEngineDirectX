@@ -34,6 +34,7 @@
 #include "RigidBody/RigidBody.h"
 #include "Script.h"
 #include "Skybox.h"
+#include "Sombras/Sombras.h"
 #include "SpriteRenderer.h"
 #include "Tilemap.h"
 #include "Transform.h"
@@ -58,6 +59,7 @@
 #include "../../GUI/ObjetosGUI/RigidBody/SettingsRigidBody.h"
 #include "../../GUI/ObjetosGUI/Script/SettingsScript.h"
 #include "../../GUI/ObjetosGUI/Skybox/SettingsSkybox.h"
+#include "../../GUI/ObjetosGUI/Sombras/SettingsSombras.h"
 #include "../../GUI/ObjetosGUI/Sprite/SettingsSpriteRenderer.h"
 #include "../../GUI/ObjetosGUI/Tilemap/SettingsTilemap.h"
 #include "../../GUI/ObjetosGUI/Transform/SettingsTransform.h"
@@ -140,6 +142,16 @@ CatalogoComponentes::CatalogoComponentes() {
         [](Component*, GameObject* o, const ContextoPanel&) {
             return std::unique_ptr<SettingsComponent>(new SettingsSkybox(o));
         });
+    // Sombras: se agrega al objeto de la luz, asi que sin luz no tiene sentido.
+    add("Sombras", "Sombras", DimensionesComponente::TresD, "",
+        [](GameObject& o) -> std::unique_ptr<Component> {
+            if (!o.getComponent<Light>()) return nullptr;
+            return std::unique_ptr<Component>(new Sombras());
+        },
+        [](Component*, GameObject* o, const ContextoPanel&) {
+            return std::unique_ptr<SettingsComponent>(new SettingsSombras(o));
+        },
+        [](GameObject& o) { return o.getComponent<Light>() != nullptr; });
 
     // Render 2D: el sprite se puede usar en ambas; el animador es propio del
     // plano.

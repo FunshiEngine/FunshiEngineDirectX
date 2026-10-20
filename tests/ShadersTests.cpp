@@ -24,7 +24,9 @@
 //    anidamiento excesivo,
 //  - el gestor de shaders: el programa se compila una sola vez y se comparte
 //    entre quien lo pide, el fuente que llega al backend ya viene
-//    preprocesado y un nombre desconocido es un error claro.
+//    preprocesado y un nombre desconocido es un error claro,
+//  - los shaders de sombra: el programa de profundidad del mapa y la consulta
+//    que hace el shader de mallas.
 //
 // El backend es falso (no-op): sin pila grafica ni driver.
 
@@ -112,6 +114,11 @@ public:
     void bindDefaultFramebuffer() override {}
     Handle renderTargetColorTexture(Handle) const override { return 6; }
     void* imguiTextureId(Handle) const override { return nullptr; }
+
+    Handle createDepthTarget(int) override { return 7; }
+    void destroyDepthTarget(Handle) override {}
+    void bindDepthTarget(Handle) override {}
+    Handle depthTargetTexture(Handle) const override { return 8; }
 
     void setViewport(int, int, int, int) override {}
     void clearScreen(const float[3]) override {}
@@ -296,6 +303,37 @@ static void testGestorInvalidar() {
     CHECK(backend.programasCreados == 2, "el shader se vuelve a compilar");
 }
 
+static void testShadersDeSombras() {
+    std::cout << "-- shaders: el mapa de sombras tiene su programa y el shader "
+                 "de mallas lo consulta"
+              << std::endl;
+
+    BackendFalso backend;
+    Rendering::GestorShaders gestor(backend);
+
+    CHECK(gestor.tiene("profundidad"),
+          "el gestor conoce el programa de profundidad");
+
+    gestor.obtener("profundidad");
+    CHECK(backend.ultimoVertex.find("uLightMatrix") != std::string::npos,
+          "el programa de profundidad proyecta con la matriz de la luz");
+    CHECK(backend.ultimoVertex.find("uModel") != std::string::npos,
+          "el programa de profundidad aplica la matriz del modelo");
+    CHECK(backend.ultimoFragment.find("void main") != std::string::npos,
+          "el programa de profundidad tiene su propio fragment shader");
+
+    // El shader de mallas es el que consulta el mapa.
+    gestor.obtener("malla");
+    CHECK(backend.ultimoFragment.find("sampler2DShadow") != std::string::npos,
+          "el shader de mallas lee los mapas como sampler2DShadow");
+    CHECK(backend.ultimoFragment.find("uShadowMatrix") != std::string::npos,
+          "el shader de mallas recibe la matriz de cada mapa");
+    CHECK(backend.ultimoFragment.find("uShadowLightIndex") != std::string::npos,
+          "el shader de mallas sabe a que luz pertenece cada mapa");
+    CHECK(backend.ultimoFragment.find("uShadowCount") != std::string::npos,
+          "el shader de mallas sabe cuantos mapas hay");
+}
+
 int main() {
     testPreprocesadorIncluye();
     testPreprocesadorAnidados();
@@ -303,6 +341,7 @@ int main() {
     testGestorComparteProgramas();
     testGestorPreprocesaElFuente();
     testGestorInvalidar();
+    testShadersDeSombras();
 
     std::cout << "ShadersTests: " << total << " verificaciones, " << fallos
               << " fallos" << std::endl;

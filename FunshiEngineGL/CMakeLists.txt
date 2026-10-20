@@ -847,6 +847,51 @@ set_target_properties(shaders-tests PROPERTIES
     CXX_EXTENSIONS OFF
 )
 add_test(NAME shaders-tests COMMAND shaders-tests)
+
+# --- Pruebas headless del sistema de sombras ----------------------------------
+# La matriz de la luz (CPU puro), el componente de sombras y la seleccion de
+# proyectores. La matriz se construye con glm (headers de matematicas), que no
+# esta disponible en un build sin dependencias externas: por eso vive en el
+# bloque del motor y no en el de las pruebas headless.
+add_executable(sombras-tests
+    ${SRC_DIR}/Iluminacion/MatrizLuz.cpp
+    ${SRC_DIR}/Objetos/Componentes/Sombras/Sombras.cpp
+    ${SRC_DIR}/Rendering/Sombras/MapaSombras.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../tests/SombrasTests.cpp
+)
+target_link_libraries(sombras-tests PRIVATE
+    funshi_diagnostics_core funshi_glm)
+target_include_directories(sombras-tests PRIVATE
+    ${SRC_DIR}
+    ${CMAKE_SOURCE_DIR}/External
+)
+set_target_properties(sombras-tests PROPERTIES
+    CXX_STANDARD 17
+    CXX_STANDARD_REQUIRED ON
+    CXX_EXTENSIONS OFF
+)
+add_test(NAME sombras-tests COMMAND sombras-tests)
+
+# --- Pruebas headless del sistema de luces ------------------------------------
+# La recogida de las luces de la escena y el paralelismo entre la lista de
+# luces y la de duenos (lo usa el pase de sombras para saber a que luz
+# pertenece cada mapa). Necesita funshi_engine (GameObject, Light, Transform),
+# como catalogo-componentes-tests.
+add_executable(iluminacion-tests
+    ${CMAKE_CURRENT_SOURCE_DIR}/../tests/IluminacionTests.cpp
+)
+target_include_directories(iluminacion-tests PRIVATE
+    ${SRC_DIR}
+    ${CMAKE_SOURCE_DIR}/External
+)
+target_link_libraries(iluminacion-tests PRIVATE funshi_engine)
+set_target_properties(iluminacion-tests PROPERTIES
+    CXX_STANDARD 17
+    CXX_STANDARD_REQUIRED ON
+    CXX_EXTENSIONS OFF
+)
+add_test(NAME iluminacion-tests COMMAND iluminacion-tests)
+
 # Deshabilitada: la suite falla en la rama develop por un fallo preexistente
 # de la interfaz web.
 set_tests_properties(webui-runtime-tests PROPERTIES DISABLED TRUE)
@@ -860,6 +905,7 @@ if(WIN32)
     target_compile_definitions(tema-tests PRIVATE _HAS_STD_BYTE=0)
     target_compile_definitions(interface-component-tests PRIVATE _HAS_STD_BYTE=0)
     target_compile_definitions(webui-runtime-tests PRIVATE _HAS_STD_BYTE=0)
+    target_compile_definitions(iluminacion-tests PRIVATE _HAS_STD_BYTE=0)
 endif()
 
 endif() # NOT BUILD_RUNTIME (sin pruebas del bloque editor)

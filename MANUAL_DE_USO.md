@@ -256,7 +256,7 @@ seleccion).
 - **Componentes:** `Transform`, `Color`, `Model`, `Material`, `Light`,
   `CameraComponent`, `Grid`, `Skybox`, `SpriteRenderer`, `Animador2D`, `Tilemap`,
   colliders (esfera / cubo / malla / tilemap), `RigidBody`, `AudioSource`,
-  `InterfaceComponent` y `Script`.
+  `InterfaceComponent`, `Sombras` y `Script`.
 - **Inspector:** boton "Agregar componente" abre el popup de componentes; cada
   uno tiene su panel propio (Transform, Luz con tipo/atenuacion/color, etc.).
 - **Jerarquia:** arrastra un objeto sobre otro en el arbol para reparentar; el
@@ -449,6 +449,43 @@ que lo tenga, igual que con `Grid`.
   segun donde mires. Es lo que hace que un cielo con imagen se sienta como un
   cielo y no como un fondo de pantalla. Aparece tanto en el viewport principal
   como en las vistas previas.
+
+### Sombras (sombra proyectada por una luz)
+
+El componente `Sombras` se agrega **al mismo objeto que lleva la luz** y le dice
+que projecute sombra sobre la escena. El motor dibuja la escena desde el punto
+de vista de la luz, guarda esa profundidad en un mapa y, al dibujar las mallas,
+consulta el mapa para oscurecer lo que queda tapado.
+
+- Solo se ofrece en objetos **3D que ya tienen una luz**; el panel aparece en
+  el Inspector de ese objeto.
+- **Proyecta sombra**: enciende o apaga la sombra de esa luz. Apagada, la luz
+  sigue iluminando igual, solo que sin sombra.
+- **Resolucion**: lado del mapa de sombras en píxeles (de 256 a 4096). Un mapa
+  mas grande da bordes mas nitidos a cambio de mas memoria y mas tiempo de
+  dibujado.
+- **Sesgo**: desplazamiento de la profundidad al comparar. Sin el, la propia
+  superficie que proyecta la sombra se auto-sombrea (el "acne" de las sombras).
+  Si la sombra sale moteada, subilo un poco; si las sombras se despegan de los
+  objetos, bajalo.
+- **Fuerza**: cuanto se oscurece la zona en sombra. 0 deja la sombra sin efecto
+  y 1 la deja completa.
+- **Radio**: semi-lado del frustum ortografico de la luz. La sombra abarca una
+  caja de lado `2 * radio` alrededor del foco: un radio grande cubre mas
+  escena, con menos resolucion efectiva.
+- **Distancia**: alcance de la sombra, en unidades desde la luz.
+
+Dos limites del motor:
+
+- Solo proyectan sombra las luces **direccionales** y **spot**. Las puntuales
+  proyectan en todas las direcciones, asi que necesitarian un mapa por cara; el
+  motor las cuenta aparte y avisa por consola de que no proyectan.
+- Como mucho **4 mapas de sombra** a la vez. Si hay mas luces con sombra, las
+  que se quedan fuera se avisan por consola (las primeras 4 son las que
+  proyectan).
+
+La sombra es de la luz que la lleva: si hay dos luces en la escena, cada una
+sombrea solo lo que ilumina ella.
 
 ## 5. Undo / redo de operaciones del editor
 

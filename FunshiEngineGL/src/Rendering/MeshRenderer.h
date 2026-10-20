@@ -28,6 +28,7 @@
 #include <glm/glm.hpp>
 
 #include "../Iluminacion/LightSystem.h"
+#include "Sombras/MapaSombras.h"
 
 class ShaderProgram;
 
@@ -98,12 +99,29 @@ public:
                             const float modelo[16], const float view[16],
                             const float projection[16], float deltaTime);
 
+    // Pases de sombras.
+    //
+    // Dibuja la malla en el pase de profundidad: solo escribe la profundidad
+    // vista desde la luz, con el programa de profundidad y la matriz de la
+    // luz. No aplica materiales ni luces. Devuelve false si no hay programa
+    // o si la malla no es dibujable.
+    bool intentarRenderSombra(const Mesh* mesh, const float modelo[16],
+                               const glm::mat4& matrizLuz);
+
+    // Mapas de sombra de la pasada: los proyectores con los que el shader de
+    // mallas consulta la profundidad. Los mapas se enlazan a las unidades de
+    // textura reservadas para ellos (las del material ocupan las primeras).
+    void setSombras(const Rendering::ProyectorSombra* proyectores, int cantidad);
+
     // Libera los MeshGPU/TextureGL cacheados (por ejemplo tras recargar
     // mallas o texturas).
     void clearCache();
 
 private:
     std::shared_ptr<ShaderProgram> shader_;
+    // Programa del pase de profundidad (mapa de sombras). Es aparte del de
+    // las mallas: escribe profundidad y nada mas.
+    std::shared_ptr<ShaderProgram> shaderSombra_;
     Rendering::GestorShaders* gestorShaders_ = nullptr;
     TextureManager* textureManager_ = nullptr;
     std::unordered_map<const Mesh*, std::unique_ptr<MeshGPU>> gpu_;
@@ -114,6 +132,8 @@ private:
     // emite una sola vez por malla, no por frame.
     std::unordered_set<const Mesh*> mallasSinNormales_;
     std::vector<LightData> luces_;
+    // Mapas de sombra de la pasada actual (los consulta el shader de mallas).
+    std::vector<Rendering::ProyectorSombra> sombras_;
     float globalAmbient_[3] = {0.15f, 0.15f, 0.15f};
     float horizonteInicio_ = 40.0f;
     float horizonteFin_ = 150.0f;
@@ -123,6 +143,16 @@ private:
     bool inicializar();
     void aplicarLuces();
     void aplicarMaterial(GameObject* objeto);
+    // Sube los uniforms de los mapas de sombra (matriz, sesgo, fuerza, texel
+    // y a que luz pertenece cada mapa) y enlaza sus texturas.
+    void aplicarSombras();
+    // Enlaza las texturas de los mapas de sombra a sus unidades (las del
+    // material ocupan las cuatro primeras). Se hace en cada dibujado: otras
+    // pasadas cambian el contenido de las unidades.
+    void enlazarTexturasSombra();
+    // Sube la malla a GPU (cache por identidad de la malla) y la devuelve.
+    // nullptr si la malla no se puede dibujar.
+    const MeshGPU* obtenerGpu(const Mesh* mesh);
     // Resuelve los 4 slots de textura del Material (difusa/especular/emision/
     // normal) contra el TextureManager inyectado y enlaza las unidades de
     // sampleo correspondientes. La normal exige que la malla tenga tangentes.
