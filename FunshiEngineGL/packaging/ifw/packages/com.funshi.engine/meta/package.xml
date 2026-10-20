@@ -15,8 +15,8 @@
     </Description>
 
     <Name>com.funshi.engine</Name>
-    <Version>0.5.0</Version>
-    <ReleaseDate>2026-09-15</ReleaseDate>
+    <Version>0.5.6</Version>
+    <ReleaseDate>2026-10-20</ReleaseDate>
 
     <Default>true</Default>
     <Essential>true</Essential>
