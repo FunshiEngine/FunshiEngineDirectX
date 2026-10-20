@@ -20,14 +20,19 @@
 //
 //  - la matriz de luz (CPU puro): el frustum ortografico abarca la caja de
 //    lado 2*radio alrededor del foco, el plano lejano queda delante del
-//    cercano, la matriz es finita y la direccion de la luz manda.
+//    cercano, la matriz es finita y la direccion de la luz manda,
+//  - el componente de sombras: sus valores por defecto, el acotado de los
+//    valores imposibles y el viaje de ida y vuelta por el archivo binario.
 
 #include <cmath>
+#include <fstream>
 #include <iostream>
 
 #include <glm/glm.hpp>
 
 #include "../FunshiEngineGL/src/Iluminacion/MatrizLuz.h"
+#include "../FunshiEngineGL/src/Objetos/Componentes/Sombras/Sombras.h"
+#include "TempPruebas.h"
 
 int total = 0;
 int fallos = 0;
@@ -212,6 +217,118 @@ void testLaDireccionManda() {
     CHECK(corta == larga, "la direccion de la luz se normaliza");
 }
 
+// --- Componente de sombras ---------------------------------------------------
+
+void testValoresPorDefecto() {
+    Sombras sombras;
+    CHECK(sombras.estaActivado(), "la sombra proyecta por defecto");
+    CHECK(sombras.getResolucion() == 1024,
+          "el mapa de sombras es de 1024 por defecto");
+    CHECK(sombras.getSesgo() > 0.f, "el sesgo por defecto no es cero");
+    CHECK(cercaDe(sombras.getFuerza(), 1.f), "la sombra es completa por defecto");
+    CHECK(sombras.getRadio() > 0.f, "el radio por defecto es positivo");
+    CHECK(sombras.getDistancia() > 0.f, "la distancia por defecto es positiva");
+}
+
+void testValoresAcotados() {
+    Sombras sombras;
+
+    sombras.setResolucion(100);
+    CHECK(sombras.getResolucion() == 256,
+          "una resolucion ridicula se acota al minimo");
+    sombras.setResolucion(99999);
+    CHECK(sombras.getResolucion() == 4096,
+          "una resolucion enorme se acota al maximo");
+    sombras.setResolucion(1000);
+    CHECK(sombras.getResolucion() == 512 || sombras.getResolucion() == 1024,
+          "la resolucion se ajusta a una potencia de dos");
+
+    sombras.setSesgo(-1.f);
+    CHECK(sombras.getSesgo() == 0.f, "un sesgo negativo se acota a cero");
+    sombras.setSesgo(10.f);
+    CHECK(sombras.getSesgo() <= 0.1f, "un sesgo enorme se acota");
+
+    sombras.setFuerza(5.f);
+    CHECK(sombras.getFuerza() == 1.f, "una fuerza mayor que uno se acota");
+    sombras.setFuerza(-1.f);
+    CHECK(sombras.getFuerza() == 0.f, "una fuerza negativa se acota a cero");
+
+    sombras.setRadio(0.f);
+    CHECK(sombras.getRadio() > 0.f, "un radio cero se acota a un valor util");
+    sombras.setDistancia(0.f);
+    CHECK(sombras.getDistancia() > 0.f,
+          "una distancia cero se acota a un valor util");
+}
+
+void testViajeDeIdaYVuelta() {
+    TempPruebas::CarpetaPrueba carpeta("funshi_sombras_tests");
+    const auto ruta = carpeta.ruta() / "sombras.bin";
+
+    Sombras original;
+    original.setActivado(false);
+    original.setResolucion(2048);
+    original.setSesgo(0.004f);
+    original.setFuerza(0.6f);
+    original.setRadio(35.f);
+    original.setDistancia(120.f);
+
+    {
+        std::ofstream salida(ruta, std::ios::binary);
+        CHECK(salida.is_open(), "se abre el archivo para escribir");
+        original.saveComponent(&salida);
+    }
+
+    Sombras leida;
+    {
+        std::ifstream entrada(ruta, std::ios::binary);
+        CHECK(entrada.is_open(), "se abre el archivo para leer");
+        leida.loadComponent(&entrada);
+    }
+
+    CHECK(leida.estaActivado() == false, "el estado de la sombra se conserva");
+    CHECK(leida.getResolucion() == 2048, "la resolucion se conserva");
+    CHECK(cercaDe(leida.getSesgo(), 0.004f), "el sesgo se conserva");
+    CHECK(cercaDe(leida.getFuerza(), 0.6f), "la fuerza se conserva");
+    CHECK(cercaDe(leida.getRadio(), 35.f), "el radio se conserva");
+    CHECK(cercaDe(leida.getDistancia(), 120.f), "la distancia se conserva");
+}
+
+void testLecturaAcotaValores() {
+    // Un archivo con valores imposibles (editado a mano o de otra version)
+    // no puede dejar la sombra en un estado imposible.
+    TempPruebas::CarpetaPrueba carpeta("funshi_sombras_tests_basura");
+    const auto ruta = carpeta.ruta() / "sombras_basura.bin";
+
+    {
+        std::ofstream salida(ruta, std::ios::binary);
+        const bool activado = true;
+        const int resolucion = 999999;
+        const float sesgo = -5.f;
+        const float fuerza = 42.f;
+        const float radio = -3.f;
+        const float distancia = 0.f;
+        salida.write(reinterpret_cast<const char*>(&activado), sizeof(bool));
+        salida.write(reinterpret_cast<const char*>(&resolucion), sizeof(int));
+        salida.write(reinterpret_cast<const char*>(&sesgo), sizeof(float));
+        salida.write(reinterpret_cast<const char*>(&fuerza), sizeof(float));
+        salida.write(reinterpret_cast<const char*>(&radio), sizeof(float));
+        salida.write(reinterpret_cast<const char*>(&distancia), sizeof(float));
+    }
+
+    Sombras leida;
+    {
+        std::ifstream entrada(ruta, std::ios::binary);
+        leida.loadComponent(&entrada);
+    }
+    CHECK(leida.getResolucion() <= 4096 && leida.getResolucion() >= 256,
+          "una resolucion absurda se acota al leer");
+    CHECK(leida.getSesgo() >= 0.f, "un sesgo negativo se acota al leer");
+    CHECK(leida.getFuerza() >= 0.f && leida.getFuerza() <= 1.f,
+          "una fuerza fuera de rango se acota al leer");
+    CHECK(leida.getRadio() > 0.f, "un radio negativo se acota al leer");
+    CHECK(leida.getDistancia() > 0.f, "una distancia cero se acota al leer");
+}
+
 int main() {
     testVistaMiraEnLaDireccion();
     testVistaVerticalNoEsNaN();
@@ -221,6 +338,10 @@ int main() {
     testMatrizLuzEnfocaElFoco();
     testMatrizCubreLaEscena();
     testLaDireccionManda();
+    testValoresPorDefecto();
+    testValoresAcotados();
+    testViajeDeIdaYVuelta();
+    testLecturaAcotaValores();
 
     std::cout << "SombrasTests: " << total << " verificaciones, " << fallos
               << " fallos" << std::endl;

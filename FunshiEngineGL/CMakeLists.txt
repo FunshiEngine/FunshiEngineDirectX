@@ -855,6 +855,7 @@ add_test(NAME shaders-tests COMMAND shaders-tests)
 # bloque del motor y no en el de las pruebas headless.
 add_executable(sombras-tests
     ${SRC_DIR}/Iluminacion/MatrizLuz.cpp
+    ${SRC_DIR}/Objetos/Componentes/Sombras/Sombras.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../tests/SombrasTests.cpp
 )
 target_link_libraries(sombras-tests PRIVATE
