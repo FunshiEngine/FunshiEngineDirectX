@@ -38,6 +38,7 @@
 #include "../FunshiEngineGL/src/Assets/Mesh.h"
 #include "../FunshiEngineGL/src/Assets/Tileset.h"
 #include "../FunshiEngineGL/src/Objetos/Componentes/Colliders/TilemapCollider.h"
+#include "../FunshiEngineGL/src/Objetos/Componentes/Colliders/TiposShapeBullet.h"
 #include "../FunshiEngineGL/src/Objetos/Componentes/Tilemap.h"
 #include "../FunshiEngineGL/src/Objetos/Componentes/Transform.h"
 #include "../FunshiEngineGL/src/Objetos/GameObject.h"
@@ -297,7 +298,7 @@ void tilemapColliderTramos(const std::string& rutaTileset) {
           "el colisionador conoce su objeto");
 
     // Sin tiles solidos la shape compuesta queda vacia.
-    auto* vacia = dynamic_cast<btCompoundShape*>(col->getCollisionShape());
+    auto* vacia = TiposShapeBullet::comoCompuesta(col->getCollisionShape());
     CHECK(vacia != nullptr, "el colisionador de tilemap arma una shape compuesta");
     CHECK(vacia && vacia->getNumChildShapes() == 0,
           "sin tiles solidos no hay cajas");
@@ -313,13 +314,13 @@ void tilemapColliderTramos(const std::string& rutaTileset) {
     tm->pintar(1, 3, 0, 5);
 
     col->invalidateCollisionShape();
-    auto* compuesta = dynamic_cast<btCompoundShape*>(col->getCollisionShape());
+    auto* compuesta = TiposShapeBullet::comoCompuesta(col->getCollisionShape());
     CHECK(compuesta != nullptr, "la shape del tilemap sigue siendo compuesta");
     CHECK(compuesta && compuesta->getNumChildShapes() == 3,
           "se fusionan los tramos: 3 cajas (un tramo de 3 y dos de 1)");
 
     if (compuesta && compuesta->getNumChildShapes() >= 1) {
-        auto* caja0 = dynamic_cast<btBoxShape*>(compuesta->getChildShape(0));
+        auto* caja0 = TiposShapeBullet::comoCaja(compuesta->getChildShape(0));
         CHECK(caja0 != nullptr, "cada tramo se modela con una caja");
         if (caja0) {
             const btVector3 mitad = caja0->getHalfExtentsWithMargin();
@@ -331,15 +332,57 @@ void tilemapColliderTramos(const std::string& rutaTileset) {
     // El colisionador no cambia la colision al editar tiles si la shape sigue
     // cacheada: al invalidarla se reconstruye con los tiles actuales.
     tm->pintar(capaCol, 1, 1, 2);
-    auto* cacheada = dynamic_cast<btCompoundShape*>(col->getCollisionShape());
+    auto* cacheada = TiposShapeBullet::comoCompuesta(col->getCollisionShape());
     CHECK(cacheada && cacheada->getNumChildShapes() == 3,
           "la shape cacheada no cambia hasta invalidarla");
 
     col->invalidateCollisionShape();
     auto* reconstruida =
-        dynamic_cast<btCompoundShape*>(col->getCollisionShape());
+        TiposShapeBullet::comoCompuesta(col->getCollisionShape());
     CHECK(reconstruida && reconstruida->getNumChildShapes() == 2,
           "al invalidar la shape se reconstruye con los tiles actuales");
+}
+
+// Las shapes de Bullet se identifican por su "shape type" y no con RTTI:
+// Bullet se compila sin informacion de tipos (vcpkg lo instala con
+// USE_MSVC_DISABLE_RTTI=ON) y un dynamic_cast sobre un tipo de Bullet aborta
+// el proceso con un access violation en MSVC. El helper reconoce cada clase
+// por su tipo proxy y rechaza las demas.
+void identificacionShapesSinRtti() {
+    btBoxShape caja(btVector3(1.0f, 1.0f, 1.0f));
+    btCompoundShape compuesta;
+    btConvexHullShape casco;
+    casco.addPoint(btVector3(0.0f, 0.0f, 0.0f));
+    casco.addPoint(btVector3(1.0f, 0.0f, 0.0f));
+    casco.addPoint(btVector3(0.0f, 1.0f, 0.0f));
+    casco.addPoint(btVector3(0.0f, 0.0f, 1.0f));
+
+    CHECK(TiposShapeBullet::comoCaja(&caja) == &caja, "la caja se reconoce");
+    CHECK(TiposShapeBullet::comoCompuesta(&caja) == nullptr,
+          "la caja no se toma por compuesta");
+    CHECK(TiposShapeBullet::comoCascoConvexo(&caja) == nullptr,
+          "la caja no se toma por casco convexo");
+
+    CHECK(TiposShapeBullet::comoCompuesta(&compuesta) == &compuesta,
+          "la compuesta se reconoce");
+    CHECK(TiposShapeBullet::comoCaja(&compuesta) == nullptr,
+          "la compuesta no se toma por caja");
+    CHECK(TiposShapeBullet::comoCascoConvexo(&compuesta) == nullptr,
+          "la compuesta no se toma por casco convexo");
+
+    CHECK(TiposShapeBullet::comoCascoConvexo(&casco) == &casco,
+          "el casco convexo se reconoce");
+    CHECK(TiposShapeBullet::comoCaja(&casco) == nullptr,
+          "el casco convexo no se toma por caja");
+    CHECK(TiposShapeBullet::comoCompuesta(&casco) == nullptr,
+          "el casco convexo no se toma por compuesta");
+
+    CHECK(TiposShapeBullet::comoCaja(nullptr) == nullptr,
+          "una shape nula no se toma por caja");
+    CHECK(TiposShapeBullet::comoCompuesta(nullptr) == nullptr,
+          "una shape nula no se toma por compuesta");
+    CHECK(TiposShapeBullet::comoCascoConvexo(nullptr) == nullptr,
+          "una shape nula no se toma por casco convexo");
 }
 } // namespace
 
@@ -350,6 +393,7 @@ int main() {
     const std::string rutaTileset = base + "/tileset.json";
     escribirTileset(rutaTileset);
 
+    identificacionShapesSinRtti();
     tilesetValidoYMetadatos(rutaTileset);
     tilesetErrores(base);
     tilemapCapasYPintado(rutaTileset);

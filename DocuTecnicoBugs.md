@@ -112,6 +112,7 @@ recorrer(destFolder); // Ahora SÍ re-lee porque cache inválido
 | **R17 — Tu binario también es el subproceso** | Un motor multiproceso (CEF) relanza el **mismo ejecutable** con `--type=...`: `CefExecuteProcess` debe correr al comienzo de `main`, antes de log/ventana/GL; devuelve -1 cuando el proceso no es subproceso y el motor sigue. Si no se corta ahí, el subproceso arranca la inicialización completa del motor en paralelo al proceso principal | `WebUIRuntime::ejecutarSubproceso` en `main.cpp` y `main_juego.cpp` (ver §13.4) |
 | **R18 — Generar por configuración lo que depende de la configuración** | Un generador multi-config (Visual Studio, Ninja Multi-Config) evalúa lo generado una vez por configuración: lo que dependa de la configuración (la ruta de un binario, `$<TARGET_FILE:...>`) no puede vivir en un único archivo compartido, o CMake aborta con `Evaluation file to be written multiple times with different content`. El archivo va a `.../$<CONFIG>/...` y el include del consumidor a la carpeta de su configuración | `FunshiEngineGL/CMakeLists.txt` (cabecera generada de los plugins de prueba; ver §14.4) |
 | **R19 — Declarar cada tipo con el mismo class-key en la definición y en la declaración adelantada** | MSVC mete el class-key (`class`/`struct`) en el nombre del símbolo: si un header adelanta el tipo con un key y otro lo define con el otro, la definición y la referencia se llaman distinto y el enlazado falla con LNK2019 aunque el código sea idéntico (GCC y Clang lo ignoran). La declaración adelantada copia el key de la definición y el aviso que lo anticipa (C4099 en MSVC, `-Wmismatched-tags` en GCC y Clang) se convierte en error | `FunshiEngineGL/src/Rendering/MeshRenderer.h`, `FunshiEngineGL/src/Rendering/DibujoModelo.h` (ver §15.4) |
+| **R21 — Identificar por el tipo propio de la biblioteca, no por RTTI** | Una biblioteca compilada sin información de tipos (`/GR-` en MSVC) emite sus tablas de métodos virtuales sin puntero a typeinfo: el `dynamic_cast` lee ese puntero y el proceso aborta con un *access violation* dentro de `__RTDynamicCast`. El paquete de Bullet de vcpkg se compila así a propósito (la feature `rtti` está invertida). Para reconocer una clase hay que usar la API propia de la biblioteca (en Bullet, el "shape type" que devuelve `getShapeType()`) y un `static_cast` tras la comprobación | `FunshiEngineGL/src/Objetos/Componentes/Colliders/TiposShapeBullet.h` (ver §17.4) |
 
 ---
 
@@ -1142,7 +1143,76 @@ Detalle que hace fallar el helper sin avisar: `find_last_of("::")` busca un
 
 ---
 
-## 17. Historial de Cambios
+## 17. Decimotercer concepto: **Una biblioteca de terceros compilada sin RTTI invalida el `dynamic_cast`**
+
+### 17.1 Patrón
+
+Una biblioteca compilada **sin información de tipos** (`/GR-` en MSVC,
+`-fno-rtti` en GCC y Clang) emite sus tablas de métodos virtuales **sin puntero
+a typeinfo**. El `dynamic_cast` del runtime lee ese puntero de la tabla: si es
+nulo, el proceso aborta con un *access violation* dentro de la rutina que
+implementa el cast (`__RTDynamicCast`, en VCRUNTIME140.dll).
+
+El paquete de Bullet que instala vcpkg se compila así a propósito: la feature
+`rtti` está **invertida** y, sin ella, el port pasa
+`-DUSE_MSVC_DISABLE_RTTI=ON`. En Linux el paquete del sistema y el de vcpkg
+usan RTTI, de modo que el mismo código funciona allí y el fallo solo aparece
+en Windows.
+
+### 17.2 Síntomas
+
+- Un test que pasa en Linux aborta en Windows con `0xC0000409` (fast-fail),
+  provocado por un *access violation* `0xC0000005` previo dentro de
+  VCRUNTIME140.dll.
+- El runtime imprime "Access violation - no RTTI data!".
+- El crash ocurre **exactamente** en el primer `dynamic_cast` sobre un objeto
+  de la biblioteca: la comprobación anterior pasa y la siguiente no llega a
+  ejecutarse.
+- El mismo `dynamic_cast` en el motor (no en el test) revienta la aplicación
+  real en Windows.
+
+### 17.3 Causa
+
+El motor identificaba las formas de colisión de Bullet con `dynamic_cast`
+(`btCompoundShape`, `btBoxShape`, `btConvexHullShape`). Con Bullet compilado
+sin RTTI, ese cast lee un typeinfo nulo.
+
+### 17.4 Fix canónico (Patrón R21 — identificar por el tipo propio de la biblioteca, no por RTTI)
+
+Bullet trae para eso el **shape type**: un entero que cada clase fija en su
+constructor y que `getShapeType()` devuelve (`BOX_SHAPE_PROXYTYPE`,
+`COMPOUND_SHAPE_PROXYTYPE`, `CONVEX_HULL_SHAPE_PROXYTYPE`; el enumerado lleva
+esos nombres sin prefijo desde Bullet 3.09, y las versiones anteriores usaban
+macros `BT_SHAPE_*`).
+
+El helper `TiposShapeBullet` (en `Objetos/Componentes/Colliders`) reconoce cada
+clase por su tipo proxy y devuelve `nullptr` cuando no encaja, de modo que el
+`static_cast` que sigue es seguro. No queda ningún `dynamic_cast` sobre un
+tipo de Bullet.
+
+Si aun así se necesita RTTI de Bullet, vcpkg la expone con la feature
+invertida `bullet3[rtti]`.
+
+### 17.5 Checklist de mitigación
+
+- [ ] Ningún `dynamic_cast` (ni `typeid`) sobre un tipo de una biblioteca de
+      terceros que pueda venir compilada sin RTTI.
+- [ ] La identificación del tipo usa la API propia de la biblioteca.
+- [ ] La CI compila y **enlaza** el motor con MSVC y corre las suites: este
+      fallo no se ve en una CI solo-Linux.
+- [ ] Hay un test que comprueba que la identificación reconoce cada clase y
+      rechaza las demás.
+
+### 17.6 Registro de Instancias
+
+| # | Ubicación | Operación | Herramienta | Fix Aplicado | Commit |
+|---|-----------|-----------|-------------|--------------|--------|
+| 1 | `FunshiEngineGL/src/Objetos/Componentes/Colliders/MallaCollider.cpp` | Dibujar el hull de un colisionador de malla | MSVC (Visual Studio) | El hull se identifica con `TiposShapeBullet::comoCascoConvexo()` (Patrón R21) | `fix(fisicas): identificar las shapes de Bullet sin RTTI` |
+| 2 | `tests/TilemapTests.cpp` | Comprobar la shape compuesta del colisionador de tilemap | MSVC (Visual Studio) | Las shapes se identifican con `TiposShapeBullet` (Patrón R21) | `fix(fisicas): identificar las shapes de Bullet sin RTTI` |
+
+---
+
+## 18. Historial de Cambios
 
 | Fecha | Autor | Cambio |
 |-------|-------|--------|
@@ -1162,10 +1232,11 @@ Detalle que hace fallar el helper sin avisar: `find_last_of("::")` busca un
 | 2026-10-20 | Gianfranco Ivan Enrique | Añadido el décimo concepto (Patrón R18, un archivo generado en tiempo de configuración vale en una configuración y en ninguna más) con su instancia #1, a raíz del fallo de configuración del build de Windows con Visual Studio: el header con las rutas de los plugins de prueba se generaba en un archivo compartido y CMake abortaba al escribirlo una vez por configuración. |
 | 2026-10-20 | Gianfranco Ivan Enrique | Añadido el undécimo concepto (Patrón R19, un tipo declarado con un class-key distinto al de su definición produce dos símbolos distintos) con sus instancias #1–#2, a raíz del LNK2019 al enlazar el motor con Visual Studio: `Mesh` e `Image` se adelantaban como `class` y se definen como `struct`, y MSVC distingue los dos nombres de símbolo. |
 | 2026-10-20 | Gianfranco Ivan Enrique | Añadido el duodécimo concepto (Patrón R20, el nombre de un tipo persistido depende del compilador) con sus instancias #1–#5, a raíz del fallo de `prefab-tests` en Windows: MSVC escribe `"class Transform"` en `typeid().name()` y el recorte manual del mangling de GCC truncaba los nombres con `E`. |
+| 2026-10-20 | Gianfranco Ivan Enrique | Añadido el decimotercer concepto (Patrón R21, una biblioteca de terceros compilada sin RTTI invalida el `dynamic_cast`) con sus instancias #1–#2, a raíz del aborto de `tilemap-tests` en Windows: el paquete de Bullet de vcpkg se compila con `USE_MSVC_DISABLE_RTTI=ON` y el `dynamic_cast` sobre una shape leía un typeinfo nulo. |
 
 ---
 
-*Este documento es vivo: cada nuevo bug de esta clase debe registrarse en la tabla de su concepto (§2 para el primero, §6.5 para el segundo, §7.5 para el tercero, §8.5 para el cuarto, §9.5 para el quinto), §14.6 para el décimo, §15.6 para el undécimo, §16.6 para el duodécimo y, si revela un patrón nuevo, añadirse a §4.*
+*Este documento es vivo: cada nuevo bug de esta clase debe registrarse en la tabla de su concepto (§2 para el primero, §6.5 para el segundo, §7.5 para el tercero, §8.5 para el cuarto, §9.5 para el quinto), §14.6 para el décimo, §15.6 para el undécimo, §16.6 para el duodécimo, §17.6 para el decimotercer y, si revela un patrón nuevo, añadirse a §4.*
 ## CEF: "Invalid file descriptor to ICU data received" en InitializeICU
 
 - **Síntoma**: al arrancar el motor con `FUNSHI_CEF=ON`, `CefInitialize` aborta en

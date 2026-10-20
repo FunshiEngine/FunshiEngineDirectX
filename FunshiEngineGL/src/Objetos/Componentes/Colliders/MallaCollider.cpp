@@ -21,6 +21,7 @@
 #include <vector>
 #include <btBulletDynamicsCommon.h>
 
+#include "TiposShapeBullet.h"
 #include "../../../Objetos/GameObject.h"
 #include "../../../Objetos/Modelos3D.h"
 #include "../../../Rendering/LineBuilder.h"
@@ -66,7 +67,7 @@ void MallaCollider::dibujarCollider() {
     // todavia no existe; es lo que permite ver el hull apenas se crea el
     // collider, sin esperar a que la fisica lo genere.
     btConvexHullShape* hull =
-        dynamic_cast<btConvexHullShape*>(getCollisionShape());
+        TiposShapeBullet::comoCascoConvexo(getCollisionShape());
     if (hull && hull->getNumPoints() > 0) {
         const btVector3* points = hull->getUnscaledPoints();
         const int numPoints = hull->getNumPoints();
