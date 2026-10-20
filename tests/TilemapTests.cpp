@@ -39,6 +39,7 @@
 #define NOMINMAX
 #endif
 #include <windows.h>
+#include <dbghelp.h>
 #endif
 
 #include <cmath>
@@ -69,10 +70,44 @@
 namespace {
 int g_diagnosticoImpresos = 0;
 
+// Simboliza una direccion: nombre de la funcion y archivo:linea del PDB.
+void simbolizar(HANDLE proceso, DWORD64 addr, const char* etiqueta) {
+    char nombre[512] = "?";
+    DWORD64 desplazamiento = 0;
+    const size_t maxNombre = 255;
+    SYMBOL_INFO* simbolo = reinterpret_cast<SYMBOL_INFO*>(
+        calloc(sizeof(SYMBOL_INFO) + (maxNombre + 1) * sizeof(char), 1));
+    if (simbolo) {
+        simbolo->SizeOfStruct = sizeof(SYMBOL_INFO);
+        simbolo->MaxNameLen = static_cast<DWORD>(maxNombre);
+        if (SymFromAddr(proceso, addr, &desplazamiento, simbolo)) {
+            std::snprintf(nombre, sizeof(nombre), "%s",
+                          reinterpret_cast<const char*>(simbolo->Name));
+        }
+        free(simbolo);
+    }
+
+    char archivo[MAX_PATH] = "";
+    unsigned long linea = 0;
+    IMAGEHLP_LINE64 datosLinea;
+    ZeroMemory(&datosLinea, sizeof(datosLinea));
+    datosLinea.SizeOfStruct = sizeof(datosLinea);
+    DWORD desplazamientoLinea = 0;
+    if (SymGetLineFromAddr64(proceso, addr, &desplazamientoLinea, &datosLinea)) {
+        std::snprintf(archivo, sizeof(archivo), "%s:%lu",
+                      datosLinea.FileName, datosLinea.LineNumber);
+        linea = datosLinea.LineNumber;
+    }
+
+    std::fprintf(stderr, "[DIAG] %s %s+0x%llX  %s:%lu\n", etiqueta, nombre,
+                 static_cast<unsigned long long>(desplazamiento), archivo, linea);
+    std::fflush(stderr);
+}
+
 LONG WINAPI manejadorVectorial(EXCEPTION_POINTERS* info) {
     const DWORD codigo = info->ExceptionRecord->ExceptionCode;
     if (codigo == 0xE06D7363) return EXCEPTION_CONTINUE_SEARCH;  // excepcion C++
-    if (++g_diagnosticoImpresos > 8) return EXCEPTION_CONTINUE_SEARCH;
+    if (++g_diagnosticoImpresos > 4) return EXCEPTION_CONTINUE_SEARCH;
     void* dir = info->ExceptionRecord->ExceptionAddress;
     HMODULE modulo = nullptr;
     char nombre[MAX_PATH] = "<?>";
@@ -98,6 +133,17 @@ LONG WINAPI manejadorVectorial(EXCEPTION_POINTERS* info) {
                  "param=%lu\n",
                  static_cast<unsigned long>(codigo), dir, largo, nombre,
                  parametro);
+    std::fflush(stderr);
+
+    // Pila de llamadas en el momento de la excepcion: localiza la funcion.
+    HANDLE proceso = GetCurrentProcess();
+    SymInitialize(proceso, nullptr, TRUE);
+    simbolizar(proceso, reinterpret_cast<DWORD64>(dir), "culpable:");
+    void* pila[64];
+    const WORD frames = CaptureStackBackTrace(0, 64, pila, nullptr);
+    for (WORD i = 0; i < frames && i < 24; ++i) {
+        simbolizar(proceso, reinterpret_cast<DWORD64>(pila[i]), "marco:");
+    }
     std::fflush(stderr);
     return EXCEPTION_CONTINUE_SEARCH;
 }
