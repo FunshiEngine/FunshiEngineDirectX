@@ -21,9 +21,11 @@
 
 #include <string>
 #include <queue>
+#include <memory>
 #include <mutex>
 #include "Exportador/GameExporter.h"
 #include "Configuracion/EditorConfig.h"
+#include "../../Hilos/MotorHilos.h"
 
 class ExportDialog {
 public:
@@ -52,6 +54,9 @@ private:
     int plataformaIdx_ = 0; // 0 = Linux, 1 = Windows
     bool exportando_ = false;
     std::unique_ptr<GameExporter> exporter_;
+    // Pool de hilos donde corre la exportacion (trabajo pesado en segundo
+    // plano). Se crea al exportar y se inyecta en el exportador.
+    std::unique_ptr<MotorHilos> motorHilos_;
     float progreso_ = 0.0f;
     std::string etapaActual_;
     std::string ultimoLog_;

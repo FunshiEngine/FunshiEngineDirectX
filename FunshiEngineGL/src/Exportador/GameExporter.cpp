@@ -20,6 +20,7 @@
 
 #include "../Configuracion/ProjectPaths.h"
 #include "../FileManager/Proceso.h"
+#include "../Hilos/MotorHilos.h"
 #include "ConfigJuegoExportado.h"
 #include "RaizEngine.h"
 #include "RutasExportacion.h"
@@ -88,7 +89,17 @@ GameExporter::GameExporter(const Config& cfg) : cfg_(cfg) {
 }
 
 GameExporter::~GameExporter() {
-    if (hiloExportacion_.joinable()) hiloExportacion_.join();
+    if (hiloExportacion_.joinable()) {
+        hiloExportacion_.join();
+    } else if (motorHilos_) {
+        // La exportacion corre en el pool: se espera a que termine antes de
+        // destruir el exportador (si no, la tarea usaria un objeto ya
+        // destruido).
+        std::unique_lock<std::mutex> bloqueo(mutexEstado_);
+        cvEstado_.wait(bloqueo, [this] {
+            return terminado_.load(std::memory_order_acquire);
+        });
+    }
 }
 
 void GameExporter::iniciar() {
@@ -101,6 +112,13 @@ void GameExporter::iniciar() {
     {
         std::lock_guard<std::mutex> bloqueo(mutexEstado_);
         mensajeFinal_.clear();
+    }
+    if (motorHilos_) {
+        // El trabajo pesado va al pool de hilos del motor; el editor sigue
+        // en su hilo y se entera por los callbacks.
+        if (!motorHilos_->encolar([this] { runExportacion(); }))
+            finalizar(false, "El motor de hilos no aceptó la exportación");
+        return;
     }
     hiloExportacion_ = std::thread(&GameExporter::runExportacion, this);
 }
@@ -510,5 +528,6 @@ void GameExporter::finalizar(bool ok, const std::string& msg) {
     // El mensaje se escribe antes del indicador: quien vea que la
     // exportacion termino ve tambien el mensaje final.
     terminado_.store(true, std::memory_order_release);
+    cvEstado_.notify_all();
     if (cfg_.onFinalizado) cfg_.onFinalizado(ok, msg);
 }

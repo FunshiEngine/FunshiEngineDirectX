@@ -36,6 +36,7 @@
 #include "../EngineTime.h"
 #include "../Ventana.h"
 #include "../Input/EditorInput.h"
+#include "../Hilos/HiloActual.h"
 #include "../Rendering/Backend/IRenderBackend.h"
 #include "../Behaviour/ScriptRuntime.h"
 #include "../States/ApplicationStateMachine.h"
@@ -136,6 +137,11 @@ int EjecutarJuego(int argc, char* argv[]) {
     // 1. Redirigir salida al log
     std::string rutaLog = redirigirSalidaALog(argc > 0 ? argv[0] : nullptr);
     (void)rutaLog;
+
+    // El hilo principal del motor queda registrado: el contexto de OpenGL,
+    // ImGui, CEF y la JVM solo se pueden usar desde aqui (ver Hilos/
+    // HiloActual.h).
+    Hilos::fijarHiloPrincipal();
 
     // 2. Registrar el callback de errores de GLFW antes de crear la ventana.
     // Ventana::initVentana llama a glfwInit(); no se duplica aqui.

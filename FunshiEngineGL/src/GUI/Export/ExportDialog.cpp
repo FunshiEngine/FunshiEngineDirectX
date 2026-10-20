@@ -147,6 +147,11 @@ void ExportDialog::iniciarExportacion() {
     cfg.onFinalizado = [this](bool exito, const std::string& msg) { encolarFinalizado(exito, msg); };
 
     exporter_ = std::make_unique<GameExporter>(cfg);
+    // La exportacion corre en el pool de hilos del motor: el trabajo pesado
+    // (generar el proyecto, compilar, empaquetar) no bloquea el hilo del
+    // editor, que se entera por los callbacks.
+    if (!motorHilos_) motorHilos_ = std::make_unique<MotorHilos>(1);
+    exporter_->setMotorHilos(motorHilos_.get());
     exporter_->iniciar();
 }
 

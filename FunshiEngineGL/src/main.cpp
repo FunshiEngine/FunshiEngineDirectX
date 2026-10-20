@@ -48,6 +48,7 @@
 #include "../src/Events/EditorEventBus.h"
 #include "../src/Ventana.h"
 #include "../src/Input/EditorInput.h"
+#include "../src/Hilos/HiloActual.h"
 #include "../src/Rendering/Backend/IRenderBackend.h"
 #include "../src/Diagnosticos/RegistroDiagnosticos.h"
 #include "../src/Mods/GestorMods.h"
@@ -267,6 +268,10 @@ static int EjecutarMotor(int argc, char* argv[])
     }
 #endif
     std::set_terminate(registrarExcepcionNoCapturada);
+    // El hilo principal del motor queda registrado: el contexto de OpenGL,
+    // ImGui, CEF y la JVM solo se pueden usar desde aqui (ver Hilos/
+    // HiloActual.h).
+    Hilos::fijarHiloPrincipal();
     // Parseo simple de --proyecto <nombre> para arrancar directo en editor
     // (skip menu). Usado para ejecutar un juego exportado: FunshiEngineGL
     // --proyecto MiJuego. --juego fuerza el modo juego, que es como arranca
