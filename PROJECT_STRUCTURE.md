@@ -43,7 +43,9 @@ headless viven en `tests/` y el CI en
 `funshi_diagnostics_core` es una biblioteca compartida dentro del motor; no
 depende de ImGui y puede consumirla cualquier frente que hable su formato.
 
-`RuntimeException` conserva la traza de pila y el tipo de excepción. Los límites
+`Throwable` guarda el mensaje con el que se lanza y lo devuelve en `what()`,
+también cuando la excepción se captura como `std::exception`; `RuntimeException`
+conserva la traza de pila y el tipo de excepción. Los límites
 que deciden que un fallo es reportable lo envían a `RegistroDiagnosticos`; el
 constructor de la excepción no registra automáticamente porque algunas
 excepciones se usan como control interno. El registro mantiene una ventana
@@ -1023,8 +1025,10 @@ también con `BUILD_ENGINE=OFF`):
   `computeNormals` —incluido el modo `soloFaltantes` para assets que mezclan sub-mallas con
   y sin normales— y `computeTangents`; registro compartido con un loader artificial.
 - `texturemanager-tests` (15): caché Flyweight de imágenes CPU (sin entrar la pila gráfica).
-- `estructuras-tests` (87): `ListaDE`, `ArbolEnlazado`, `PriorityListaDE`,
-  `MinHeap`/`MaxHeap`, `ListMergeSort` y `ArbolBinarioEnlazado`.
+- `estructuras-tests` (91): `ListaDE`, `ArbolEnlazado`, `PriorityListaDE`,
+  `MinHeap`/`MaxHeap`, `ListMergeSort` y `ArbolBinarioEnlazado`; más el
+  contrato de `Throwable` (el mensaje llega intacto a quien captura la
+  excepción como `std::exception`).
 - `rendering-tests` (178): geometría de las líneas del pipeline moderno
   (`LineBuilder`): expansión de cada segmento al quad que ensancha el shader,
   color por extremo (difuminado de la grilla), polilíneas, aristas con índices
