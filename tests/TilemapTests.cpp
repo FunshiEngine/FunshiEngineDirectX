@@ -25,35 +25,12 @@
 // Patron de autoria (ver AGENTS.md): CHECK definido en este archivo, sin
 // dependencias de GUI/OpenGL, y salida final "OK/FALLOS: N comprobaciones".
 
-// ==== INSTRUMENTACION TEMPORAL DE DEPURACION (se retira al cerrar el fallo) ====
-// windows.h va antes de cualquier header de la stdlib: rpcndr.h define un
-// typedef global 'byte' que colisiona con std::byte (C++17).
-#ifdef _WIN32
-#ifndef _HAS_STD_BYTE
-#define _HAS_STD_BYTE 0
-#endif
-#ifndef WIN32_LEAN_AND_MEAN
-#define WIN32_LEAN_AND_MEAN
-#endif
-#ifndef NOMINMAX
-#define NOMINMAX
-#endif
-#include <windows.h>
-#include <dbghelp.h>
-#endif
-
 #include <cmath>
 #include <cstdint>
-#include <cstdio>
-#include <cstdlib>
 #include <fstream>
 #include <iostream>
 #include <memory>
 #include <string>
-
-#ifdef _WIN32
-#include <exception>
-#endif
 
 #include <btBulletDynamicsCommon.h>
 
@@ -61,131 +38,11 @@
 #include "../FunshiEngineGL/src/Assets/Mesh.h"
 #include "../FunshiEngineGL/src/Assets/Tileset.h"
 #include "../FunshiEngineGL/src/Objetos/Componentes/Colliders/TilemapCollider.h"
+#include "../FunshiEngineGL/src/Objetos/Componentes/Colliders/TiposShapeBullet.h"
 #include "../FunshiEngineGL/src/Objetos/Componentes/Tilemap.h"
 #include "../FunshiEngineGL/src/Objetos/Componentes/Transform.h"
 #include "../FunshiEngineGL/src/Objetos/GameObject.h"
 #include "../FunshiEngineGL/src/Objetos/GameObjectFactory.h"
-
-#ifdef _WIN32
-namespace {
-int g_diagnosticoImpresos = 0;
-
-// Simboliza una direccion: nombre de la funcion y archivo:linea del PDB.
-void simbolizar(HANDLE proceso, DWORD64 addr, const char* etiqueta) {
-    char nombre[512] = "?";
-    DWORD64 desplazamiento = 0;
-    const size_t maxNombre = 255;
-    SYMBOL_INFO* simbolo = reinterpret_cast<SYMBOL_INFO*>(
-        calloc(sizeof(SYMBOL_INFO) + (maxNombre + 1) * sizeof(char), 1));
-    if (simbolo) {
-        simbolo->SizeOfStruct = sizeof(SYMBOL_INFO);
-        simbolo->MaxNameLen = static_cast<DWORD>(maxNombre);
-        if (SymFromAddr(proceso, addr, &desplazamiento, simbolo)) {
-            std::snprintf(nombre, sizeof(nombre), "%s",
-                          reinterpret_cast<const char*>(simbolo->Name));
-        }
-        free(simbolo);
-    }
-
-    char archivo[MAX_PATH] = "";
-    unsigned long linea = 0;
-    IMAGEHLP_LINE64 datosLinea;
-    ZeroMemory(&datosLinea, sizeof(datosLinea));
-    datosLinea.SizeOfStruct = sizeof(datosLinea);
-    DWORD desplazamientoLinea = 0;
-    if (SymGetLineFromAddr64(proceso, addr, &desplazamientoLinea, &datosLinea)) {
-        std::snprintf(archivo, sizeof(archivo), "%s:%lu",
-                      datosLinea.FileName, datosLinea.LineNumber);
-        linea = datosLinea.LineNumber;
-    }
-
-    std::fprintf(stderr, "[DIAG] %s %s+0x%llX  %s:%lu\n", etiqueta, nombre,
-                 static_cast<unsigned long long>(desplazamiento), archivo, linea);
-    std::fflush(stderr);
-}
-
-LONG WINAPI manejadorVectorial(EXCEPTION_POINTERS* info) {
-    const DWORD codigo = info->ExceptionRecord->ExceptionCode;
-    if (codigo == 0xE06D7363) return EXCEPTION_CONTINUE_SEARCH;  // excepcion C++
-    if (++g_diagnosticoImpresos > 4) return EXCEPTION_CONTINUE_SEARCH;
-    void* dir = info->ExceptionRecord->ExceptionAddress;
-    HMODULE modulo = nullptr;
-    char nombre[MAX_PATH] = "<?>";
-    unsigned long largo = 0;
-    if (GetModuleHandleExA(
-            GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS |
-                GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
-            static_cast<LPCSTR>(dir), &modulo)) {
-        GetModuleFileNameA(modulo, nombre, MAX_PATH);
-        largo = static_cast<unsigned long>(
-            reinterpret_cast<unsigned char*>(dir) -
-            reinterpret_cast<unsigned char*>(modulo));
-    }
-    // En un fast-fail, ExceptionInformation[0] trae el codigo de fast-fail:
-    // 2 = cookie de pila, 5 = parametro invalido, 8 = desbordamiento de pila.
-    unsigned long parametro = 0;
-    if (info->ExceptionRecord->NumberParameters > 0) {
-        parametro = static_cast<unsigned long>(
-            info->ExceptionRecord->ExceptionInformation[0]);
-    }
-    std::fprintf(stderr,
-                 "[DIAG] EXCEPCION 0x%08lX en %p (offset 0x%lX) modulo=%s "
-                 "param=%lu\n",
-                 static_cast<unsigned long>(codigo), dir, largo, nombre,
-                 parametro);
-    std::fflush(stderr);
-
-    // Pila de llamadas en el momento de la excepcion: localiza la funcion.
-    HANDLE proceso = GetCurrentProcess();
-    SymInitialize(proceso, nullptr, TRUE);
-    simbolizar(proceso, reinterpret_cast<DWORD64>(dir), "culpable:");
-    void* pila[64];
-    const WORD frames = CaptureStackBackTrace(0, 64, pila, nullptr);
-    for (WORD i = 0; i < frames && i < 24; ++i) {
-        simbolizar(proceso, reinterpret_cast<DWORD64>(pila[i]), "marco:");
-    }
-    std::fflush(stderr);
-    return EXCEPTION_CONTINUE_SEARCH;
-}
-
-void instalarDiagnostico() {
-    AddVectoredExceptionHandler(1, manejadorVectorial);
-    std::set_terminate([]() {
-        std::exception_ptr ep = std::current_exception();
-        if (ep) {
-            try {
-                std::rethrow_exception(ep);
-            } catch (const std::exception& e) {
-                std::fprintf(stderr, "[DIAG] TERMINATE: %s\n", e.what());
-            } catch (...) {
-                std::fprintf(stderr, "[DIAG] TERMINATE: excepcion desconocida\n");
-            }
-        } else {
-            std::fprintf(stderr, "[DIAG] TERMINATE: sin excepcion activa\n");
-        }
-        std::fflush(stderr);
-        std::abort();
-    });
-}
-
-void etapa(const char* nombre) {
-    std::fprintf(stderr, "[DIAG] etapa: %s\n", nombre);
-    std::fflush(stderr);
-}
-}  // namespace
-#endif
-
-// Cada comprobacion anuncia su descripcion antes de evaluarse: el ultimo
-// anuncio por stderr es el punto donde se aborta el proceso.
-#ifdef _WIN32
-#define DIAG_CHECK(msg)                                     \
-    do {                                                    \
-        std::fprintf(stderr, "[DIAG] check: %s\n", msg);    \
-        std::fflush(stderr);                               \
-    } while (0)
-#else
-#define DIAG_CHECK(msg) do { } while (0)
-#endif
 
 int total = 0;
 int fallos = 0;
@@ -193,7 +50,6 @@ int fallos = 0;
 #define CHECK(cond, msg)                                                       \
     do {                                                                       \
         ++total;                                                               \
-        DIAG_CHECK(msg);                                                        \
         if (!(cond)) {                                                         \
             ++fallos;                                                          \
             std::cout << "  [FALLO] " << msg << std::endl;                     \
@@ -442,7 +298,7 @@ void tilemapColliderTramos(const std::string& rutaTileset) {
           "el colisionador conoce su objeto");
 
     // Sin tiles solidos la shape compuesta queda vacia.
-    auto* vacia = dynamic_cast<btCompoundShape*>(col->getCollisionShape());
+    auto* vacia = TiposShapeBullet::comoCompuesta(col->getCollisionShape());
     CHECK(vacia != nullptr, "el colisionador de tilemap arma una shape compuesta");
     CHECK(vacia && vacia->getNumChildShapes() == 0,
           "sin tiles solidos no hay cajas");
@@ -458,13 +314,13 @@ void tilemapColliderTramos(const std::string& rutaTileset) {
     tm->pintar(1, 3, 0, 5);
 
     col->invalidateCollisionShape();
-    auto* compuesta = dynamic_cast<btCompoundShape*>(col->getCollisionShape());
+    auto* compuesta = TiposShapeBullet::comoCompuesta(col->getCollisionShape());
     CHECK(compuesta != nullptr, "la shape del tilemap sigue siendo compuesta");
     CHECK(compuesta && compuesta->getNumChildShapes() == 3,
           "se fusionan los tramos: 3 cajas (un tramo de 3 y dos de 1)");
 
     if (compuesta && compuesta->getNumChildShapes() >= 1) {
-        auto* caja0 = dynamic_cast<btBoxShape*>(compuesta->getChildShape(0));
+        auto* caja0 = TiposShapeBullet::comoCaja(compuesta->getChildShape(0));
         CHECK(caja0 != nullptr, "cada tramo se modela con una caja");
         if (caja0) {
             const btVector3 mitad = caja0->getHalfExtentsWithMargin();
@@ -476,53 +332,73 @@ void tilemapColliderTramos(const std::string& rutaTileset) {
     // El colisionador no cambia la colision al editar tiles si la shape sigue
     // cacheada: al invalidarla se reconstruye con los tiles actuales.
     tm->pintar(capaCol, 1, 1, 2);
-    auto* cacheada = dynamic_cast<btCompoundShape*>(col->getCollisionShape());
+    auto* cacheada = TiposShapeBullet::comoCompuesta(col->getCollisionShape());
     CHECK(cacheada && cacheada->getNumChildShapes() == 3,
           "la shape cacheada no cambia hasta invalidarla");
 
     col->invalidateCollisionShape();
     auto* reconstruida =
-        dynamic_cast<btCompoundShape*>(col->getCollisionShape());
+        TiposShapeBullet::comoCompuesta(col->getCollisionShape());
     CHECK(reconstruida && reconstruida->getNumChildShapes() == 2,
           "al invalidar la shape se reconstruye con los tiles actuales");
+}
+
+// Las shapes de Bullet se identifican por su "shape type" y no con RTTI:
+// Bullet se compila sin informacion de tipos (vcpkg lo instala con
+// USE_MSVC_DISABLE_RTTI=ON) y un dynamic_cast sobre un tipo de Bullet aborta
+// el proceso con un access violation en MSVC. El helper reconoce cada clase
+// por su tipo proxy y rechaza las demas.
+void identificacionShapesSinRtti() {
+    btBoxShape caja(btVector3(1.0f, 1.0f, 1.0f));
+    btCompoundShape compuesta;
+    btConvexHullShape casco;
+    casco.addPoint(btVector3(0.0f, 0.0f, 0.0f));
+    casco.addPoint(btVector3(1.0f, 0.0f, 0.0f));
+    casco.addPoint(btVector3(0.0f, 1.0f, 0.0f));
+    casco.addPoint(btVector3(0.0f, 0.0f, 1.0f));
+
+    CHECK(TiposShapeBullet::comoCaja(&caja) == &caja, "la caja se reconoce");
+    CHECK(TiposShapeBullet::comoCompuesta(&caja) == nullptr,
+          "la caja no se toma por compuesta");
+    CHECK(TiposShapeBullet::comoCascoConvexo(&caja) == nullptr,
+          "la caja no se toma por casco convexo");
+
+    CHECK(TiposShapeBullet::comoCompuesta(&compuesta) == &compuesta,
+          "la compuesta se reconoce");
+    CHECK(TiposShapeBullet::comoCaja(&compuesta) == nullptr,
+          "la compuesta no se toma por caja");
+    CHECK(TiposShapeBullet::comoCascoConvexo(&compuesta) == nullptr,
+          "la compuesta no se toma por casco convexo");
+
+    CHECK(TiposShapeBullet::comoCascoConvexo(&casco) == &casco,
+          "el casco convexo se reconoce");
+    CHECK(TiposShapeBullet::comoCaja(&casco) == nullptr,
+          "el casco convexo no se toma por caja");
+    CHECK(TiposShapeBullet::comoCompuesta(&casco) == nullptr,
+          "el casco convexo no se toma por compuesta");
+
+    CHECK(TiposShapeBullet::comoCaja(nullptr) == nullptr,
+          "una shape nula no se toma por caja");
+    CHECK(TiposShapeBullet::comoCompuesta(nullptr) == nullptr,
+          "una shape nula no se toma por compuesta");
+    CHECK(TiposShapeBullet::comoCascoConvexo(nullptr) == nullptr,
+          "una shape nula no se toma por casco convexo");
 }
 } // namespace
 
 int main() {
-#ifdef _WIN32
-    std::fprintf(stderr, "[DIAG] main: inicio\n");
-    std::fflush(stderr);
-    instalarDiagnostico();
-#endif
     TempPruebas::CarpetaPrueba carpeta("funshi_tilemap_tests");
     const std::string base = carpeta.ruta().string();
 
     const std::string rutaTileset = base + "/tileset.json";
     escribirTileset(rutaTileset);
 
-#ifdef _WIN32
-    etapa("tilesetValidoYMetadatos");
-#endif
+    identificacionShapesSinRtti();
     tilesetValidoYMetadatos(rutaTileset);
-#ifdef _WIN32
-    etapa("tilesetErrores");
-#endif
     tilesetErrores(base);
-#ifdef _WIN32
-    etapa("tilemapCapasYPintado");
-#endif
     tilemapCapasYPintado(rutaTileset);
-#ifdef _WIN32
-    etapa("tilemapGeometria");
-#endif
     tilemapGeometria(rutaTileset);
-#ifdef _WIN32
-    etapa("tilemapSerializacion");
-#endif
     tilemapSerializacion(base, rutaTileset);
-#ifdef _WIN32
-    etapa("tilemapColliderTramos");
-#endif
     tilemapColliderTramos(rutaTileset);
 
     std::cout << (fallos == 0 ? "OK" : "FALLOS") << ": " << total

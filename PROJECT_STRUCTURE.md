@@ -404,7 +404,10 @@ FunshiEngineGL/                          ← raíz del repo
         │           ├── EsfereCollider.*  ← btSphereShape
         │           ├── CubeCollider.*    ← btBoxShape (half extents = radio)
         │           ├── MallaCollider.*   ← btConvexHullShape a partir de la malla
-        │           └── TilemapCollider.*  ← btCompoundShape (una caja por tramo de tiles solidos)
+        │           ├── TilemapCollider.*  ← btCompoundShape (una caja por tramo de tiles solidos)
+        │           └── TiposShapeBullet.h ← identifica las shapes por su "shape type",
+        │                                   sin RTTI (Bullet se compila sin ella: vcpkg
+        │                                   instala bullet3 con USE_MSVC_DISABLE_RTTI=ON)
         ├── Proyectos/
         │   └── GestorDeProyectos.h/.cpp  ← ciclo de vida del proyecto activo (entrar,
         │                                  guardar estado y escena Ctrl+S, renombrar, eliminar,
@@ -916,7 +919,7 @@ el patrón Strategy + registro de los backends de audio y de scripts:
 |---|---|---|
 | GLFW | Ventana, contexto OpenGL y eventos de input | `find_package(glfw3)` |
 | OpenGL 3.3 core | Renderizado (shaders, VBO/VAO, FBO) vía `GLFuncs` | `find_package(OpenGL)` (sin GLU) |
-| Bullet Physics | Física y colisiones (btDiscreteDynamicsWorld) | `find_package(Bullet)` con fallback a targets clásicos |
+| Bullet Physics | Física y colisiones (btDiscreteDynamicsWorld) | `find_package(Bullet)` con fallback a targets clásicos. Se compila **sin RTTI** (vcpkg instala `bullet3` con `USE_MSVC_DISABLE_RTTI=ON`), así que las shapes se identifican por su "shape type" (`TiposShapeBullet`) y nunca con `dynamic_cast`. |
 | Assimp | Carga de modelos 3D (opcional via `USE_ASSIMP`) | `find_package(assimp)` |
 | GLM | Matemáticas de Transform y cámaras (`GLM_ENABLE_EXPERIMENTAL`) | Usa `External/glm` si existe; si no, `find_package(glm)` del sistema |
 | nlohmann/json | `EditorConfig` (persistencia de configuración) | Vendoriado en `External/nlohmann` |
