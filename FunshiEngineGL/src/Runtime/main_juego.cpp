@@ -146,7 +146,14 @@ int EjecutarJuego(int argc, char* argv[]) {
     // 3. Crear ventana (Ventana llama a glfwInit internamente, crea la ventana,
     // inicializa el contexto 3.3 core y carga las funciones de OpenGL).
     Ventana* auxVentana = new Ventana();
-    auxVentana->initVentana();
+    // Sin ventana no hay contexto de OpenGL ni entrada: seguir adelante
+    // dejaria el motor operando sobre una ventana nula.
+    if (auxVentana->initVentana() != 0) {
+        std::cerr << "No se pudo crear la ventana de OpenGL 3.3; el juego "
+                     "no puede arrancar\n";
+        delete auxVentana;
+        return -1;
+    }
     GLFWwindow* window = auxVentana->getWindow();
 
     // 4. ImGui init (contexto básico, SIN GUIManager del editor)
