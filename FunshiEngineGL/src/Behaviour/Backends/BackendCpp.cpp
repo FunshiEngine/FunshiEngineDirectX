@@ -17,32 +17,9 @@
     SPDX-License-Identifier: Apache-2.0
 */
 
-// Windows.h ANTES del header propio y de la stdlib, para que
-// _HAS_STD_BYTE=0 surta efecto antes de que la stdlib defina std::byte.
-#if defined(_WIN32)
-#define _HAS_STD_BYTE 0
-#include <windows.h>
-#define FUNSHI_DLOPEN(name) LoadLibraryA((name).c_str())
-#define FUNSHI_DLSYM(handle, symbol) GetProcAddress(reinterpret_cast<HMODULE>(handle), symbol)
-#define FUNSHI_DLOPENCERRAR(handle) FreeLibrary(reinterpret_cast<HMODULE>(handle))
-#define FUNSHI_SYM_CREAR "FUNSHI_CREAR_COMPORTAMIENTO"
-#define FUNSHI_ARTEFACTO_EXT "dll"
-#elif defined(__APPLE__)
-#include <dlfcn.h>
-#define FUNSHI_DLOPEN(name) dlopen((name).c_str(), RTLD_NOW | RTLD_LOCAL)
-#define FUNSHI_DLSYM(handle, symbol) dlsym(handle, symbol)
-#define FUNSHI_DLOPENCERRAR(handle) dlclose(handle)
-#define FUNSHI_SYM_CREAR "FUNSHI_CREAR_COMPORTAMIENTO"
-#define FUNSHI_ARTEFACTO_EXT "dylib"
-#else
-#include <dlfcn.h>
-#include <unistd.h>
-#define FUNSHI_DLOPEN(name) dlopen((name).c_str(), RTLD_NOW | RTLD_LOCAL)
-#define FUNSHI_DLSYM(handle, symbol) dlsym(handle, symbol)
-#define FUNSHI_DLOPENCERRAR(handle) dlclose(handle)
-#define FUNSHI_SYM_CREAR "FUNSHI_CREAR_COMPORTAMIENTO"
-#define FUNSHI_ARTEFACTO_EXT "so"
-#endif
+// Carga dinamica multiplataforma compartida con el subsistema de mods.
+// Se extrae a Mods/CargaDinamica.h para reutilizarla en la carga de .dll/.so de mods.
+#include "../Mods/CargaDinamica.h"
 
 #include "BackendCpp.h"
 #include "ComandoCompilacionCpp.h"
