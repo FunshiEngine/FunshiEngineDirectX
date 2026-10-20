@@ -25,13 +25,14 @@ MeshGPU::~MeshGPU() { destroy(); }
 
 void MeshGPU::destroy() {
     if (buffer_ != kInvalidHandle) {
-        Rendering::Backend::activeBackend().destroyMesh(buffer_);
+        backend_->destroyMesh(buffer_);
         buffer_ = kInvalidHandle;
     }
     indexCount_ = 0;
 }
 
 MeshGPU::MeshGPU(MeshGPU&& other) noexcept {
+    backend_ = other.backend_;
     buffer_ = other.buffer_;
     indexCount_ = other.indexCount_;
     other.buffer_ = kInvalidHandle;
@@ -41,6 +42,7 @@ MeshGPU::MeshGPU(MeshGPU&& other) noexcept {
 MeshGPU& MeshGPU::operator=(MeshGPU&& other) noexcept {
     if (this != &other) {
         destroy();
+        backend_ = other.backend_;
         buffer_ = other.buffer_;
         indexCount_ = other.indexCount_;
         other.buffer_ = kInvalidHandle;
@@ -73,11 +75,11 @@ void MeshGPU::upload(const float* vertices, std::size_t vertexCount,
     data.indices = indices;
     data.indexCount = indexCount;
 
-    buffer_ = Rendering::Backend::activeBackend().createMesh(data);
+    buffer_ = backend_->createMesh(data);
     indexCount_ = indexCount;
 }
 
 void MeshGPU::draw() const {
     if (buffer_ == kInvalidHandle || indexCount_ == 0) return;
-    Rendering::Backend::activeBackend().drawMesh(buffer_, getIndexCount());
+    backend_->drawMesh(buffer_, getIndexCount());
 }

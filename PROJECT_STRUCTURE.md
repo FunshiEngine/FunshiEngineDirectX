@@ -1295,6 +1295,15 @@ main.cpp
 | Flyweight / Cache | `AssetManager` (meshes) y `TextureManager` (imágenes) | Recursos CPU compartidos por ruta (`AssetPath`) con loader inyectable y liberación por refcount. |
 | Service (inyección) | `GestorShaders` (dueño de los programas) y `TextureManager` | Los renderers reciben los recursos por setter en vez de buscarlos por su cuenta: un programa por nombre, compilado una vez y compartido, y el backend de render se inyecta en lugar de localizarlo por un global. |
 
+El backend de render (`IRenderBackend`) llega **inyectado** por el camino que
+va de `main` a la escena: `main` lo pasa a `GameScene`, esta al
+`SceneRenderer` y de ahí a los renderers y a los recursos de GPU
+(`MeshGPU`, `TextureGL`, `LineBatch` y `RenderTarget`, que lo reciben al
+construirse). Así esos recursos no dependen de un global y se pueden probar
+con un backend falso. El global `activeBackend()` queda solo en los puntos
+que aun no están migrados (la ventana, el arranque, los iconos de la GUI, el
+backend web y el dibujado del wireframe de los colliders).
+
 No están implementados todavía:
 - `Command` para undo/redo.
 - `Prototype` para duplicación y prefabs.

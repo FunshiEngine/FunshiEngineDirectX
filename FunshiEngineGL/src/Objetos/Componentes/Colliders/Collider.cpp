@@ -93,7 +93,7 @@ Collider::~Collider() = default;
 
 LineBatch& Collider::obtenerWireBatch() {
     if (!wireBatch_) {
-        wireBatch_.reset(new LineBatch());
+        wireBatch_.reset(new LineBatch(Rendering::Backend::activeBackend()));
     }
     return *wireBatch_;
 }

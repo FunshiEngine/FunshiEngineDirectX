@@ -328,7 +328,8 @@ static int EjecutarMotor(int argc, char* argv[])
     }
     GLFWwindow* window = auxVentana->getWindow();
     GUIManager* managerOfGUI = new GUIManager(window);
-    GameScene* scene = new GameScene(managerOfGUI);
+    GameScene* scene = new GameScene(
+        managerOfGUI, Rendering::Backend::activeBackend());
     MenuGUI* mainMenu = managerOfGUI->getMenuGUI();
     TreeFilesInterface* treeFilesInterface = managerOfGUI->getTreeFilesGUI();
     ContentFolderInterface* contentFolderInterface = managerOfGUI->getContentFolderGUI();
