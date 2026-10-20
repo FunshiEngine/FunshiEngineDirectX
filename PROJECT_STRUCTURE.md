@@ -316,7 +316,9 @@ FunshiEngineGL/                          ← raíz del repo
         │       ├── SceneObjectTree.h/.cpp         ← árbol de objetos (con drag & drop)
         │       └── SceneMenuBarInterface.h/.cpp   ← controles Depuración/Juego/Pausa/Reset/Terminar
         ├── GUIManager/
-        │   └── GUIManager.h/.cpp         ← fábrica y registro de ventanas; posee FileManager
+        │   └── GUIManager.h/.cpp         ← fábrica de ventanas y su registro (cada
+        │                                  ventana se registra al crearse); posee
+        │                                  FileManager
         ├── Herramientas/
         │   ├── TypeUtils.h/.cpp          ← nombres legibles de tipos
         │   ├── PathUtils.h               ← PATH_SEP + regla de cotejo de rutas (rutaBajo)
@@ -535,7 +537,7 @@ FunshiEngineGL/                          ← raíz del repo
 main.cpp
   ├── Ventana (GLFW init: contexto 3.3 core + carga dura de GLFuncs)
   ├── ImGui init (backends glfw + opengl3; imgui.ini gestionado por el gestor)
-  ├── GUIManager (crea el menú y las ventanas; posee FileManager)
+  ├── GUIManager (crea el menú y las ventanas y las registra; posee FileManager)
   ├── GameScene(guiManager)
   │   ├── SceneRegistry            ← ownership de objetos
   │   ├── PhysicsEngine (PIMPL)    ← mundo Bullet vía BulletPhysicsAdapter

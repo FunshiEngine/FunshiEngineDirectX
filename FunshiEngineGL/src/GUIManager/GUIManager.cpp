@@ -49,6 +49,15 @@ GUIManager::GUIManager(GLFWwindow* window)
     iconosGUI = std::make_unique<IconosGUI>();
     iconosGUI->init();
     menuBarGUI->setIconosGUI(iconosGUI.get());
+    // Cada ventana se registra al crearse: el gestor no lleva una lista fija,
+    // asi que agregar una ventana no obliga a tocar el estado ni el menu.
+    registrarVentana(selecteableGUI.get());
+    registrarVentana(menuBarGUI.get());
+    registrarVentana(treeFilesGUI.get());
+    registrarVentana(contentOfThisFolder.get());
+    registrarVentana(dockSpaceGUI.get());
+    registrarVentana(statusBarGUI.get());
+    registrarVentana(terminalGUI.get());
     statusBarGUI = std::make_unique<StatusBarInterface>(true);
     terminalGUI = std::make_unique<TerminalInterface>(true);
     panelesModsGUI = std::make_unique<PanelesModsInterface>();
@@ -149,12 +158,18 @@ void GUIManager::restaurarEstadosVentanas(const std::map<std::string, bool>& est
     }
 }
 
+void GUIManager::registrarVentana(GeneralUserInterface* ventana) {
+    if (!ventana) return;
+    for (GeneralUserInterface* existente : ventanas_) {
+        if (existente == ventana) return;
+    }
+    ventanas_.push_back(ventana);
+}
+
 std::vector<GeneralUserInterface*> GUIManager::ventanasPersistentes() const {
-    // La ventana Settings es dinamica (depende de la seleccion) y se deja
-    // fuera. El resto se persiste por su WindowName.
-    return {selecteableGUI.get(), menuBarGUI.get(), treeFilesGUI.get(),
-            contentOfThisFolder.get(), dockSpaceGUI.get(), statusBarGUI.get(),
-            terminalGUI.get()};
+    // Las ventanas registradas: la ventana Settings es dinamica (depende de la
+    // seleccion) y no se registra, asi que queda fuera.
+    return ventanas_;
 }
 
 std::map<std::string, bool> GUIManager::obtenerEstadosVentanas() const {

@@ -83,8 +83,14 @@ private:
 	// menu, la escena y main publican/suscriben sin conocerse entre si.
 	EditorEventBus eventosEditor;
 
-	// Ventanas cuyo stateGUI se persiste. Helper unico para que restaurar y
-	// obtener no se desincronicen al agregar una ventana nueva.
+	// Registro de ventanas del editor: cada ventana se registra al crearse y
+	// el gestor no lleva una lista fija. Asi, restaurar el estado, obtenerlo o
+	// alternar la visibilidad de una ventana no se desincronizan al agregar
+	// una nueva, y una ventana que viva fuera del gestor (un panel de un mod,
+	// por ejemplo) puede registrarse aqui.
+	std::vector<GeneralUserInterface*> ventanas_;
+
+	// Ventanas cuyo stateGUI se persiste (las registradas).
 	std::vector<GeneralUserInterface*> ventanasPersistentes() const;
 
 public:
@@ -116,6 +122,10 @@ public:
 
 	// La escena inyecta su AudioEngine (para el inspector de AudioSource).
 	void setAudioEngine(AudioEngine* motor);
+
+	// Registra una ventana del editor en el registro central: su estado se
+	// persiste con el resto y se puede alternar por nombre desde el menu.
+	void registrarVentana(GeneralUserInterface* ventana);
 
 	// Configura la ruta y el nombre del proyecto en el explorador de archivos
 	void configurarProyecto(const std::string& nombreProyecto);
