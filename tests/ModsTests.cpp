@@ -563,15 +563,19 @@ int main() {
                       "el mod del proyecto queda como Proyecto");
         }
 
-        // Reporte: resumen de cargados y, por cada fallo, mod y causa.
+        // Reporte: resumen de cargados separado por ambito (motor / proyecto) y,
+        // por cada fallo, mod y causa. Los mods del motor y los del proyecto se
+        // cuentan y se reportan por separado, no como un unico total.
         const fs::path registro = carpeta.ruta() / "diagnosticos.jsonl";
         RegistroDiagnosticos diario(registro.string());
         GestorMods::reportar(resultado, diario);
         std::string resumen;
         for (const EventoDiagnostico& evento : diario.ultimos(50))
             resumen += evento.mensaje + "\n";
-        CHECK(contiene(resumen, "mods cargados: 4"),
-              "el reporte dice cuantos mods se cargaron");
+        CHECK(contiene(resumen, "mods de motor cargados: 2"),
+              "el reporte cuenta los mods del motor");
+        CHECK(contiene(resumen, "mods de proyecto cargados: 2"),
+              "el reporte cuenta los mods del proyecto");
     }
 
     // 9. GestorMods: casos de rechazo (id duplicado, dependencia faltante,
@@ -677,8 +681,8 @@ int main() {
         std::string texto;
         for (const EventoDiagnostico& evento : diario.ultimos(100))
             texto += evento.mensaje + "\n";
-        CHECK(contiene(texto, "mods cargados:"),
-              "el reporte incluye el resumen de mods cargados");
+        CHECK(contiene(texto, "mods de motor cargados: 1"),
+              "el reporte resume los mods del motor que si cargan");
         CHECK(contiene(texto, "Autor.Huerfano"),
               "el reporte incluye el mod fallido y su causa");
 

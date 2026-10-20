@@ -311,14 +311,38 @@ void GestorMods::reportar(const Resultado& resultado,
         registro.registrar(std::move(evento));
     }
 
-    // Resumen del resultado, visible en el panel de estado/log.
-    EventoDiagnostico resumen;
-    resumen.nivel = resultado.fallos.empty() ? NivelDiagnostico::Informacion
-                                             : NivelDiagnostico::Advertencia;
-    resumen.modulo = MODULO_MODS;
-    resumen.mensaje =
-        "mods cargados: " + std::to_string(resultado.mods.size());
-    registro.registrar(std::move(resumen));
+    // Resumen por ambito (motor / proyecto), visible en el panel de estado/log.
+    std::size_t motorCount = 0;
+    std::size_t proyectoCount = 0;
+    for (const PaqueteMod& mod : resultado.mods) {
+        if (mod.ambito == AmbitoMod::Motor)
+            ++motorCount;
+        else
+            ++proyectoCount;
+    }
+
+    if (motorCount > 0) {
+        EventoDiagnostico resumenMotor;
+        resumenMotor.nivel = NivelDiagnostico::Informacion;
+        resumenMotor.modulo = MODULO_MODS;
+        resumenMotor.mensaje = "mods de motor cargados: " + std::to_string(motorCount);
+        registro.registrar(std::move(resumenMotor));
+    }
+    if (proyectoCount > 0) {
+        EventoDiagnostico resumenProyecto;
+        resumenProyecto.nivel = NivelDiagnostico::Informacion;
+        resumenProyecto.modulo = MODULO_MODS;
+        resumenProyecto.mensaje = "mods de proyecto cargados: " + std::to_string(proyectoCount);
+        registro.registrar(std::move(resumenProyecto));
+    }
+    if (motorCount == 0 && proyectoCount == 0) {
+        EventoDiagnostico resumen;
+        resumen.nivel = resultado.fallos.empty() ? NivelDiagnostico::Informacion
+                                                 : NivelDiagnostico::Advertencia;
+        resumen.modulo = MODULO_MODS;
+        resumen.mensaje = "mods cargados: 0";
+        registro.registrar(std::move(resumen));
+    }
 }
 
 void GestorMods::reportar(const Resultado& resultado) {

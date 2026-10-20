@@ -1435,8 +1435,9 @@ El motor lee dos carpetas y las dos son opcionales:
   proyecto está abierto. La carpeta se crea al crear el proyecto.
 
 Ambas se recorren al arrancar el editor. El resultado se reporta en el panel de
-estado/log: un resumen `mods cargados: N` y, por cada paquete rechazado, el
-nombre del mod y la causa.
+estado/log: un resumen por ámbito (`mods de motor cargados: N` y `mods de
+proyecto cargados: M`, cada uno solo si hay al menos uno) y, por cada paquete
+rechazado, el nombre del mod y la causa.
 
 ### 18.2 Instalación
 
