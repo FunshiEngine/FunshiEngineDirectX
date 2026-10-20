@@ -644,6 +644,10 @@ solo como orquestador de arranque y bucle.
   mediante Assimp y serializa adicionalmente la ruta del archivo del modelo. No
   tiene método de dibujado: la entidad no conoce la capa de Rendering, y es
   `SceneRenderer` quien la pinta vía `MeshRenderer`.
+- `GameObject` no incluye los componentes concretos: los declara y quien los
+  usa incluye su cabecera. Asi el dominio no arrastra el componente de fisica
+  (ni Bullet) ni el de modelo (ni Assimp). El tipo plano `color` (RGBA) vive en
+  `TypeUtils.h` para que el objeto no dependa del componente `Color`.
 - Los componentes concretos son: `Transform`, `Color`, `Model`, `Material`, `Light`,
   `AudioSource`, `Musica`, `InterfaceComponent`, `Grid`, `Script`,
   `EsfereCollider`, `CubeCollider`, `MallaCollider` y `RigidBody`. Todos heredan

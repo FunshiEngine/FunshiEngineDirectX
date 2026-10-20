@@ -37,6 +37,7 @@
 #include "CacheCubemap.h"
 #include "Cielo.h"
 #include "DibujoModelo.h"
+#include "../Objetos/Componentes/Model.h"
 #include "../Objetos/Componentes/Skybox.h"
 #include "../Objetos/Componentes/SpriteRenderer.h"
 #include "../Objetos/Componentes/Tilemap.h"

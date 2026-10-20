@@ -19,6 +19,8 @@
 #include "GameObject.h"
 #include "Componentes/ComponentFactory.h"
 #include "Componentes/CameraComponent.h"
+#include "Componentes/Color.h"
+#include "Componentes/RigidBody/RigidBody.h"
 #include "Componentes/Script.h"
 #include "Herramientas/TypeUtils.h"
 #include "TagRegistry.h"

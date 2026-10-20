@@ -18,9 +18,8 @@
 */
 #ifndef COLOR_H
 #define COLOR_H
+#include "../../Herramientas/TypeUtils.h"
 #include "Component.h"
-
-typedef float color[4];
 
 class Color : public Component {
 private:

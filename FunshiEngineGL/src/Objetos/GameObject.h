@@ -25,17 +25,13 @@
 
 #include "../Herramientas/TypeUtils.h"
 #include "../Objetos/Componentes/Transform.h"
-#include "../Objetos/Componentes/Color.h"
-#include "../GestorDeArchivos/Binario.h"
 #include "../Estructuras/Comparable.h"
-#include "../Estructuras/ListasEnlazadas/ListasDoblementeEnlazada/ListaDE.h"
-#include "../Objetos/Componentes/Colliders/EsfereCollider.h"
-#include "../Objetos/Componentes/Colliders/CubeCollider.h"
-#include "../Objetos/Componentes/Colliders/MallaCollider.h"
-#include "../Objetos/Componentes/RigidBody/RigidBody.h"
-#include "../Objetos/Componentes/Script.h"
-#include "../Objetos/Componentes/Model.h"
 #include "../Entity/Entity.h"
+
+// El objeto del dominio no conoce los componentes concretos: solo los declara
+// para poder apuntarlos. Quien los usa incluye su propia cabecera (y el
+// CatalogoComponentes es quien los crea por nombre).
+class Color;
 
 class GameObject : public Comparable<GameObject>, public Entity {
 protected:
