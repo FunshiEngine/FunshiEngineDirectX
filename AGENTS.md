@@ -444,6 +444,20 @@ Reglas:
   3. Esperar confirmación antes de ejecutarlo.
   Esto evita pérdida accidental de trabajo del usuario o cambios ajenos sin
   commitear.
+- **El historial publicado no se reescribe**: no se ejecutan comandos que
+  cambien el hash o la firma de los commits que ya están en el historial
+  compartido: `git commit --amend` sobre un commit ya pusheado, `git rebase`
+  (incluida la variante interactiva), `git rebase --onto`, `git filter-branch`,
+  `git filter-repo`, `git commit-tree`, `git replace`, `git notes` sobre commits
+  publicados, o un `git push --force` que reescriba una rama o un tag ya
+  publicado. Un commit ya publicado se corrige con un commit **nuevo** que
+  explique la corrección. La única excepción es `git commit --amend` sobre un
+  commit que nunca salió del equipo (no se ha pusheado): su hash cambia solo
+  en local y desaparece al pushear. Si aun así hacer falta reescribir el
+  historial, se reporta al usuario y se espera su decisión. Mover un tag que
+  todavía no se publicó no cambia el hash de ningún commit, pero sigue rigiendo
+  la regla de "Comandos destructivos requieren permiso y justificación": se
+  pide permiso explícito al usuario.
 - Validar antes de commitear: build completo + `ctest` en verde. Si el cambio
   cierra un bug, además la comprobación que corresponda según "Depuración de
   bugs: instrumentación y validación": test rojo→verde, sanitizer cuando toque
