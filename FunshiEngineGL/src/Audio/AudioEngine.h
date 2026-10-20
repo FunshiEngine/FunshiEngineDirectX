@@ -69,16 +69,20 @@ public:
     // vive en el hilo de audio, asi que todo esto se encola igual que los
     // efectos y el hilo del juego nunca toca el hardware de audio.
     //
-    // Registro nombre->ruta de pistas (hilo de juego), igual que los clips.
-    void registrarMusica(const std::string& nombre, const std::string& ruta);
-    bool musicaRegistrada(const std::string& nombre) const;
-    void limpiarMusicas();
-    std::vector<std::string> nombresMusicas() const; // snapshot para la GUI
+    // Las pistas se referencian por RUTA, igual que los efectos: no hay
+    // catalogo por nombre ni carpeta fija. La lista es ordenada y es la que
+    // se sigue al pasar a la pista siguiente.
+    void establecerMusicas(const std::vector<std::string>& rutas,
+                            bool repetir = true);
+    // La lista de pistas actual (copia, para la GUI).
+    std::vector<std::string> musicas() const;
 
-    // Reproduce una pista del catalogo. Devuelve false si la pista no esta
-    // registrada. duracionFundido negativo usa la duracion por defecto del
-    // reproductor; 0 cambia de pista de inmediato.
-    bool reproducirMusica(const std::string& pista, float volumen = 1.0f,
+    // Reproduce la pista de la RUTA dada (no hace falta que este en la lista:
+    // se puede tocar cualquier archivo). Devuelve false si la ruta esta vacia
+    // o el archivo no existe (queda avisado en el log). duracionFundido
+    // negativo usa la duracion por defecto del reproductor; 0 cambia de pista
+    // de inmediato.
+    bool reproducirMusica(const std::string& ruta, float volumen = 1.0f,
                            float duracionFundido = -1.0f);
     // Detiene la musica (con fundido de salida opcional).
     void detenerMusica(float duracionFundido = 0.0f);

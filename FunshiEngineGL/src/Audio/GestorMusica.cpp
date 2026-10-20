@@ -44,59 +44,67 @@ GestorMusica::~GestorMusica() {
     }
 }
 
-// --- catalogo ---
+// --- lista de pistas ---
 
-void GestorMusica::registrarPista(const std::string& nombre,
-                                  const std::string& ruta) {
-    if (nombre.empty() || ruta.empty()) return;
-    const auto it = rutas_.find(nombre);
-    if (it != rutas_.end()) {
-        it->second = ruta;
-        return;
+void GestorMusica::establecerPistas(const std::vector<std::string>& rutas) {
+    pistas_.clear();
+    for (const std::string& ruta : rutas) {
+        if (ruta.empty()) continue;
+        pistas_.push_back(ruta);
     }
-    rutas_[nombre] = ruta;
-    orden_.push_back(nombre);
 }
 
-void GestorMusica::limpiarCatalogo() {
-    rutas_.clear();
-    orden_.clear();
+void GestorMusica::anadirPista(const std::string& ruta) {
+    if (ruta.empty()) return;
+    pistas_.push_back(ruta);
 }
 
-std::vector<std::string> GestorMusica::nombresPistas() const {
-    return orden_;
-}
+void GestorMusica::limpiarPistas() { pistas_.clear(); }
 
-bool GestorMusica::tienePista(const std::string& nombre) const {
-    return rutas_.find(nombre) != rutas_.end();
-}
+std::vector<std::string> GestorMusica::pistas() const { return pistas_; }
 
-int GestorMusica::indiceDe(const std::string& nombre) const {
-    for (std::size_t i = 0; i < orden_.size(); ++i) {
-        if (orden_[i] == nombre) return static_cast<int>(i);
+int GestorMusica::indiceDe(const std::string& ruta) const {
+    for (std::size_t i = 0; i < pistas_.size(); ++i) {
+        if (pistas_[i] == ruta) return static_cast<int>(i);
     }
     return -1;
 }
 
-std::string GestorMusica::nombreSiguienteDeCatalogo() const {
-    if (orden_.empty()) return std::string();
-    if (indiceActual_ < 0) return orden_.front();
-    const std::size_t siguiente =
-        (static_cast<std::size_t>(indiceActual_) + 1) % orden_.size();
-    return orden_[siguiente];
+bool GestorMusica::tienePista(const std::string& ruta) const {
+    return indiceDe(ruta) >= 0;
+}
+
+void GestorMusica::establecerRepetirLista(bool repetir) {
+    repetirLista_ = repetir;
+}
+
+bool GestorMusica::repetirLista() const { return repetirLista_; }
+
+// La pista que va despues de la que suena. Si no suena nada, es la primera
+// de la lista. Si lo que suena no esta en la lista, no hay siguiente (esa
+// pista suena sola). Al llegar al final de la lista se vuelve a la primera
+// si la lista se repite; si no, no hay siguiente.
+std::string GestorMusica::rutaSiguienteDeLista() const {
+    if (pistas_.empty()) return std::string();
+    if (idActual_ == 0) return pistas_.front();
+    if (indiceActual_ < 0) return std::string();
+    const std::size_t siguiente = static_cast<std::size_t>(indiceActual_) + 1;
+    if (siguiente >= pistas_.size())
+        return repetirLista_ ? pistas_.front() : std::string();
+    return pistas_[siguiente];
 }
 
 // --- reproduccion ---
 
-bool GestorMusica::reproducir(const std::string& nombre, float volumen,
-                              float duracionFundido) {
-    if (!tienePista(nombre)) return false;
+bool GestorMusica::reproducir(const std::string& ruta, float volumen,
+                               float duracionFundido) {
+    if (ruta.empty()) return false;
     const float duracion = duracionFundido < 0.0f ? duracionFundido_ : duracionFundido;
-    return iniciarCambio(nombre, volumen, duracion);
+    return iniciarCambio(ruta, volumen, duracion);
 }
 
 bool GestorMusica::reproducirSiguiente(float volumen, float duracionFundido) {
-    const std::string siguiente = nombreSiguienteDeCatalogo();
+    const std::string siguiente = rutaSiguienteDeLista();
     if (siguiente.empty()) return false;
     const float duracion = duracionFundido < 0.0f ? duracionFundido_ : duracionFundido;
     return iniciarCambio(siguiente, volumen, duracion);
@@ -105,16 +113,15 @@ bool GestorMusica::reproducirSiguiente(float volumen, float duracionFundido) {
 // Cambia de pista: abre la nueva, la pone a volumen 0 y deja que el fundido
 // la suba mientras baja la que sonaba. Si no habia ninguna, el fundido solo
 // sube la nueva.
-bool GestorMusica::iniciarCambio(const std::string& nombre, float volumen,
+bool GestorMusica::iniciarCambio(const std::string& ruta, float volumen,
                                  float duracionFundido) {
-    const auto it = rutas_.find(nombre);
-    if (it == rutas_.end()) return false;
+    if (ruta.empty()) return false;
 
     // Si habia un fundido en curso, la pista que estaba entrando se retira:
     // el fundido en curso se cancela y empieza otro.
     cancelarEntrada();
 
-    const int id = backend_.abrirPista(it->second);
+    const int id = backend_.abrirPista(ruta);
     if (id == 0) return false;
     if (!backend_.reproducirPista(id, 0.0f)) {
         backend_.cerrarPista(id);
@@ -131,11 +138,11 @@ bool GestorMusica::iniciarCambio(const std::string& nombre, float volumen,
     fundido_.volumenEntrante = 0.0f;
     fundido_.volumenObjetivo = limitar(volumen, 0.0f, 1.0f);
     fundido_.indiceSaliente = indiceActual_;
-    fundido_.indiceEntrante = indiceDe(nombre);
+    fundido_.indiceEntrante = indiceDe(ruta);
 
     idSiguiente_ = id;
     indiceSiguiente_ = fundido_.indiceEntrante;
-    nombreSiguiente_ = nombre;
+    rutaSiguiente_ = ruta;
 
     // Sin fundido el cambio es inmediato: la pista nueva suena ya con su
     // volumen y la vieja se para.
@@ -154,7 +161,7 @@ void GestorMusica::cancelarEntrada() {
     fundido_ = Fundido();
     idSiguiente_ = 0;
     indiceSiguiente_ = -1;
-    nombreSiguiente_.clear();
+    rutaSiguiente_.clear();
 }
 
 void GestorMusica::avanzarFundido(float deltaTime) {
@@ -190,10 +197,10 @@ void GestorMusica::completarFundido() {
     idActual_ = fundido_.idEntrante;
     volumenActual_ = fundido_.volumenObjetivo;
     indiceActual_ = fundido_.indiceEntrante;
-    nombreActual_ = nombreSiguiente_;
+    rutaActual_ = rutaSiguiente_;
     idSiguiente_ = 0;
     indiceSiguiente_ = -1;
-    nombreSiguiente_.clear();
+    rutaSiguiente_.clear();
     fundido_ = Fundido();
 }
 
@@ -223,7 +230,7 @@ void GestorMusica::detener(float duracionFundido) {
     idActual_ = 0;
     volumenActual_ = 0.0f;
     indiceActual_ = -1;
-    nombreActual_.clear();
+    rutaActual_.clear();
 }
 
 // --- bus ---
@@ -260,9 +267,9 @@ void GestorMusica::actualizar(float deltaTime) {
 
     if (idActual_ == 0) return;
 
-    // La pista actual se acabo: se pasa a la siguiente del catalogo.
+    // La pista actual se acabo: se pasa a la siguiente de la lista.
     if (backend_.estadoPista(idActual_) == EstadoPista::Terminada) {
-        const std::string siguiente = nombreSiguienteDeCatalogo();
+        const std::string siguiente = rutaSiguienteDeLista();
         if (siguiente.empty()) {
             detener(0.0f);
         } else {
@@ -279,17 +286,17 @@ void GestorMusica::actualizar(float deltaTime) {
     if (duracion <= 0.0f || posicion < 0.0f) return;
     if ((duracion - posicion) > duracionFundido_) return;
 
-    const std::string siguiente = nombreSiguienteDeCatalogo();
+    const std::string siguiente = rutaSiguienteDeLista();
     if (siguiente.empty()) return;
     iniciarCambio(siguiente, volumenActual_, duracionFundido_);
 }
 
 // --- estado ---
 
-const std::string& GestorMusica::pistaActual() const { return nombreActual_; }
+const std::string& GestorMusica::pistaActual() const { return rutaActual_; }
 
 const std::string& GestorMusica::pistaSiguiente() const {
-    return nombreSiguiente_;
+    return rutaSiguiente_;
 }
 
 bool GestorMusica::sonando() const { return idActual_ != 0; }

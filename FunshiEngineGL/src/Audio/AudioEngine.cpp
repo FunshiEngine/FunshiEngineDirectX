@@ -45,25 +45,25 @@ enum class TipoComando {
     Volumen,      // volumen maestro
     Cierre,       // apaga el hilo
     // --- musica (se ejecutan en el hilo de audio, sobre el reproductor) ---
-    RegistrarMusica, // nombre, ruta
-    LimpiarMusicas,
-    ReproducirMusica,// nombre, volumen, duracion del fundido
-    DetenerMusica,   // duracion del fundido de salida
-    VolumenMusica,   // volumen del bus
-    SilenciarMusica, // silencio del bus
-    TickMusica       // deltaTime de la escena
+    EstablecerMusicas, // lista de rutas (en orden) y si se repite
+    ReproducirMusica,   // ruta, volumen, duracion del fundido
+    DetenerMusica,      // duracion del fundido de salida
+    VolumenMusica,      // volumen del bus
+    SilenciarMusica,    // silencio del bus
+    TickMusica          // deltaTime de la escena
 };
 
 struct Comando {
     TipoComando tipo = TipoComando::Iniciar;
     int handle = -1;
     std::string ruta;   // ruta del archivo (clip de efecto o pista de musica)
-    std::string nombre; // nombre de la pista de musica
+    std::vector<std::string> rutas; // lista de pistas de musica (en orden)
     float volumen = 1.0f;
     float duracionFundido = 0.0f;
     float deltaTime = 0.0f;
     bool bucle = false;
     bool silenciado = false;
+    bool repetirLista = true;
 };
 
 void ejecutarComando(struct AudioEngine::Impl* imp, const Comando& c);
@@ -74,8 +74,9 @@ struct AudioEngine::Impl {
     mutable std::mutex mtx;
     std::condition_variable cv;
     std::queue<Comando> pila;
-    // nombre de la pista de musica -> ruta (mismo criterio que los clips).
-    std::unordered_map<std::string, std::string> musicas;
+    // Lista de pistas de musica (rutas, en orden de reproduccion).
+    std::vector<std::string> musicas;
+    bool repetirMusicas = true;
     // handle propio del motor -> id devuelto por el backend.
     std::unordered_map<int, int> handleAId;
     // Reproductor de musica. Vive en el hilo de audio (lo crea el comando
@@ -135,16 +136,15 @@ void ejecutarComando(AudioEngine::Impl* imp, const Comando& c) {
             imp->backend->cerrar();
             break;
         // --- musica ---
-        case TipoComando::RegistrarMusica:
-            if (imp->gestorMusica)
-                imp->gestorMusica->registrarPista(c.nombre, c.ruta);
-            break;
-        case TipoComando::LimpiarMusicas:
-            if (imp->gestorMusica) imp->gestorMusica->limpiarCatalogo();
+        case TipoComando::EstablecerMusicas:
+            if (imp->gestorMusica) {
+                imp->gestorMusica->establecerPistas(c.rutas);
+                imp->gestorMusica->establecerRepetirLista(c.repetirLista);
+            }
             break;
         case TipoComando::ReproducirMusica:
             if (imp->gestorMusica)
-                imp->gestorMusica->reproducir(c.nombre, c.volumen,
+                imp->gestorMusica->reproducir(c.ruta, c.volumen,
                                               c.duracionFundido);
             break;
         case TipoComando::DetenerMusica:
@@ -286,16 +286,17 @@ void AudioEngine::setVolumenMaestro(float volumen) {
 // Musica
 // ---------------------------------------------------------------------------
 
-void AudioEngine::registrarMusica(const std::string& nombre,
-                                   const std::string& ruta) {
+void AudioEngine::establecerMusicas(const std::vector<std::string>& rutas,
+                                     bool repetir) {
     {
         std::lock_guard<std::mutex> lock(impl_->mtx);
-        impl_->musicas[nombre] = ruta;
+        impl_->musicas = rutas;
+        impl_->repetirMusicas = repetir;
     }
     Comando c;
-    c.tipo = TipoComando::RegistrarMusica;
-    c.nombre = nombre;
-    c.ruta = ruta;
+    c.tipo = TipoComando::EstablecerMusicas;
+    c.rutas = rutas;
+    c.repetirLista = repetir;
     {
         std::lock_guard<std::mutex> lock(impl_->mtx);
         impl_->pila.push(std::move(c));
@@ -303,43 +304,26 @@ void AudioEngine::registrarMusica(const std::string& nombre,
     impl_->cv.notify_one();
 }
 
-bool AudioEngine::musicaRegistrada(const std::string& nombre) const {
+std::vector<std::string> AudioEngine::musicas() const {
     std::lock_guard<std::mutex> lock(impl_->mtx);
-    return impl_->musicas.count(nombre) > 0;
+    return impl_->musicas;
 }
 
-void AudioEngine::limpiarMusicas() {
-    {
-        std::lock_guard<std::mutex> lock(impl_->mtx);
-        impl_->musicas.clear();
-    }
-    Comando c;
-    c.tipo = TipoComando::LimpiarMusicas;
-    {
-        std::lock_guard<std::mutex> lock(impl_->mtx);
-        impl_->pila.push(std::move(c));
-    }
-    impl_->cv.notify_one();
-}
-
-std::vector<std::string> AudioEngine::nombresMusicas() const {
-    std::lock_guard<std::mutex> lock(impl_->mtx);
-    std::vector<std::string> nombres;
-    nombres.reserve(impl_->musicas.size());
-    for (const auto& [nombre, ruta] : impl_->musicas) nombres.push_back(nombre);
-    return nombres;
-}
-
-bool AudioEngine::reproducirMusica(const std::string& pista, float volumen,
+bool AudioEngine::reproducirMusica(const std::string& ruta, float volumen,
                                     float duracionFundido) {
-    {
-        std::lock_guard<std::mutex> lock(impl_->mtx);
-        if (impl_->musicas.find(pista) == impl_->musicas.end())
-            return false; // pista no registrada
+    if (ruta.empty()) return false; // sin archivo asignado
+    // El archivo se comprueba aqui (hilo de juego) para poder avisar al que
+    // lo pidio: el backend solo puede fallar en su hilo, y entonces el que
+    // reproduce creeria que la pista salio.
+    std::error_code ec;
+    if (!std::filesystem::is_regular_file(ruta, ec)) {
+        std::cerr << "[Audio] No se reproduce la pista de musica '" << ruta
+                  << "': el archivo no existe\n";
+        return false;
     }
     Comando c;
     c.tipo = TipoComando::ReproducirMusica;
-    c.nombre = pista;
+    c.ruta = ruta;
     c.volumen = volumen;
     c.duracionFundido = duracionFundido;
     {

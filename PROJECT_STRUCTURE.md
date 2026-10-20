@@ -1099,11 +1099,12 @@ también con `BUILD_ENGINE=OFF`):
   inválidos), el componente `Sombras` con sus ajustes y la selección de
   proyectores (las luces puntuales no soportadas, el límite de mapas y el orden
   en que se eligen).
-- `musica-tests` (70): el reproductor de música con un backend falso: el
-  catálogo de pistas, la reproducción, el fundido cruzado (la pista que sale
-  baja mientras la que entra sube), el paso automático a la pista siguiente
-  cuando la actual se acaba o cuando le queda justo el fundido, la
-  detención con y sin fundido y el volumen del bus.
+- `musica-tests` (84): el reproductor de música con un backend falso: la lista
+  ordenada de pistas (por ruta), la reproducción, el fundido cruzado (la pista
+  que sale baja mientras la que entra sube), el paso automático a la pista
+  siguiente cuando la actual se acaba o cuando le queda justo el fundido, el
+  final de la lista (con o sin repetición), la detención con y sin fundido y el
+  volumen del bus.
 - `iluminacion-tests` (17): la recogida de las luces de la escena (el orden en
   que se recorren, los datos que salen del `Transform` de cada objeto y el límite
   de slots) y el paralelismo entre la lista de luces y la de dueños: el pase de

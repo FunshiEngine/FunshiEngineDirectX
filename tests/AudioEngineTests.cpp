@@ -31,7 +31,7 @@
 //   - detener()/detenerTodo()/setVolumenMaestro() encolan y se processan.
 //   - Los efectos de sonido se piden por RUTA: el motor reproduce el archivo
 //     que le pasan; sin archivo (o con un archivo que no existe) devuelve -1.
-//   - La cola de musica: registro de pistas, reproduccion, bus, silencio,
+//   - La cola de musica: lista de pistas por ruta, reproduccion, bus, silencio,
 //     deteccion y el tick de la escena. Con un backend FALSO que registra lo
 //     que le llega, para comprobar que los comandos se ejecutan en el hilo de
 //     audio contra el reproductor.
@@ -176,45 +176,51 @@ void probarBackendExplicito() {
     CHECK(motor->pendientes() == 0, "cola drenada con backend por defecto");
 }
 
-// El catalogo de musica se registra y se consulta por nombre.
-void probarRegistroMusica() {
+// La lista de pistas de musica se fija por ruta y se consulta en orden.
+void probarListaMusica() {
     AudioEngine motor;
     motor.esperarPilaVacia();
 
-    motor.registrarMusica("tema", "/tmp/funshi_tema.ogg");
-    motor.registrarMusica("coda", "/tmp/funshi_coda.ogg");
+    motor.establecerMusicas({"/tmp/funshi_tema.ogg", "/tmp/funshi_coda.ogg"});
 
-    CHECK(motor.musicaRegistrada("tema"), "pista de musica registrada visible");
-    CHECK(!motor.musicaRegistrada("desconocida"),
-          "pista no registrada no se ve");
-    const std::vector<std::string> nombres = motor.nombresMusicas();
-    CHECK(nombres.size() == 2, "nombresMusicas tiene las dos pistas");
-    CHECK(contiene(nombres, "tema") && contiene(nombres, "coda"),
-          "nombresMusicas contiene ambas pistas");
+    const std::vector<std::string> rutas = motor.musicas();
+    CHECK(rutas.size() == 2, "la lista tiene las dos pistas");
+    CHECK(rutas[0] == "/tmp/funshi_tema.ogg", "la lista conserva el orden");
+    CHECK(rutas[1] == "/tmp/funshi_coda.ogg", "la segunda pista va despues");
 
-    motor.limpiarMusicas();
-    CHECK(motor.nombresMusicas().empty(), "limpiarMusicas vacia el catalogo");
+    motor.establecerMusicas({});
+    CHECK(motor.musicas().empty(), "una lista vacia deja al motor sin pistas");
 }
 
 // Los comandos de musica llegan al backend desde el hilo de audio.
 void probarColaMusica() {
+    TempPruebas::CarpetaPrueba carpeta("funshi_audio_musica_tests");
+    const std::string tema = (carpeta.ruta() / "tema.ogg").string();
+    std::ofstream(tema) << "contenido";
+
     auto backend = std::make_unique<BackendFalso>();
     BackendFalso* observador = backend.get();
     AudioEngine motor(std::move(backend));
     motor.esperarPilaVacia();  // el comando Iniciar crea el reproductor
 
-    motor.registrarMusica("tema", "/tmp/funshi_tema.ogg");
+    motor.establecerMusicas({tema});
     motor.esperarPilaVacia();
 
-    CHECK(!motor.reproducirMusica("desconocida"),
-          "una pista no registrada no se reproduce");
+    // Sin ruta no hay nada que reproducir.
+    CHECK(!motor.reproducirMusica(""),
+          "una pista sin ruta no se reproduce");
     CHECK(motor.pendientes() == 0,
-          "la pista desconocida no encola ningun comando");
+          "la pista sin ruta no encola ningun comando");
 
-    CHECK(motor.reproducirMusica("tema", 0.8f, 0.0f),
-          "la pista registrada se reproduce");
+    // Con un archivo que no existe tampoco (queda avisado en el log).
+    const std::string inexistente = (carpeta.ruta() / "no_existe.ogg").string();
+    CHECK(!motor.reproducirMusica(inexistente),
+          "una pista cuyo archivo no existe no se reproduce");
+
+    CHECK(motor.reproducirMusica(tema, 0.8f, 0.0f),
+          "la pista de la lista se reproduce");
     motor.esperarPilaVacia();
-    CHECK(contiene(observador->llamadas, "abrir:/tmp/funshi_tema.ogg"),
+    CHECK(contiene(observador->llamadas, "abrir:" + tema),
           "el backend abrio la pista");
     CHECK(contiene(observador->llamadas, "reproducir:1"),
           "el backend arranco la pista");
@@ -248,7 +254,7 @@ int main() {
     std::cout << "== AUDIO ENGINE TESTS ==" << std::endl;
     probarCicloComandos();
     probarBackendExplicito();
-    probarRegistroMusica();
+    probarListaMusica();
     probarColaMusica();
     std::cout << "Pruebas: " << total << ", fallos: " << fallos << std::endl;
     if (fallos == 0) std::cout << "AUDIO ENGINE TESTS OK" << std::endl;

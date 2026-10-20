@@ -20,13 +20,17 @@
 #define GESTORMUSICA_H
 
 #include <string>
-#include <unordered_map>
 #include <vector>
 
 #include "IMusicaBackend.h"
 
 // Reproductor de musica: que pista suena, cual es la siguiente, cuando hay
 // que fundir una con otra y que volumen tiene el bus.
+//
+// Las pistas se referencian por RUTA (la del archivo), igual que los efectos
+// de sonido: no hay catalogo por nombre ni carpeta fija, el archivo puede
+// estar en cualquier sitio dentro del proyecto. La LISTA de pistas es ordenada
+// y es la que se sigue al pasar a la pista siguiente.
 //
 // No sabe nada de hilos ni del motor: recibe el backend con el que sonar y lo
 // avanza con el deltaTime de la escena. Todo su estado vive aqui, asi que se
@@ -40,24 +44,35 @@ public:
     GestorMusica(const GestorMusica&) = delete;
     GestorMusica& operator=(const GestorMusica&) = delete;
 
-    // --- catalogo ---
-    // Registra una pista del proyecto (nombre -> ruta). El orden de registro
-    // es el orden del catalogo, que es el que se sigue al pasar a la pista
-    // siguiente. Registrar un nombre que ya existe cambia su ruta.
-    void registrarPista(const std::string& nombre, const std::string& ruta);
-    void limpiarCatalogo();
-    std::vector<std::string> nombresPistas() const;
-    bool tienePista(const std::string& nombre) const;
+    // --- lista de pistas ---
+    // Fija la lista de pistas (rutas, en orden). El orden es el que se sigue
+    // al pasar a la pista siguiente. Las rutas vacias se descartan.
+    void establecerPistas(const std::vector<std::string>& rutas);
+    // Anade una pista al final de la lista.
+    void anadirPista(const std::string& ruta);
+    // Vacia la lista.
+    void limpiarPistas();
+    // La lista actual (copia): el orden es el de reproduccion.
+    std::vector<std::string> pistas() const;
+    bool tienePista(const std::string& ruta) const;
+    // Posicion de la ruta en la lista (-1 si no esta).
+    int indiceDe(const std::string& ruta) const;
+    // Al acabarse la ultima pista se vuelve a la primera (true, por defecto)
+    // o la musica se detiene (false).
+    void establecerRepetirLista(bool repetir);
+    bool repetirLista() const;
 
     // --- reproduccion ---
-    // Empieza a sonar una pista del catalogo. Si ya suena otra, se funden:
-    // la que suena baja y la nueva sube durante el fundido. Con
-    // `duracionFundido` negativa se usa la duracion por defecto del
-    // reproductor; con 0 el cambio es inmediato.
-    // Devuelve false si la pista no existe o el backend no pudo abrirla.
-    bool reproducir(const std::string& nombre, float volumen = 1.0f,
+    // Empieza a sonar la pista de la RUTA dada. La ruta no tiene que estar en
+    // la lista: se puede tocar cualquier archivo; si no esta, suena sola (al
+    // acabarse no hay pista siguiente). Si ya suena otra, se funden: la que
+    // suena baja y la nueva sube durante el fundido. Con `duracionFundido`
+    // negativa se usa la duracion por defecto del reproductor; con 0 el cambio
+    // es inmediato. Devuelve false si la ruta esta vacia o el backend no pudo
+    // abrirla.
+    bool reproducir(const std::string& ruta, float volumen = 1.0f,
                     float duracionFundido = -1.0f);
-    // Pasa a la pista siguiente del catalogo (con fundido).
+    // Pasa a la pista siguiente de la lista (con fundido).
     bool reproducirSiguiente(float volumen = 1.0f, float duracionFundido = -1.0f);
     // Detiene la musica. Con un fundido > 0 el volumen baja a cero antes de
     // parar.
@@ -80,9 +95,10 @@ public:
     void actualizar(float deltaTime);
 
     // --- estado ---
-    // La pista que suena ahora (vacia si no suena ninguna).
+    // La ruta de la pista que suena ahora (vacia si no suena ninguna).
     const std::string& pistaActual() const;
-    // La pista que esta entrando en el fundido en curso (vacia si no hay).
+    // La ruta de la pista que esta entrando en el fundido en curso (vacia si
+    // no hay).
     const std::string& pistaSiguiente() const;
     bool sonando() const;
     bool enFundido() const;
@@ -107,31 +123,31 @@ private:
         int indiceEntrante = -1;
     };
 
-    bool iniciarCambio(const std::string& nombre, float volumen,
+    bool iniciarCambio(const std::string& ruta, float volumen,
                        float duracionFundido);
     void avanzarFundido(float deltaTime);
     void completarFundido();
     void cancelarEntrada();
-    std::string nombreSiguienteDeCatalogo() const;
-    int indiceDe(const std::string& nombre) const;
+    std::string rutaSiguienteDeLista() const;
 
     IMusicaBackend& backend_;
-    std::unordered_map<std::string, std::string> rutas_;
-    std::vector<std::string> orden_;
+    // La lista de pistas, en orden de reproduccion (cada una es su ruta).
+    std::vector<std::string> pistas_;
 
     int idActual_ = 0;
     float volumenActual_ = 0.0f;
     int indiceActual_ = -1;
-    std::string nombreActual_;
+    std::string rutaActual_;
 
     int idSiguiente_ = 0;
     int indiceSiguiente_ = -1;
-    std::string nombreSiguiente_;
+    std::string rutaSiguiente_;
 
     Fundido fundido_;
     float volumenBus_ = 1.0f;
     bool busSilenciado_ = false;
     float duracionFundido_ = 2.0f;
+    bool repetirLista_ = true;
 };
 
 #endif // GESTORMUSICA_H

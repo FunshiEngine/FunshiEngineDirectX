@@ -16,9 +16,9 @@
 
     SPDX-License-Identifier: Apache-2.0
 */
-// Pruebas headless del reproductor de musica (GestorMusica): el catalogo de
-// pistas, el fundido cruzado, el paso automatico a la pista siguiente, la
-// deteccion y el bus.
+// Pruebas headless del reproductor de musica (GestorMusica): la lista ordenada
+// de pistas (por ruta), el fundido cruzado, el paso automatico a la pista
+// siguiente, la deteccion y el bus.
 //
 // El backend de musica es FALSO (implementa IMusicaBackend sin tocar audio):
 // asi se puede comprobar el comportamiento del reproductor paso a paso.
@@ -155,69 +155,96 @@ bool casiIgual(float a, float b) { return std::fabs(a - b) < 1e-4f; }
 
 } // namespace
 
-// Sin pistas registradas no hay nada que reproducir.
-void catalogoVacio() {
+// Sin lista no hay nada que reproducir.
+void listaVacia() {
     BackendFalso backend;
     GestorMusica gestor(backend);
 
-    CHECK(gestor.nombresPistas().empty(), "el catalogo empieza vacio");
-    CHECK(!gestor.tienePista("tema"), "una pista sin registrar no esta");
-    CHECK(!gestor.reproducir("tema", 1.0f, 0.0f),
-          "no se puede reproducir una pista que no esta en el catalogo");
+    CHECK(gestor.pistas().empty(), "la lista de pistas empieza vacia");
+    CHECK(!gestor.tienePista("musica/tema.ogg"), "una pista que no esta no esta");
+    CHECK(!gestor.reproducir("", 1.0f, 0.0f),
+          "no se puede reproducir una pista sin ruta");
     CHECK(backend.abiertas() == 0, "no se abrio ninguna pista en el backend");
     CHECK(!gestor.sonando(), "sin pistas no hay nada sonando");
     CHECK(gestor.pistaActual().empty(), "la pista actual esta vacia");
 }
 
-// El catalogo guarda el orden de registro y no duplica nombres.
-void registroDePistas() {
+// La lista guarda el orden en que se establecio y cada pista es su ruta.
+void listaDePistas() {
     BackendFalso backend;
     GestorMusica gestor(backend);
 
-    gestor.registrarPista("alfa", "musica/alfa.ogg");
-    gestor.registrarPista("beta", "musica/beta.ogg");
+    gestor.establecerPistas({"musica/alfa.ogg", "musica/beta.ogg"});
 
-    CHECK(gestor.nombresPistas().size() == 2, "se registran dos pistas");
-    CHECK(gestor.nombresPistas()[0] == "alfa", "el orden es el de registro");
-    CHECK(gestor.nombresPistas()[1] == "beta", "la segunda pista va despues");
-    CHECK(gestor.tienePista("alfa"), "la pista registrada esta en el catalogo");
-    CHECK(!gestor.tienePista("gamma"), "una pista no registrada no esta");
+    CHECK(gestor.pistas().size() == 2, "se establecen dos pistas");
+    CHECK(gestor.pistas()[0] == "musica/alfa.ogg", "el orden es el dado");
+    CHECK(gestor.pistas()[1] == "musica/beta.ogg", "la segunda pista va despues");
+    CHECK(gestor.tienePista("musica/alfa.ogg"), "la pista esta en la lista");
+    CHECK(!gestor.tienePista("musica/gamma.ogg"), "una ruta que no esta no esta");
+    CHECK(gestor.indiceDe("musica/beta.ogg") == 1, "el indice es la posicion");
+    CHECK(gestor.indiceDe("musica/gamma.ogg") == -1,
+          "una ruta que no esta no tiene indice");
 
-    gestor.registrarPista("alfa", "musica/alfa2.ogg");
-    CHECK(gestor.nombresPistas().size() == 2,
-          "registrar un nombre que ya existe no lo duplica");
+    // Las rutas vacias no entran en la lista.
+    gestor.establecerPistas({"musica/alfa.ogg", "", "musica/beta.ogg"});
+    CHECK(gestor.pistas().size() == 2, "las rutas vacias se descartan");
 
-    gestor.limpiarCatalogo();
-    CHECK(gestor.nombresPistas().empty(), "limpiar vacia el catalogo");
-    CHECK(!gestor.tienePista("alfa"), "tras limpiar no hay pistas");
+    gestor.anadirPista("musica/gamma.ogg");
+    CHECK(gestor.pistas().size() == 3, "anadir pone la pista al final");
+    CHECK(gestor.pistas()[2] == "musica/gamma.ogg", "la pista anadida va al final");
+
+    gestor.limpiarPistas();
+    CHECK(gestor.pistas().empty(), "limpiar vacia la lista");
+    CHECK(!gestor.tienePista("musica/alfa.ogg"), "tras limpiar no hay pistas");
 }
 
 // Reproducir una pista la abre en el backend con el volumen pedido.
 void reproduccionSimple() {
     BackendFalso backend;
     GestorMusica gestor(backend);
-    gestor.registrarPista("tema", "musica/tema.ogg");
+    gestor.establecerPistas({"musica/tema.ogg"});
 
-    CHECK(gestor.reproducir("tema", 0.8f, 0.0f), "se reproduce la pista");
+    CHECK(gestor.reproducir("musica/tema.ogg", 0.8f, 0.0f), "se reproduce la pista");
     CHECK(backend.abiertas() == 1, "el backend tiene una pista abierta");
     const BackendFalso::Pista* pista = backend.buscar("musica/tema.ogg");
-    CHECK(pista != nullptr, "la pista abierta es la del catalogo");
+    CHECK(pista != nullptr, "la pista abierta es la de la lista");
     if (pista) {
         CHECK(pista->sonando, "la pista esta sonando");
         CHECK(casiIgual(pista->volumen, 0.8f), "la pista suena al volumen pedido");
     }
-    CHECK(gestor.pistaActual() == "tema", "la pista actual es la reproducida");
+    CHECK(gestor.pistaActual() == "musica/tema.ogg",
+          "la pista actual es la ruta que suena");
     CHECK(gestor.sonando(), "el reproductor dice que suena");
     CHECK(!gestor.enFundido(), "sin fundido no hay fundido en curso");
+}
+
+// Se puede tocar un archivo que no esta en la lista: suena, pero al acabarse
+// no hay pista siguiente.
+void pistaFueraDeLaLista() {
+    BackendFalso backend;
+    GestorMusica gestor(backend);
+    gestor.establecerPistas({"musica/alfa.ogg"});
+    gestor.duracionFundido(0.0f);
+
+    CHECK(gestor.reproducir("musica/suelta.ogg", 1.0f, 0.0f),
+          "se reproduce un archivo que no esta en la lista");
+    CHECK(gestor.pistaActual() == "musica/suelta.ogg",
+          "la pista actual es la que se pidio");
+
+    backend.terminar("musica/suelta.ogg");
+    gestor.actualizar(0.1f);
+    CHECK(!gestor.sonando(),
+          "al acabarse una pista que no esta en la lista no hay a cual seguir");
+    CHECK(backend.abiertas() == 0, "la pista suelta se cierra");
 }
 
 // El volumen pedido se recorta al rango valido.
 void volumenLimitado() {
     BackendFalso backend;
     GestorMusica gestor(backend);
-    gestor.registrarPista("tema", "musica/tema.ogg");
+    gestor.establecerPistas({"musica/tema.ogg"});
 
-    gestor.reproducir("tema", 5.0f, 0.0f);
+    gestor.reproducir("musica/tema.ogg", 5.0f, 0.0f);
     const BackendFalso::Pista* pista = backend.buscar("musica/tema.ogg");
     CHECK(pista != nullptr, "la pista se abrio");
     if (pista) CHECK(casiIgual(pista->volumen, 1.0f),
@@ -228,16 +255,16 @@ void volumenLimitado() {
 void fundidoCruzado() {
     BackendFalso backend;
     GestorMusica gestor(backend);
-    gestor.registrarPista("alfa", "musica/alfa.ogg");
-    gestor.registrarPista("beta", "musica/beta.ogg");
+    gestor.establecerPistas({"musica/alfa.ogg", "musica/beta.ogg"});
 
-    gestor.reproducir("alfa", 1.0f, 0.0f);
-    CHECK(gestor.reproducir("beta", 1.0f, 2.0f), "se pide la pista siguiente");
+    gestor.reproducir("musica/alfa.ogg", 1.0f, 0.0f);
+    CHECK(gestor.reproducir("musica/beta.ogg", 1.0f, 2.0f), "se pide la pista siguiente");
 
     CHECK(gestor.enFundido(), "el fundido esta en curso");
-    CHECK(gestor.pistaActual() == "alfa",
+    CHECK(gestor.pistaActual() == "musica/alfa.ogg",
           "durante el fundido sigue sonando la pista anterior");
-    CHECK(gestor.pistaSiguiente() == "beta", "la pista que entra es la nueva");
+    CHECK(gestor.pistaSiguiente() == "musica/beta.ogg",
+          "la pista que entra es la nueva");
     CHECK(backend.abiertas() == 2, "las dos pistas estan vivas durante el fundido");
 
     gestor.actualizar(1.0f);
@@ -255,7 +282,8 @@ void fundidoCruzado() {
 
     gestor.actualizar(1.0f);
     CHECK(!gestor.enFundido(), "el fundido termina al agotarse el tiempo");
-    CHECK(gestor.pistaActual() == "beta", "la pista que entra pasa a ser la actual");
+    CHECK(gestor.pistaActual() == "musica/beta.ogg",
+          "la pista que entra pasa a ser la actual");
     CHECK(backend.buscar("musica/alfa.ogg") == nullptr,
           "la pista que salio se cierra al terminar el fundido");
     CHECK(backend.abiertas() == 1, "solo queda viva la pista que entra");
@@ -265,37 +293,66 @@ void fundidoCruzado() {
 void fundidoInmediato() {
     BackendFalso backend;
     GestorMusica gestor(backend);
-    gestor.registrarPista("alfa", "musica/alfa.ogg");
-    gestor.registrarPista("beta", "musica/beta.ogg");
+    gestor.establecerPistas({"musica/alfa.ogg", "musica/beta.ogg"});
 
-    gestor.reproducir("alfa", 1.0f, 0.0f);
-    gestor.reproducir("beta", 0.6f, 0.0f);
+    gestor.reproducir("musica/alfa.ogg", 1.0f, 0.0f);
+    gestor.reproducir("musica/beta.ogg", 0.6f, 0.0f);
 
     CHECK(!gestor.enFundido(), "sin duracion no hay fundido");
-    CHECK(gestor.pistaActual() == "beta", "la pista nueva es la actual");
+    CHECK(gestor.pistaActual() == "musica/beta.ogg", "la pista nueva es la actual");
     CHECK(backend.abiertas() == 1, "la pista vieja se cierra al instante");
     const BackendFalso::Pista* pista = backend.buscar("musica/beta.ogg");
     CHECK(pista != nullptr && casiIgual(pista->volumen, 0.6f),
           "la pista nueva suena con el volumen pedido");
 }
 
-// Cuando la pista actual se acaba se pasa a la siguiente del catalogo.
+// Cuando la pista actual se acaba se pasa a la siguiente de la lista.
 void avanceAutomatico() {
     BackendFalso backend;
     GestorMusica gestor(backend);
-    gestor.registrarPista("alfa", "musica/alfa.ogg");
-    gestor.registrarPista("beta", "musica/beta.ogg");
+    gestor.establecerPistas({"musica/alfa.ogg", "musica/beta.ogg"});
     gestor.duracionFundido(0.0f);
 
-    gestor.reproducir("alfa", 1.0f, 0.0f);
+    gestor.reproducir("musica/alfa.ogg", 1.0f, 0.0f);
     backend.terminar("musica/alfa.ogg");
 
     gestor.actualizar(0.1f);
-    CHECK(gestor.pistaActual() == "beta",
-          "al acabarse la pista se pasa a la siguiente del catalogo");
+    CHECK(gestor.pistaActual() == "musica/beta.ogg",
+          "al acabarse la pista se pasa a la siguiente de la lista");
     CHECK(backend.buscar("musica/alfa.ogg") == nullptr,
           "la pista terminada se cierra");
     CHECK(backend.abiertas() == 1, "solo queda viva la siguiente");
+}
+
+// Al final de la lista se vuelve a la primera (si la lista se repite).
+void listaSeRepite() {
+    BackendFalso backend;
+    GestorMusica gestor(backend);
+    gestor.establecerPistas({"musica/alfa.ogg", "musica/beta.ogg"});
+    gestor.duracionFundido(0.0f);
+    CHECK(gestor.repetirLista(), "por defecto la lista se repite");
+
+    gestor.reproducir("musica/beta.ogg", 1.0f, 0.0f);
+    backend.terminar("musica/beta.ogg");
+    gestor.actualizar(0.1f);
+    CHECK(gestor.pistaActual() == "musica/alfa.ogg",
+          "al acabarse la ultima se vuelve a la primera");
+}
+
+// Si la lista no se repite, al acabarse la ultima pista la musica se detiene.
+void listaSinRepetir() {
+    BackendFalso backend;
+    GestorMusica gestor(backend);
+    gestor.establecerPistas({"musica/alfa.ogg", "musica/beta.ogg"});
+    gestor.duracionFundido(0.0f);
+    gestor.establecerRepetirLista(false);
+    CHECK(!gestor.repetirLista(), "la lista se puede dejar de repetir");
+
+    gestor.reproducir("musica/beta.ogg", 1.0f, 0.0f);
+    backend.terminar("musica/beta.ogg");
+    gestor.actualizar(0.1f);
+    CHECK(!gestor.sonando(), "al acabarse la ultima pista la musica se detiene");
+    CHECK(backend.abiertas() == 0, "no queda ninguna pista viva");
 }
 
 // El cruce empieza antes de que la pista se acabe, para que una pista entre
@@ -303,17 +360,17 @@ void avanceAutomatico() {
 void fundidoAnticipado() {
     BackendFalso backend;
     GestorMusica gestor(backend);
-    gestor.registrarPista("alfa", "musica/alfa.ogg");
-    gestor.registrarPista("beta", "musica/beta.ogg");
+    gestor.establecerPistas({"musica/alfa.ogg", "musica/beta.ogg"});
     gestor.duracionFundido(2.0f);
 
-    gestor.reproducir("alfa", 1.0f, 0.0f);
+    gestor.reproducir("musica/alfa.ogg", 1.0f, 0.0f);
     backend.durar("musica/alfa.ogg", 10.0f);
     backend.mover("musica/alfa.ogg", 9.5f);  // le queda medio segundo
 
     gestor.actualizar(0.1f);
     CHECK(gestor.enFundido(), "el cruce empieza antes de que la pista acabe");
-    CHECK(gestor.pistaSiguiente() == "beta", "la siguiente entra durante el cruce");
+    CHECK(gestor.pistaSiguiente() == "musica/beta.ogg",
+          "la siguiente entra durante el cruce");
     CHECK(backend.abiertas() == 2, "las dos pistas se oyen un momento");
 }
 
@@ -321,9 +378,9 @@ void fundidoAnticipado() {
 void detener() {
     BackendFalso backend;
     GestorMusica gestor(backend);
-    gestor.registrarPista("tema", "musica/tema.ogg");
+    gestor.establecerPistas({"musica/tema.ogg"});
 
-    gestor.reproducir("tema", 1.0f, 0.0f);
+    gestor.reproducir("musica/tema.ogg", 1.0f, 0.0f);
     gestor.detener();
 
     CHECK(!gestor.sonando(), "tras detener no suena nada");
@@ -335,9 +392,9 @@ void detener() {
 void detenerConFundido() {
     BackendFalso backend;
     GestorMusica gestor(backend);
-    gestor.registrarPista("tema", "musica/tema.ogg");
+    gestor.establecerPistas({"musica/tema.ogg"});
 
-    gestor.reproducir("tema", 1.0f, 0.0f);
+    gestor.reproducir("musica/tema.ogg", 1.0f, 0.0f);
     gestor.detener(1.0f);
     CHECK(gestor.enFundido(), "la deteccion con fundido entra en fundido");
     CHECK(backend.abiertas() == 1, "la pista sigue viva mientras baja");
@@ -379,44 +436,53 @@ void bus() {
 void cancelarEntrada() {
     BackendFalso backend;
     GestorMusica gestor(backend);
-    gestor.registrarPista("alfa", "musica/alfa.ogg");
-    gestor.registrarPista("beta", "musica/beta.ogg");
-    gestor.registrarPista("gamma", "musica/gamma.ogg");
+    gestor.establecerPistas({"musica/alfa.ogg", "musica/beta.ogg",
+                              "musica/gamma.ogg"});
 
-    gestor.reproducir("alfa", 1.0f, 0.0f);
-    gestor.reproducir("beta", 1.0f, 2.0f);
-    gestor.reproducir("gamma", 1.0f, 2.0f);
+    gestor.reproducir("musica/alfa.ogg", 1.0f, 0.0f);
+    gestor.reproducir("musica/beta.ogg", 1.0f, 2.0f);
+    gestor.reproducir("musica/gamma.ogg", 1.0f, 2.0f);
 
     CHECK(backend.buscar("musica/beta.ogg") == nullptr,
           "la pista que estaba entrando se cierra");
     CHECK(backend.abiertas() == 2, "solo quedan la que suena y la que entra");
-    CHECK(gestor.pistaSiguiente() == "gamma", "la pista que entra es la ultima");
-    CHECK(gestor.pistaActual() == "alfa", "la que sigue sonando no cambia");
+    CHECK(gestor.pistaSiguiente() == "musica/gamma.ogg",
+          "la pista que entra es la ultima");
+    CHECK(gestor.pistaActual() == "musica/alfa.ogg", "la que sigue sonando no cambia");
 }
 
-// Reproducir la siguiente del catalogo avanza en el orden del catalogo.
+// Reproducir la siguiente avanza en el orden de la lista.
 void reproducirSiguiente() {
     BackendFalso backend;
     GestorMusica gestor(backend);
-    gestor.registrarPista("alfa", "musica/alfa.ogg");
-    gestor.registrarPista("beta", "musica/beta.ogg");
+    gestor.establecerPistas({"musica/alfa.ogg", "musica/beta.ogg"});
 
     CHECK(gestor.reproducirSiguiente(1.0f, 0.0f),
           "se reproduce la siguiente sin ninguna sonando");
-    CHECK(gestor.pistaActual() == "alfa", "sin ninguna sonando empieza la primera");
+    CHECK(gestor.pistaActual() == "musica/alfa.ogg",
+          "sin ninguna sonando empieza la primera");
 
     CHECK(gestor.reproducirSiguiente(1.0f, 0.0f), "se pasa a la siguiente");
-    CHECK(gestor.pistaActual() == "beta", "la siguiente del catalogo es la segunda");
+    CHECK(gestor.pistaActual() == "musica/beta.ogg",
+          "la siguiente de la lista es la segunda");
+
+    // Sin lista no hay siguiente que reproducir.
+    gestor.limpiarPistas();
+    CHECK(!gestor.reproducirSiguiente(1.0f, 0.0f),
+          "sin lista no se puede reproducir la siguiente");
 }
 
 int main() {
-    catalogoVacio();
-    registroDePistas();
+    listaVacia();
+    listaDePistas();
     reproduccionSimple();
+    pistaFueraDeLaLista();
     volumenLimitado();
     fundidoCruzado();
     fundidoInmediato();
     avanceAutomatico();
+    listaSeRepite();
+    listaSinRepetir();
     fundidoAnticipado();
     detener();
     detenerConFundido();
