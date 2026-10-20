@@ -98,14 +98,6 @@ LineBatch& Collider::obtenerWireBatch() {
     return *wireBatch_;
 }
 
-void Collider::saveComponent(std::ofstream* fileNamePathContentObject) {
-    serializeComponent(fileNamePathContentObject);
-}
-
-void Collider::loadComponent(std::ifstream* fileNamePathContentObject) {
-    deserializeComponent(fileNamePathContentObject);
-}
-
 void Collider::setRadio(float radio) {
     if (radio > 0) {
         this->radio = radio;

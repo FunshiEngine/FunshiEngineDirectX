@@ -65,8 +65,6 @@ void GameObject::addComponent(
 
     Component* rawComponent = component.get();
 
-    rawComponent->settingsObjectComponent = true;
-
     componentOwners.emplace_back(
         std::move(component)
     );

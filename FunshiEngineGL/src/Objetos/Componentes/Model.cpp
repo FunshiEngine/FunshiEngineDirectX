@@ -76,11 +76,3 @@ void Model::deserializeComponent(std::ifstream* fileNamePathContentObject) {
         filePath[0] = '\0';
     }
 }
-
-void Model::saveComponent(std::ofstream* fileNamePathContentObject) {
-    serializeComponent(fileNamePathContentObject);
-}
-
-void Model::loadComponent(std::ifstream* fileNamePathContentObject) {
-    deserializeComponent(fileNamePathContentObject);
-}

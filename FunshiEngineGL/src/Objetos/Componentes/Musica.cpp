@@ -88,10 +88,6 @@ void Musica::deserializeComponent(std::ifstream* file) {
     file->read(reinterpret_cast<char*>(&repetirLista), sizeof(bool));
 }
 
-void Musica::saveComponent(std::ofstream* file) { serializeComponent(file); }
-
-void Musica::loadComponent(std::ifstream* file) { deserializeComponent(file); }
-
 void Musica::anadirRuta(std::string ruta) {
     if (ruta.empty()) return;
     rutas.push_back(std::move(ruta));

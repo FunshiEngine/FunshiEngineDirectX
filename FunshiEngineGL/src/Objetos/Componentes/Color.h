@@ -36,9 +36,6 @@ protected:
 public:
     Color();
 
-    void saveComponent(std::ofstream* file) override;
-    void loadComponent(std::ifstream* file) override;
-
     void setColor(const color cor);
     void setColor(float r, float g, float b);
 

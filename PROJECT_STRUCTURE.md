@@ -650,6 +650,11 @@ solo como orquestador de arranque y bucle.
   de `Component` y serializan sus datos binarios.
 - `ComponentFactory` centraliza la creación por nombre de tipo tanto desde la GUI
   como durante la deserialización (`"CameraComponent"` acepta el alias `"Camera"`).
+- `Component` declara dos hooks de serialización (`serializeComponent` y
+  `deserializeComponent`): son los dos métodos que implementa cada componente. La
+  base ofrece `saveComponent` y `loadComponent` como entrada del motor, que
+  reenvían a los hooks y no se reimplementan, así que la serialización de un
+  componente vive en un solo sitio.
 - `Component::onLoaded(GameObject&)` es el hook polimórfico de post-carga:
   `deserializeEntityComponents` aplica `loadComponent()` y luego el hook, sin
   despachar por nombre de tipo. `Color` lo usa para reflejar su valor en

@@ -40,7 +40,5 @@ class Model : public Component {
   void deserializeComponent(std::ifstream* fileNamePathContentObject) override;
 
  public:
-  void saveComponent(std::ofstream* fileNamePathContentObject) override;
-  void loadComponent(std::ifstream* fileNamePathContentObject) override;
 };
 #endif

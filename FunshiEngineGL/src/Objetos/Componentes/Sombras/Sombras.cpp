@@ -70,10 +70,6 @@ void Sombras::deserializeComponent(std::ifstream* file) {
     setDistancia(distancia);
 }
 
-void Sombras::saveComponent(std::ofstream* file) { serializeComponent(file); }
-
-void Sombras::loadComponent(std::ifstream* file) { deserializeComponent(file); }
-
 void Sombras::setResolucion(int valor) {
     resolucion = std::min(std::max(valor, kResolucionMinima), kResolucionMaxima);
     // Potencia de dos: la textura de profundidad se muestrea y se compara

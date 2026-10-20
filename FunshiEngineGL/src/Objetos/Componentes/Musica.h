@@ -53,9 +53,6 @@ protected:
 public:
     Musica() = default;
 
-    void saveComponent(std::ofstream* file) override;
-    void loadComponent(std::ifstream* file) override;
-
     void setMotor(AudioEngine* m) noexcept { motor = m; }
     AudioEngine* getMotor() const noexcept { return motor; }
 
