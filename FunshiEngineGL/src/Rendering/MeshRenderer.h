@@ -30,6 +30,10 @@
 #include "../Iluminacion/LightSystem.h"
 
 class ShaderProgram;
+
+namespace Rendering {
+class GestorShaders;
+}  // namespace Rendering
 class MeshGPU;
 class TextureGL;
 struct Mesh;
@@ -55,6 +59,12 @@ public:
     ~MeshRenderer();
 
     bool available() const noexcept { return shader_ != nullptr; }
+
+    // Gestor de shaders del motor (dueno de los programas): sin el, el
+    // renderer no tiene programa y no dibuja.
+    void setGestorShaders(Rendering::GestorShaders* gestorShaders) noexcept {
+        gestorShaders_ = gestorShaders;
+    }
 
     // Manager de imagenes compartidas (flyweight): si no se inyecta, los
     // materiales con textura se dibujan sin ellas (no hay loader de imagenes).
@@ -93,7 +103,8 @@ public:
     void clearCache();
 
 private:
-    std::unique_ptr<ShaderProgram> shader_;
+    std::shared_ptr<ShaderProgram> shader_;
+    Rendering::GestorShaders* gestorShaders_ = nullptr;
     TextureManager* textureManager_ = nullptr;
     std::unordered_map<const Mesh*, std::unique_ptr<MeshGPU>> gpu_;
     std::unordered_map<const Image*, std::unique_ptr<TextureGL>> gpuTexturas_;

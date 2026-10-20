@@ -366,9 +366,14 @@ FunshiEngineGL/                          ← raíz del repo
         │   │   │                              DepthFunc, recursos GPU, estados, FBO)
         │   │   ├── OpenGL3Backend.h/.cpp   ← implementación OpenGL 3.3 core
         │   │   └── GLFuncs.h                ← carga perezosa de funciones GL
-        │   └── Shaders/                    ← ShaderProgram + fuentes inyectadas
-        │       ├── ShaderProgram.h/.cpp
-        │       └── ShaderSources.h/.cpp
+        │   └── Shaders/                    ← sistema de shaders (gestor + GLSL embebido)
+        │       ├── GestorShaders.h/.cpp   ← dueño de los programas: uno por nombre,
+        │       │                              compilado una vez y compartido
+        │       ├── PreprocesadorShaders.h/.cpp ← resuelve #include "..." en CPU
+        │       │                              (GL 3.3 no tiene ARB_shading_language_include)
+        │       ├── ShaderProgram.h/.cpp    ← programa compilado (backend inyectado)
+        │       ├── ShaderException.h      ← errores de compilación e inclusión
+        │       └── ShaderSources.h        ← GLSL embebido (inline) de los 5 programas
         ├── Objetos/
         │   ├── GameObject.h/.cpp         ← id, nombre, tag, estado, update y serialización binaria
         │   ├── TagRegistry.h             ← registro dinámico de tags para el Inspector
@@ -1212,6 +1217,7 @@ main.cpp
 | Observer | `EventBus` (token-based) | Desacopla notificaciones de escena y selección entre subsistemas. |
 | State | `ApplicationStateMachine` | Explicita los modos principales de la aplicación. |
 | Flyweight / Cache | `AssetManager` (meshes) y `TextureManager` (imágenes) | Recursos CPU compartidos por ruta (`AssetPath`) con loader inyectable y liberación por refcount. |
+| Service (inyección) | `GestorShaders` (dueño de los programas) y `TextureManager` | Los renderers reciben los recursos por setter en vez de buscarlos por su cuenta: un programa por nombre, compilado una vez y compartido, y el backend de render se inyecta en lugar de localizarlo por un global. |
 
 No están implementados todavía:
 - `Command` para undo/redo.

@@ -27,7 +27,7 @@
 #include "../Assets/Mesh.h"
 #include "../Assets/TextureManager.h"
 #include "Shaders/ShaderProgram.h"
-#include "Shaders/ShaderSources.h"
+#include "Shaders/GestorShaders.h"
 #include "TextureGL.h"
 
 namespace Rendering {
@@ -53,11 +53,12 @@ bool TilemapRenderer::inicializar() {
     if (shaderFallado_) return false;
     auto& backend = Backend::activeBackend();
     if (!backend.init()) return false;
+    // Sin gestor de shaders no hay de donde pedir el programa.
+    if (!gestorShaders_) return false;
 
     try {
-        shader_ = std::make_unique<ShaderProgram>(
-            ShaderProgram::fromSource(kSpriteVertexShader,
-                                      kSpriteFragmentShader));
+        // Comparte programa con el renderer de sprites: es el mismo GLSL.
+        shader_ = gestorShaders_->obtener("sprite");
     } catch (const std::exception& e) {
         registrarExcepcionDiagnostica("Rendering/TilemapRenderer", e,
                                       NivelDiagnostico::Error);
@@ -172,7 +173,7 @@ bool TilemapRenderer::dibujar(const TilemapDraw& draw) {
     backend.drawMesh(malla, indices);
     backend.setDepthMask(true);
     backend.setBlendEnabled(false);
-    ShaderProgram::unbind();
+    ShaderProgram::unbind(backend);
     return true;
 }
 

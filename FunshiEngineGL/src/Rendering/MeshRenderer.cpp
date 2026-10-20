@@ -36,7 +36,7 @@
 #include "../Objetos/Modelos3D.h"
 #include "MeshGPU.h"
 #include "Shaders/ShaderProgram.h"
-#include "Shaders/ShaderSources.h"
+#include "Shaders/GestorShaders.h"
 #include "TextureGL.h"
 #include "Backend/IRenderBackend.h"
 
@@ -58,10 +58,10 @@ MeshRenderer::~MeshRenderer() = default;
 bool MeshRenderer::inicializar() {
     if (shader_) return true;
     if (!Rendering::Backend::activeBackend().init()) return false;
+    // Sin gestor de shaders no hay de donde pedir el programa.
+    if (!gestorShaders_) return false;
     try {
-        shader_ = std::make_unique<ShaderProgram>(
-            ShaderProgram::fromSource(kDefaultVertexShader,
-                                      kDefaultFragmentShader));
+        shader_ = gestorShaders_->obtener("malla");
         aplicarLuces();
     } catch (const std::exception& e) {
         registrarExcepcionDiagnostica("Rendering/MeshRenderer", e,
@@ -343,6 +343,6 @@ bool MeshRenderer::intentarRenderMesh(GameObject* contexto, const Mesh* mesh,
     backend.setBlendEnabled(true);
     it->second->draw();
     backend.setBlendEnabled(false);
-    ShaderProgram::unbind();
+    ShaderProgram::unbind(backend);
     return true;
 }

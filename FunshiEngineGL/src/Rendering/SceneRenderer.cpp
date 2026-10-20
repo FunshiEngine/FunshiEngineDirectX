@@ -48,7 +48,7 @@
 #include "MeshRenderer.h"
 #include "RenderTarget.h"
 #include "Shaders/ShaderProgram.h"
-#include "Shaders/ShaderSources.h"
+#include "Shaders/GestorShaders.h"
 
 #include "../Configuracion/Apariencia.h"
 #include "../Configuracion/EditorConfig.h"
@@ -83,6 +83,16 @@ void SceneRenderer::setTextureManager(TextureManager* textureManager) noexcept {
     if (meshRenderer_) meshRenderer_->setTextureManager(textureManager);
     spriteRenderer_.setTextureManager(textureManager);
     tilemapRenderer_.setTextureManager(textureManager);
+}
+
+void SceneRenderer::setGestorShaders(Rendering::GestorShaders* gestorShaders) noexcept {
+    gestorShaders_ = gestorShaders;
+    if (meshRenderer_) meshRenderer_->setGestorShaders(gestorShaders);
+    // El renderer de lineas es un unico para el motor (los gizmos de colision
+    // lo usan sin recibirlo por parametro).
+    lineRenderer().setGestorShaders(gestorShaders);
+    spriteRenderer_.setGestorShaders(gestorShaders);
+    tilemapRenderer_.setGestorShaders(gestorShaders);
 }
 
 void SceneRenderer::destruir() {
@@ -272,7 +282,7 @@ void SceneRenderer::dibujarEscena(const FrameContext& ctx,
     // de la malla, y solo en la pasada principal.
     if (esPasadaPrincipal) dibujarGuiaEje(ctx, camaraMundo);
 
-    ShaderProgram::unbind();
+    ShaderProgram::unbind(backend);
 }
 
 // Cielo degradado: fullscreen triangle con interpolacion vertical entre
@@ -310,10 +320,9 @@ void SceneRenderer::dibujarCielo(const FrameContext& ctx, const float view[16],
     }
 
     // Creacion perezosa del programa del cielo degradado.
-    if (!cieloProgram_ && !cieloShaderFallado_) {
+    if (!cieloProgram_ && !cieloShaderFallado_ && gestorShaders_) {
         try {
-            cieloProgram_ = std::make_unique<ShaderProgram>(
-                ShaderProgram::fromSource(kSkyVertexShader, kSkyFragmentShader));
+            cieloProgram_ = gestorShaders_->obtener("cielo");
         } catch (const std::exception& e) {
             registrarExcepcionDiagnostica("Rendering/SceneRenderer", e,
                                           NivelDiagnostico::Error);
@@ -381,7 +390,7 @@ void SceneRenderer::dibujarCielo(const FrameContext& ctx, const float view[16],
 
     // Restaurar estado base para la siguiente pasada.
     backend.setDepthMask(true);
-    ShaderProgram::unbind();
+    ShaderProgram::unbind(backend);
 }
 
 // Ultima modificacion del archivo en unidades del reloj de la filesystem
@@ -444,29 +453,9 @@ bool SceneRenderer::dibujarSkyboxCubemap(const Skybox* skybox,
     if (skyboxCubemap_ == Rendering::Backend::kInvalidHandle) return false;
 
     // Programa del cubemap (cubo centrado en la camara), creacion perezosa.
-    if (!skyboxProgram_ && !skyboxShaderFallado_) {
-        static const char* skyboxVert = R"(#version 330 core
-layout(location = 0) in vec3 aPos;
-out vec3 vTexCoord;
-uniform mat4 uView;
-uniform mat4 uProjection;
-void main() {
-    vTexCoord = aPos;
-    vec4 pos = uProjection * uView * vec4(aPos, 1.0);
-    gl_Position = pos.xyww; // z = w para estar en el plano lejano
-}
-)";
-        static const char* skyboxFrag = R"(#version 330 core
-in vec3 vTexCoord;
-out vec4 FragColor;
-uniform samplerCube uSkybox;
-void main() {
-    FragColor = texture(uSkybox, vTexCoord);
-}
-)";
+    if (!skyboxProgram_ && !skyboxShaderFallado_ && gestorShaders_) {
         try {
-            skyboxProgram_ = std::make_unique<ShaderProgram>(
-                ShaderProgram::fromSource(skyboxVert, skyboxFrag));
+            skyboxProgram_ = gestorShaders_->obtener("cubemap");
         } catch (const std::exception& e) {
             registrarExcepcionDiagnostica("Rendering/SceneRenderer", e,
                                           NivelDiagnostico::Error);
@@ -552,7 +541,7 @@ void main() {
     // Restaurar estado.
     backend.setDepthMask(true);
     backend.setDepthFunc(Rendering::Backend::kDepthFuncLess);
-    ShaderProgram::unbind();
+    ShaderProgram::unbind(backend);
 
     return true;
 }

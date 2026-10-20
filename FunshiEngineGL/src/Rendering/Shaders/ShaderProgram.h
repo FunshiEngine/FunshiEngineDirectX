@@ -36,8 +36,8 @@
 class ShaderProgram {
 private:
     Rendering::Backend::Handle program_ = Rendering::Backend::kInvalidHandle;
-    // Backend con el que se compilo el programa. Si no se indica ninguno, se
-    // usa el backend activo (el localizador global).
+    // Backend con el que se compilo el programa. El programa no busca el
+    // backend global: lo tiene inyectado (el gestor de shaders lo reparte).
     Rendering::Backend::IRenderBackend* backend_ = nullptr;
     mutable std::unordered_map<std::string, int> uniformLocations_;
 
@@ -58,8 +58,6 @@ public:
     static ShaderProgram fromSource(Rendering::Backend::IRenderBackend& backend,
                                     const char* vertexSource,
                                     const char* fragmentSource);
-    static ShaderProgram fromSource(const char* vertexSource,
-                                    const char* fragmentSource);
 
     Rendering::Backend::Handle getProgramId() const { return program_; }
     bool isValid() const {
@@ -67,7 +65,9 @@ public:
     }
 
     void use() const;
-    static void unbind();
+    // Suelta el programa en uso (deja el pipeline sin programa). El backend
+    // se recibe: el programa no busca el backend global.
+    static void unbind(Rendering::Backend::IRenderBackend& backend);
 
     void setMat4(const char* name, const glm::mat4& value);
     void setMat3(const char* name, const glm::mat3& value);

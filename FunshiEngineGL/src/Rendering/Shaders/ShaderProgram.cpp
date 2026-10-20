@@ -23,12 +23,6 @@
 using Rendering::Backend::IRenderBackend;
 using Rendering::Backend::kInvalidHandle;
 
-ShaderProgram ShaderProgram::fromSource(const char* vertexSource,
-                                        const char* fragmentSource) {
-    return fromSource(Rendering::Backend::activeBackend(), vertexSource,
-                      fragmentSource);
-}
-
 ShaderProgram ShaderProgram::fromSource(Rendering::Backend::IRenderBackend& backend,
                                         const char* vertexSource,
                                         const char* fragmentSource) {
@@ -61,15 +55,15 @@ ShaderProgram& ShaderProgram::operator=(ShaderProgram&& other) noexcept {
 }
 
 Rendering::Backend::IRenderBackend& ShaderProgram::backend() const {
-    return backend_ ? *backend_ : Rendering::Backend::activeBackend();
+    return *backend_;
 }
 
 void ShaderProgram::use() const {
     if (program_ != kInvalidHandle) backend().useProgram(program_);
 }
 
-void ShaderProgram::unbind() {
-    Rendering::Backend::activeBackend().useProgram(kInvalidHandle);
+void ShaderProgram::unbind(Rendering::Backend::IRenderBackend& backend) {
+    backend.useProgram(kInvalidHandle);
 }
 
 int ShaderProgram::findUniform(const char* name) const {

@@ -308,16 +308,3 @@ int main() {
               << " fallos" << std::endl;
     return fallos > 0 ? 1 : 0;
 }
-
-// El backend activo global. El motor lo define junto al backend real de
-// OpenGL; aqui se sustituye por el falso, porque el test no tiene contexto
-// grafico. El programa de shader solo lo usa si se crea sin backend (el
-// gestor siempre se lo inyecta).
-namespace Rendering {
-namespace Backend {
-IRenderBackend& activeBackend() {
-    static BackendFalso backend;
-    return backend;
-}
-}  // namespace Backend
-}  // namespace Rendering
