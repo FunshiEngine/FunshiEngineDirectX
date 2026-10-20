@@ -312,6 +312,9 @@ void GestorMods::reportar(const Resultado& resultado,
     }
 
     // Resumen por ambito (motor / proyecto), visible en el panel de estado/log.
+    // El recuento es de paquetes ENCONTRADOS: que un paquete se haya
+    // encontrado no significa que su binario se haya podido cargar (eso lo
+    // reporta el cargador, con su propio resumen).
     std::size_t motorCount = 0;
     std::size_t proyectoCount = 0;
     for (const PaqueteMod& mod : resultado.mods) {
@@ -325,14 +328,14 @@ void GestorMods::reportar(const Resultado& resultado,
         EventoDiagnostico resumenMotor;
         resumenMotor.nivel = NivelDiagnostico::Informacion;
         resumenMotor.modulo = MODULO_MODS;
-        resumenMotor.mensaje = "mods de motor cargados: " + std::to_string(motorCount);
+        resumenMotor.mensaje = "mods de motor encontrados: " + std::to_string(motorCount);
         registro.registrar(std::move(resumenMotor));
     }
     if (proyectoCount > 0) {
         EventoDiagnostico resumenProyecto;
         resumenProyecto.nivel = NivelDiagnostico::Informacion;
         resumenProyecto.modulo = MODULO_MODS;
-        resumenProyecto.mensaje = "mods de proyecto cargados: " + std::to_string(proyectoCount);
+        resumenProyecto.mensaje = "mods de proyecto encontrados: " + std::to_string(proyectoCount);
         registro.registrar(std::move(resumenProyecto));
     }
     if (motorCount == 0 && proyectoCount == 0) {
@@ -340,7 +343,7 @@ void GestorMods::reportar(const Resultado& resultado,
         resumen.nivel = resultado.fallos.empty() ? NivelDiagnostico::Informacion
                                                  : NivelDiagnostico::Advertencia;
         resumen.modulo = MODULO_MODS;
-        resumen.mensaje = "mods cargados: 0";
+        resumen.mensaje = "mods encontrados: 0";
         registro.registrar(std::move(resumen));
     }
 }

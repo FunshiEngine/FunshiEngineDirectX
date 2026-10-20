@@ -1435,9 +1435,17 @@ El motor lee dos carpetas y las dos son opcionales:
   proyecto está abierto. La carpeta se crea al crear el proyecto.
 
 Ambas se recorren al arrancar el editor. El resultado se reporta en el panel de
-estado/log: un resumen por ámbito (`mods de motor cargados: N` y `mods de
-proyecto cargados: M`, cada uno solo si hay al menos uno) y, por cada paquete
+estado/log: un resumen por ámbito (`mods de motor encontrados: N` y `mods de
+proyecto encontrados: M`, cada uno solo si hay al menos uno) y, por cada paquete
 rechazado, el nombre del mod y la causa.
+
+Después, los paquetes válidos se **cargan**: su binario se extrae a la caché
+(`<raizDeDatos>/cache/mods/<id del mod>/`) y se abre, y el mod recibe su
+inicialización. La carga se reporta aparte, porque un paquete puede ser válido
+y su binario no: `mods nativos cargados: N` dice cuántos quedaron en memoria, y
+cada mod que no se pudo cargar aparece con su causa (`mod no cargado: ...`).
+Al salir del editor los mods se apagan en orden inverso al de carga y sus
+binarios se cierran.
 
 ### 18.2 Instalación
 
@@ -1476,7 +1484,7 @@ absolutas): un paquete no puede escribir fuera de su caché.
   "icono": "icono.png",
   "tipo": "nativo",
   "versionMotor": ">=1.0.0 <2.0.0",
-  "puntoEntrada": { "windows": "bin/mod.dll", "linux": "bin/mod.so" },
+  "puntoEntrada": "bin/mod.dll",
   "dependencias": [
     { "id": "Autor.Otro", "versionMin": "1.2.0", "requerida": true, "orden": "antes" }
   ],
@@ -1494,27 +1502,50 @@ absolutas): un paquete no puede escribir fuera de su caché.
 - `orden` de una dependencia es `antes`, `despues` o `ninguno`: los mods se
   carga en orden topológico y un ciclo entre dependencias se rechaza.
 - `icono`, `dependencias` y `conflictos` son opcionales.
+- `puntoEntrada` es la ruta del binario **dentro del paquete**. Es una sola
+  cadena: el paquete lleva un binario por plataforma, así que un `.fmod` se
+  arma para el sistema al que se instala.
 
-### 18.5 Confianza
+### 18.5 La API del mod
+
+Un mod nativo es una biblioteca compartida (`.dll` en Windows, `.so` en Linux)
+que exporta una función de entrada:
+
+```cpp
+extern "C" FUNSHI_MOD_EXPORT int funshi_mod_api(FunshiMods::IMod** salida);
+```
+
+Devuelve la versión de la API con la que se compiló, o `0` si no puede
+trabajar con el motor; el motor rechaza los que declaran una versión de API
+posterior a la que ofrece. La interfaz del mod es una tabla de punteros a
+función (`init`, `update`, `dibujar`, `shutdown`, `nombre`, `versionStr`), todas
+opcionales. El motor no expone objetos: le pasa una tabla de servicios y, en
+cada dibujo, un contexto con el contexto de ImGui y el tamaño del área. El mod
+que dibuja hace `ImGui::SetCurrentContext(ctxImgui)` antes de pintar.
+
+La tabla del motor es *append-only*: los campos nuevos van al final y la
+versión de la API se incrementa al agregar funcionalidad.
+
+### 18.6 Confianza
 
 Los mods se cargan con **confianza total**: no hay firma ni sandbox, igual que
 en otros motores con mods. Un mod es código que corre dentro del editor, con
 los mismos permisos. Instala solo paquetes de autores en los que confíes; el
 motor no puede distinguir un mod benigno de uno malicioso.
 
-### 18.6 Estado activo
+### 18.7 Estado activo
 
 El estado activo de cada mod se guarda por ámbito: los mods del motor en la
 configuración general del editor (`Configuracion.json`) y los del proyecto en
 la del proyecto (`ConfiguracionProyecto.json`). Un mod que no está en el mapa
 se considera activo por defecto.
 
-### 18.7 Actualización y alcance de esta versión
+### 18.8 Actualización y alcance de esta versión
 
 No hay hot-reload: los mods se cargan al arrancar y se descargan al salir.
 Actualizar un mod es reemplazar su `.fmod` y reiniciar el editor. Esta versión
-cubre el **envase**: descubre, valida y ordena los paquetes y reporta lo que
-encuentra. La carga del binario del mod y el registro de sus paneles de GUI
-llegan en una etapa siguiente.
+cubre el **envase y la carga**: descubre, valida y ordena los paquetes, extrae
+el binario de cada uno a la caché, lo abre y lo inicializa. El registro de los
+paneles de GUI que aportan los mods llega en una etapa siguiente.
 
 ---

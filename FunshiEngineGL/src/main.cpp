@@ -51,6 +51,7 @@
 #include "../src/Rendering/Backend/IRenderBackend.h"
 #include "../src/Diagnosticos/RegistroDiagnosticos.h"
 #include "../src/Mods/GestorMods.h"
+#include "../src/Mods/CargadorMods.h"
 #include "../src/ExcepcionesCPP/RuntimeException.h"
 #ifdef FUNSHI_CEF
 #include "../src/WebUI/WebUIRuntime.h"
@@ -410,11 +411,17 @@ static int EjecutarMotor(int argc, char* argv[])
             ? std::string()
             : EditorConfig::directorioSrc(gestor.proyectoActual()));
 
-    // Descubrimiento de mods: se leen los .fmod de la carpeta global del motor
-    // y, si hay proyecto abierto, los de su carpeta. El resultado se reporta al
-    // registro de diagnosticos (panel de estado/log); la carga nativa de los
-    // binarios es una fase posterior. Las carpetas se crean en
+    // Descubrimiento y carga de mods: se leen los .fmod de la carpeta global
+    // del motor y, si hay proyecto abierto, los de su carpeta. El resultado se
+    // reporta al registro de diagnosticos (panel de estado/log). Los paquetes
+    // validos se cargan de verdad: su binario se extrae a la cache y se abre,
+    // y el mod recibe su inicializacion. Las carpetas se crean en
     // asegurarEstructuraBase / al crear el proyecto.
+    //
+    // La lista de mods cargados vive hasta el final del proceso: se descargan
+    // en orden inverso al salir (cada mod apaga sus recursos antes de que su
+    // binario se cierre).
+    std::vector<ModCargado> modsCargados;
     {
         std::vector<CarpetaMods> carpetasMods = {
             {ProjectPaths::directorioMods(), AmbitoMod::Motor}};
@@ -426,6 +433,11 @@ static int EjecutarMotor(int argc, char* argv[])
         const GestorMods::Resultado modsDescubiertos =
             GestorMods::descubrir(carpetasMods);
         GestorMods::reportar(modsDescubiertos);
+
+        const CargadorMods::ResultadoCarga modsCargadosResultado =
+            CargadorMods::cargar(modsDescubiertos);
+        CargadorMods::reportar(modsCargadosResultado);
+        modsCargados = modsCargadosResultado.modsCargados;
     }
 
     if (gestor.hayProyecto())
@@ -840,6 +852,11 @@ static int EjecutarMotor(int argc, char* argv[])
 #ifdef FUNSHI_CEF
     WebUIRuntime::apagar();
 #endif
+
+    // Apagado de los mods: cada uno recibe su shutdown() y despues se cierra
+    // su binario, en orden inverso al de carga. Va antes de romper ImGui: un
+    // mod puede soltar recursos de GUI en su shutdown.
+    CargadorMods::descargar(modsCargados);
 
     // Shutdown solo con backend vivo: ImGui_ImplOpenGL3_Shutdown() desreferencia
     // el backend data y en Release no hay assert que lo frene.

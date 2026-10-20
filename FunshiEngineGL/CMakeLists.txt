@@ -682,6 +682,44 @@ set_target_properties(manifiesto-assets-tests PROPERTIES
 )
 add_test(NAME manifiesto-assets-tests COMMAND manifiesto-assets-tests)
 
+# Plugins de prueba del sistema de mods: bibliotecas compartidas que exportan
+# (o no) la funcion de entrada que el motor busca en el binario de un mod. Los
+# tests las empaquetan como .fmod y las cargan de verdad, para ejercitar el
+# cargador con un binario real y no con un mock. El token (A/B/S) distingue las
+# variantes en el archivo de log del test.
+function(funshi_mods_test_plugin nombre token)
+    add_library(${nombre} SHARED
+        ${CMAKE_CURRENT_SOURCE_DIR}/../tests/ModsTestPlugin.cpp)
+    target_include_directories(${nombre} PRIVATE ${SRC_DIR})
+    target_compile_definitions(${nombre} PRIVATE FUNSHI_MODS_TEST_TOKEN_${token})
+    set_target_properties(${nombre} PROPERTIES
+        CXX_STANDARD 17
+        CXX_STANDARD_REQUIRED ON
+        CXX_EXTENSIONS OFF
+    )
+    if(MINGW)
+        # Enlazado estatico: el plugin no arrastra el runtime de C++ ni
+        # libgcc, que en la maquina donde se carga pueden no estar.
+        target_link_options(${nombre} PRIVATE -static)
+    endif()
+endfunction()
+
+funshi_mods_test_plugin(mods-test-plugin-a A)
+funshi_mods_test_plugin(mods-test-plugin-b B)
+funshi_mods_test_plugin(mods-test-plugin-sin-simbolo S)
+target_compile_definitions(mods-test-plugin-sin-simbolo
+    PRIVATE FUNSHI_MODS_TEST_SIN_SIMBOLO)
+
+# Rutas de los plugins de prueba, resueltas en tiempo de generacion: el test
+# las empaqueta en un .fmod y las carga de verdad.
+file(GENERATE OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/generated/RutasPluginsMods.h CONTENT
+"// Generado por CMake. No editar a mano.
+#pragma once
+#define FUNSHI_MODS_PLUGIN_A \"$<TARGET_FILE:mods-test-plugin-a>\"
+#define FUNSHI_MODS_PLUGIN_B \"$<TARGET_FILE:mods-test-plugin-b>\"
+#define FUNSHI_MODS_PLUGIN_SIN_SIMBOLO \"$<TARGET_FILE:mods-test-plugin-sin-simbolo>\"
+")
+
 # Nucleo del sistema de mods (.fmod): versiones semver minimas (ModVersion,
 # RangoVersion) y el esquema del manifiesto (ManifiestoMod). Headless y sin GUI
 # ni GLFW (solo nlohmann/json de External) para correr tambien con
@@ -692,6 +730,7 @@ add_executable(mods-tests
     ${SRC_DIR}/Mods/ManifiestoMod.cpp
     ${SRC_DIR}/Mods/LectorZip.cpp
     ${SRC_DIR}/Mods/GestorMods.cpp
+    ${SRC_DIR}/Mods/CargadorMods.cpp
     ${SRC_DIR}/Configuracion/ProjectPaths.cpp
     ${SRC_DIR}/Configuracion/ProjectManager.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../tests/ModsTests.cpp
@@ -700,12 +739,17 @@ target_link_libraries(mods-tests PRIVATE funshi_diagnostics_core funshi_miniz)
 target_include_directories(mods-tests PRIVATE
     ${SRC_DIR}
     ${CMAKE_SOURCE_DIR}/External
+    ${CMAKE_CURRENT_BINARY_DIR}/generated
 )
 set_target_properties(mods-tests PROPERTIES
     CXX_STANDARD 17
     CXX_STANDARD_REQUIRED ON
     CXX_EXTENSIONS OFF
 )
+# Los plugins se empaquetan como .fmod y se cargan en el test: tienen que
+# estar construidos antes de que corra.
+add_dependencies(mods-tests
+    mods-test-plugin-a mods-test-plugin-b mods-test-plugin-sin-simbolo)
 add_test(NAME mods-tests COMMAND mods-tests)
 
 # Orquestador de estados de GUI (la "funcion de marco" de F5/F6/F7 y las teclas)

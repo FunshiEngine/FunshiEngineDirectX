@@ -314,8 +314,16 @@ FunshiEngineGL/                          ← raíz del repo
         │   ├── ManifiestoMod.h/.cpp      ← parseo y validación de ManifiestoMod.json
         │   ├── ModVersion.h/.cpp         ← versiones X.Y.Z y rangos (versionMotor/versionMin)
         │   ├── LectorZip.h/.cpp          ← manifiesto desde el .fmod y extracción anti zip-slip
-        │   └── GestorMods.h/.cpp         ← descubrimiento en Mods/, orden topológico, ciclos,
-        │                                    ámbito motor/proyecto y reporte a diagnósticos
+        │   ├── GestorMods.h/.cpp         ← descubrimiento en Mods/, orden topológico, ciclos,
+        │   │                                ámbito motor/proyecto y reporte a diagnósticos
+        │   ├── ApiMod.h                  ← API pública v0 del mod (POD, tabla de punteros a
+        │   │                                función; append-only con `version` al final)
+        │   ├── CargaDinamica.h           ← macros multiplataforma de carga de bibliotecas
+        │   │                                compartidas (dlopen/LoadLibrary), compartidas con
+        │   │                                Behaviour/Backends/BackendCpp.cpp
+        │   └── CargadorMods.h/.cpp       ← carga nativa: extrae el .fmod a la caché, abre el
+        │                                    binario, pide la interfaz por `funshi_mod_api` e
+        │                                    inicializa; descarga en orden inverso al salir
         ├── Rendering/
         │   ├── SceneRenderer.h/.cpp       ← renderizador de la escena: skybox, modelos,
         │   │                                  iluminación, horizonte común de grilla/render,
@@ -1038,7 +1046,7 @@ headless** registrados en CTest (`scripts-java-tests` solo se registra con
 - `manifiesto-assets-tests` (37): manifiesto `SceneAssets.json` (JSON round-trip de
   malla, texturas, script y las seis caras del cubemap, tolerancia a manifiestos
   corruptos y precedencia sobre el `.db`).
-- `mods-tests` (141): sistema de mods `.fmod` en su fase de envase: parseo y
+- `mods-tests` (182): sistema de mods `.fmod`: parseo y
   validación de `ManifiestoMod.json` (campos obligatorios, `esquemaVersion`,
   `id` con formato `Autor.Nombre`, `tipo` nativo), semver y rangos
   (`versionMotor`, `versionMin`), lectura del manifiesto desde el ZIP y
@@ -1046,7 +1054,12 @@ headless** registrados en CTest (`scripts-java-tests` solo se registra con
   descubrimiento en `Mods/` con orden topológico, detección de ciclos, rechazo
   de `id` duplicado, chequeos de dependencia/conflicto/versión de motor, ámbito
   motor vs proyecto y reporte a `RegistroDiagnosticos`. Los `.fmod` de prueba se
-  generan con el escritor de miniz.
+  generan con el escritor de miniz. La carga nativa se ejercita con binarios
+  reales: los targets `mods-test-plugin-a/b` (bibliotecas compartidas que
+  exportan `funshi_mod_api`) y `mods-test-plugin-sin-simbolo` se empaquetan
+  como `.fmod` y se cargan de verdad, cubriendo la extracción a la caché, la
+  inicialización, el orden inverso de descarga y los rechazos (sin punto de
+  entrada, sin binario en el paquete, sin el símbolo exportado).
 - `orquestador-estado-tests`: transiciones de Depuración/Juego, pausa, solicitud
   consumible de Reset, fin/Escape por estado, teclas del editor y atajos frente
   a ImGui.
