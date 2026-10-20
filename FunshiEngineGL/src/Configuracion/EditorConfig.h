@@ -65,6 +65,11 @@ public:
         DimensionProyecto dimension = DimensionProyecto::TresD;
         // stateGUI de cada ventana por su WindowName.
         std::map<std::string, bool> estadoVentanas;
+        // Mods activos por id -> habilitado. Los del motor se persisten en
+        // Configuracion.json y los del proyecto en ConfiguracionProyecto.json
+        // (dos mapas porque el ambito decide que archivo los guarda).
+        std::map<std::string, bool> modsMotor;
+        std::map<std::string, bool> modsProyecto;
         // Apariencia del editor (tema, modo B/N, acento de la UI y fondo 3D).
         // En la version 2 del archivo para permitir migracion tolerante.
         Apariencia apariencia;

@@ -23,6 +23,8 @@
 #include <map>
 #include <string>
 #include <memory>
+#include <utility>
+#include <vector>
 #include "../ObjetosGUI/SettingsObjectInterface.h"
 #include "../../Events/EditorEventBus.h"
 #include "../Export/ExportDialog.h"
@@ -51,6 +53,10 @@ protected:
     IconosGUI* iconosGUI_ = nullptr;
     EditorEventBus* busEditor = nullptr;
     std::map<std::string, bool> ventanas_;
+    // Paneles que aportan los mods cargados: clave de la ventana y etiqueta
+    // visible en el menu. La lista cambia con los mods que se cargan, asi que
+    // se refresca cada frame.
+    std::vector<std::pair<std::string, std::string>> panelesMods_;
     std::unique_ptr<ExportDialog> exportDialog_;
     bool mostrarExportDialog_ = false;
     std::string proyectoActual_;
@@ -67,6 +73,8 @@ public:
     void setGizmoGlobal(bool* target);
     void setEditorEventBus(EditorEventBus* bus);
     void setVentanas(const std::map<std::string, bool>& estados);
+    void setPanelesMods(
+        const std::vector<std::pair<std::string, std::string>>& paneles);
     void setProyectoActual(const std::string& proyecto);
     virtual void initGUI() override;
     virtual void contentGUI() override;

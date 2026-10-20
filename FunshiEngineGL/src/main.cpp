@@ -50,6 +50,10 @@
 #include "../src/Input/EditorInput.h"
 #include "../src/Rendering/Backend/IRenderBackend.h"
 #include "../src/Diagnosticos/RegistroDiagnosticos.h"
+#include "../src/Mods/GestorMods.h"
+#include "../src/Mods/CargadorMods.h"
+#include "../src/Mods/DatosEscenaMods.h"
+#include "../src/Mods/ServiciosMods.h"
 #include "../src/ExcepcionesCPP/RuntimeException.h"
 #ifdef FUNSHI_CEF
 #include "../src/WebUI/WebUIRuntime.h"
@@ -409,6 +413,42 @@ static int EjecutarMotor(int argc, char* argv[])
             ? std::string()
             : EditorConfig::directorioSrc(gestor.proyectoActual()));
 
+    // Descubrimiento y carga de mods: se leen los .fmod de la carpeta global
+    // del motor y, si hay proyecto abierto, los de su carpeta. El resultado se
+    // reporta al registro de diagnosticos (panel de estado/log). Los paquetes
+    // validos se cargan de verdad: su binario se extrae a la cache y se abre,
+    // y el mod recibe su inicializacion. Las carpetas se crean en
+    // asegurarEstructuraBase / al crear el proyecto.
+    //
+    // La lista de mods cargados vive hasta el final del proceso: se descargan
+    // en orden inverso al salir (cada mod apaga sus recursos antes de que su
+    // binario se cierre).
+    std::vector<ModCargado> modsCargados;
+    {
+        std::vector<CarpetaMods> carpetasMods = {
+            {ProjectPaths::directorioMods(), AmbitoMod::Motor}};
+        if (gestor.hayProyecto()) {
+            carpetasMods.push_back({ProjectPaths::directorioModsProyecto(
+                                        gestor.proyectoActual()),
+                                    AmbitoMod::Proyecto});
+        }
+        const GestorMods::Resultado modsDescubiertos =
+            GestorMods::descubrir(carpetasMods);
+        GestorMods::reportar(modsDescubiertos);
+
+        const CargadorMods::ResultadoCarga modsCargadosResultado =
+            CargadorMods::cargar(modsDescubiertos);
+        CargadorMods::reportar(modsCargadosResultado);
+        modsCargados = modsCargadosResultado.modsCargados;
+    }
+
+    // Los mods consultan los datos de la escena (objetos, componentes) a
+    // traves de la tabla de servicios: se conecta la fuente de datos real y
+    // el nombre del proyecto abierto.
+    FunshiMods::inyectarEscenaMods(scene);
+    FunshiMods::inyectarDatosEscena(FunshiMods::fuenteDatosEscenaMods());
+    FunshiMods::fijarNombreProyecto(gestor.proyectoActual().c_str());
+
     if (gestor.hayProyecto())
         gestor.prepararProyectoAlArrancar();
 
@@ -474,6 +514,10 @@ static int EjecutarMotor(int argc, char* argv[])
     float FPS = 60.0;    //LIMITE DE FPS
     IMGUI_CHECKVERSION();
     ImGui::CreateContext();
+    // El contexto de ImGui se lo entrega el motor a los mods (opaco): lo
+    // dibujan con su propia copia de ImGui, asi que necesitan el puntero al
+    // contexto del motor para poder fijar el suyo.
+    FunshiMods::fijarContextoImGui(ImGui::GetCurrentContext());
 
     // Suscriptores del bus de GUI. Se registran despues de crear el contexto
     // porque AparienciaCambio aplica TemaEditor::aplicarEstilo, que necesita
@@ -661,7 +705,13 @@ static int EjecutarMotor(int argc, char* argv[])
         // el segundo arranque no disparaba su flanco de subida.
         scene->update(deltaTime);
 
-        
+        // Actualizacion de los mods cargados: una vez por frame, cada mod que
+        // implemente update() recibe el delta del frame. El nombre del
+        // proyecto se refresca aqui porque puede cambiar desde el menu de
+        // inicio (los mods lo leen de la tabla de servicios).
+        CargadorMods::actualizar(modsCargados, deltaTime);
+        FunshiMods::fijarNombreProyecto(gestor.proyectoActual().c_str());
+
         // Limpieza del framebuffer de la ventana con el color de fondo vigente
         // (setClearColor). El backend lo limpia y queda el default framebuffer
         // listo para ImGui y la pasada de la escena.
@@ -784,6 +834,10 @@ static int EjecutarMotor(int argc, char* argv[])
                 ImGui::EndDisabled();
                 ImGui::PopStyleVar();
                 scene->gameScene();
+                // Paneles que aportan los mods cargados: cada uno es una
+                // ventana propia que el motor dibuja alrededor del callback
+                // que entrego el mod.
+                managerOfGUI->getPanelesModsGUI()->printGUI();
                 managerOfGUI->getDockSpaceGUI()->repararVentanasFlotantes();
             }
             // El estado abierto/cerrado del menu de inicio lo gobierna el
@@ -821,6 +875,14 @@ static int EjecutarMotor(int argc, char* argv[])
 #ifdef FUNSHI_CEF
     WebUIRuntime::apagar();
 #endif
+
+    // Apagado de los mods: cada uno recibe su shutdown() y despues se cierra
+    // su binario, en orden inverso al de carga. Va antes de romper ImGui: un
+    // mod puede soltar recursos de GUI en su shutdown.
+    CargadorMods::descargar(modsCargados);
+    // El contexto de ImGui deja de ser valido: se retira de la tabla de
+    // servicios antes de destruirlo.
+    FunshiMods::fijarContextoImGui(nullptr);
 
     // Shutdown solo con backend vivo: ImGui_ImplOpenGL3_Shutdown() desreferencia
     // el backend data y en Release no hay assert que lo frene.

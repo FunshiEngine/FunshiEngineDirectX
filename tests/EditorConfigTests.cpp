@@ -87,6 +87,8 @@ int main() {
         CHECK(cfg.datos().dimension == DimensionProyecto::TresD,
               "default dimension 3D");
         CHECK(cfg.datos().estadoVentanas.empty(), "default sin ventanas");
+        CHECK(cfg.datos().modsMotor.empty() && cfg.datos().modsProyecto.empty(),
+              "default sin mods activos");
         CHECK(cfg.datos().apariencia.temaClaro == false, "default tema oscuro");
         CHECK(cfg.datos().apariencia.blancoYNegro == false, "default no B/N");
         CHECK(cfg.datos().apariencia.acento[3] == 1.0f, "default acento opaco");
@@ -334,6 +336,39 @@ int main() {
         cfg.cargarGeneral(rutaGeneral);
         CHECK(cfg.datos().nombreProyecto.empty(), "corrupto -> defaults");
         CHECK(cfg.datos().idioma == "Espanol", "corrupto -> defaults idioma");
+        CHECK(cfg.datos().modsMotor.empty(), "corrupto -> sin mods");
+
+        // 2d. Estado de mods por ambito: los del motor viajan en la config
+        //     general y los del proyecto en la de proyecto; cada uno sobrevive
+        //     su round-trip sin mezclarse.
+        {
+            const std::string rutaModsG = (base / "mods_general.json").string();
+            const std::string rutaModsP = (base / "mods_proyecto.json").string();
+            EditorConfig cfgMods;
+            cfgMods.datos().modsMotor["Autor.MotorUno"] = false;
+            cfgMods.datos().modsMotor["Autor.MotorDos"] = true;
+            cfgMods.datos().modsProyecto["Autor.ProyectoUno"] = false;
+            cfgMods.guardarGeneral(rutaModsG);
+            cfgMods.guardarProyecto(proyNombreTest, rutaModsP);
+
+            EditorConfig leido;
+            leido.cargarGeneral(rutaModsG);
+            leido.cargarProyecto(proyNombreTest, rutaModsP);
+            CHECK(leido.datos().modsMotor.size() == 2, "round-trip de mods del motor");
+            CHECK(leido.datos().modsMotor["Autor.MotorUno"] == false,
+                  "el mod del motor deshabilitado se conserva");
+            CHECK(leido.datos().modsMotor["Autor.MotorDos"] == true,
+                  "el mod del motor habilitado se conserva");
+            CHECK(leido.datos().modsProyecto.size() == 1,
+                  "round-trip de mods del proyecto");
+            CHECK(leido.datos().modsProyecto["Autor.ProyectoUno"] == false,
+                  "el mod del proyecto deshabilitado se conserva");
+            // Los dos ambitos no se mezclan entre archivos.
+            CHECK(leido.datos().modsMotor.count("Autor.ProyectoUno") == 0,
+                  "el mod del proyecto no se guarda en la config general");
+            CHECK(leido.datos().modsProyecto.count("Autor.MotorUno") == 0,
+                  "el mod del motor no se guarda en la config del proyecto");
+        }
     }
 
     // 4. Parcial: el campo presente se aplica, el ausente conserva el default.

@@ -36,6 +36,7 @@ por arrastre y escribir scripts con la API exacta que expone el motor.
 16. [Hot reload y depuración](#16-hot-reload-y-depuración)
 
 17. [Terminal integrada](#17-terminal-integrada)
+18. [Mods del editor (.fmod)](#18-mods-del-editor-fmod)
 
 ---
 
@@ -113,10 +114,12 @@ MotorGrafico/
 │       │   ├── Binarios/Scene        ← escenas binarias
 │       │   ├── ConfiguracionProyecto.json
 │       │   └── imgui.ini
+│       # ├── Mods/                     ← mods del proyecto (.fmod, ver seccion 18)
 │       └── src<proyecto>/            ← assets del proyecto (raiz del explorador)
 │           ├── modelos/              ← .obj/.fbx que arrastra el editor
 │           # ├── Sonidos/              ← clips de audio (.wav/.mp3/...)
 │           └── Scripts/              ← scripts del usuario (.cpp/.java)
+# ├── Mods/                             ← mods globales del motor (.fmod, ver seccion 18)
 ├── Configuraciones/
 │   └── Configuracion.json            ← configuracion global (ultimo proyecto, idioma,
 │                                       sensibilidades y apariencia: tema, B/N, acento,
@@ -1413,5 +1416,221 @@ de estado y posicion del cursor. La emulacion cubre secuencias VT de uso comun;
 no implementa extensiones como colores true-color/256, raton, portapapeles ni
 todas las convenciones de cada emulador. Algunas aplicaciones TUI pueden
 requerir funciones que el panel todavia no ofrece.
+
+---
+
+## 18. Mods del editor (.fmod)
+
+Un **mod** es un paquete que extiende el editor: agrega paneles y herramientas
+que el motor no trae de fábrica. Los mods se aplican **solo al editor**; los
+juegos exportados no llevan mods.
+
+### 18.1 Carpetas de mods
+
+El motor lee dos carpetas y las dos son opcionales:
+
+- `<raizDeDatos>/Mods/` — mods **globales**, disponibles para cualquier
+  proyecto. La carpeta se crea al arrancar el editor.
+- `<proyecto>/Mods/` — mods del **proyecto activo**; se leen solo mientras ese
+  proyecto está abierto. La carpeta se crea al crear el proyecto.
+
+Ambas se recorren al arrancar el editor. El resultado se reporta en el panel de
+estado/log: un resumen por ámbito (`mods de motor encontrados: N` y `mods de
+proyecto encontrados: M`, cada uno solo si hay al menos uno) y, por cada paquete
+rechazado, el nombre del mod y la causa.
+
+Después, los paquetes válidos se **cargan**: su binario se extrae a la caché
+(`<raizDeDatos>/cache/mods/<id del mod>/`) y se abre, y el mod recibe su
+inicialización. La carga se reporta aparte, porque un paquete puede ser válido
+y su binario no: `mods nativos cargados: N` dice cuántos quedaron en memoria, y
+cada mod que no se pudo cargar aparece con su causa (`mod no cargado: ...`).
+Al salir del editor los mods se apagan en orden inverso al de carga y sus
+binarios se cierran.
+
+### 18.2 Instalación
+
+La instalación es **manual**: copia o arrastra el archivo `.fmod` a la carpeta
+de mods que corresponda. No hay descarga desde red desde el motor.
+
+### 18.3 Formato del paquete
+
+Un `.fmod` es un archivo **ZIP** con extensión propia (se puede abrir con
+cualquier herramienta ZIP). El nombre del archivo es libre; la única fuente de
+verdad es el manifiesto. El paquete contiene:
+
+```
+autor.mimod_1.0.0.fmod
+├── ManifiestoMod.json       ← obligatorio, en la raíz del ZIP
+├── icono.png                ← opcional
+└── bin/                     ← el binario del mod (.dll en Windows, .so en Linux)
+```
+
+La extracción rechaza rutas que escapen de la carpeta destino (`..` o rutas
+absolutas): un paquete no puede escribir fuera de su caché.
+
+### 18.4 Manifiesto
+
+`ManifiestoMod.json` declara la identidad del mod y con qué puede convivir:
+
+```json
+{
+  "esquemaVersion": 1,
+  "id": "Autor.Nombre",
+  "nombre": "Nombre visible",
+  "descripcion": "Qué hace el mod",
+  "autor": "Autor",
+  "version": "1.0.0",
+  "licencia": "MIT",
+  "icono": "icono.png",
+  "tipo": "nativo",
+  "versionMotor": ">=1.0.0 <2.0.0",
+  "puntoEntrada": "bin/mod.dll",
+  "dependencias": [
+    { "id": "Autor.Otro", "versionMin": "1.2.0", "requerida": true, "orden": "antes" }
+  ],
+  "conflictos": ["Autor.Incompatible"]
+}
+```
+
+- `id` es estable, con formato `Autor.Nombre`. Un mismo `id` **dos veces** (en
+  la misma carpeta o entre la global y la del proyecto) es error: se rechazan
+  todas las instancias con ese id.
+- `version` y `versionMin` usan `X.Y.Z`. `versionMotor` es un rango contra la
+  versión del motor (`>=1.0.0 <2.0.0`), para no cargar binarios incompatibles.
+- `tipo` solo admite `"nativo"` en v1. `"contenido"` está reservado para el
+  futuro.
+- `orden` de una dependencia es `antes`, `despues` o `ninguno`: los mods se
+  carga en orden topológico y un ciclo entre dependencias se rechaza.
+- `icono`, `dependencias` y `conflictos` son opcionales.
+- `puntoEntrada` es la ruta del binario **dentro del paquete**. Es una sola
+  cadena: el paquete lleva un binario por plataforma, así que un `.fmod` se
+  arma para el sistema al que se instala.
+
+### 18.5 La API del mod
+
+Un mod nativo es una biblioteca compartida (`.dll` en Windows, `.so` en Linux)
+que exporta una función de entrada:
+
+```cpp
+extern "C" FUNSHI_MOD_EXPORT int funshi_mod_api(FunshiMods::IMod** salida);
+```
+
+Devuelve la versión de la API con la que se compiló, o `0` si no puede
+trabajar con el motor; el motor rechaza los que declaran una versión de API
+posterior a la que ofrece. La interfaz del mod es una tabla de punteros a
+función (`init`, `update`, `dibujar`, `shutdown`, `nombre`, `versionStr`), todas
+opcionales. El motor no expone objetos: le pasa una tabla de servicios y, en
+cada dibujo, un contexto con el contexto de ImGui y el tamaño del área. El mod
+que dibuja hace `ImGui::SetCurrentContext(ctxImgui)` antes de pintar.
+
+La tabla de servicios es *append-only*: los campos nuevos van al final. La
+única diferencia con las tablas de API de scripts es que **la versión va al
+principio**, para que un mod compilado contra una versión anterior lea siempre
+su versión en el mismo offset. Los servicios que ofrece son:
+
+| Servicio | Qué hace |
+|---|---|
+| `version` | Versión de la API de mods que ofrece el motor (primero, offset fijo). |
+| `registrarPanel(id, titulo, dibujar, datos)` | Registra un panel de GUI del mod. Devuelve si se registró. |
+| `contarObjetos()` | Objetos que hay en la escena abierta. |
+| `obtenerObjeto(indice, salida)` | Datos de un objeto (nombre, id, si tiene collider, cuántos componentes tiene). |
+| `contarComponentes(indiceObjeto)` | Componentes que tiene un objeto de la escena. |
+| `obtenerComponente(indiceObjeto, indiceComponente, salida)` | Datos de un componente (su tipo). |
+| `nombreProyecto()` | Nombre del proyecto abierto (cadena vacía si no hay ninguno). |
+| `contextoImGui()` | Contexto de ImGui del motor, opaco: el mod lo pasa a `ImGui::SetCurrentContext()` para dibujar con él. |
+
+### 18.6 Paneles de los mods
+
+Un mod puede abrir sus propias ventanas dentro del editor. Se registran con
+`registrarPanel()` desde `init()` (o desde `update()`, en caliente): cada panel
+recibe un identificador (único dentro del mod), un título visible y el callback
+que dibuja su contenido.
+
+El motor abre la ventana del panel, le entrega el contexto de dibujo (el
+contexto de ImGui, el tamaño del área disponible y el delta del frame) y guarda
+el estado abierto/cerrado junto al resto de ventanas del editor. Por eso las
+ventanas de los mods aparecen también en el menú **Ventanas** de la barra
+principal, con su casilla, y su estado se guarda con el proyecto.
+
+Un mod que implementa `dibujar()` no necesita registrar nada: el motor le abre
+una ventana propia, titulada con el nombre visible del mod, y llama a
+`dibujar()` dentro en cada frame.
+
+Cuando el mod se descarga, sus paneles se retiran: el editor nunca dibuja una
+ventana cuyo binario ya está cerrado.
+
+### 18.7 Cómo se crea un mod
+
+Un mod es un **proyecto aparte**: no se compila con el motor ni entra en su
+repositorio ni en el instalador. Se compila por separado y su resultado es un
+`.fmod` que se copia a la carpeta de mods del motor.
+
+**1. El proyecto.** El mod usa solo la API pública del motor
+(`src/Mods/ApiMod.h`, una cabecera con tablas POD) y **su propia copia de
+ImGui**: no puede enlazar contra el motor (es un ejecutable, no una biblioteca)
+y el contexto de ImGui que usa es el del motor, que se le entrega opaco. Por
+eso tiene que compilar **las mismas fuentes de ImGui que usa el motor**, para
+que las estructuras del contexto coincidan en memoria; si el motor actualiza
+ImGui, el mod se recompila.
+
+**2. El código.** El binario exporta un único símbolo, con la interfaz del mod
+en una tabla de punteros a función:
+
+```cpp
+extern "C" FUNSHI_MOD_EXPORT int funshi_mod_api(FunshiMods::IMod** salida);
+```
+
+Devuelve la versión de la API con la que se compiló (`0` si no puede trabajar
+con ese motor). La interfaz tiene `init`, `update`, `dibujar`, `shutdown`,
+`nombre` y `versionStr`, todas opcionales. Desde `init()` el mod registra sus
+paneles con `registrarPanel()` y los dibuja con widgets de ImGui, después de
+fijar el contexto que le entrega el motor:
+
+```cpp
+ImGui::SetCurrentContext(static_cast<ImGuiContext*>(contexto->ctxImgui));
+```
+
+**3. El manifiesto.** El paquete lleva un `ManifiestoMod.json` en la raíz con
+los campos del § 18.4. El campo `puntoEntrada` es la ruta del binario **dentro
+del paquete** (por ejemplo `bin/MiPrimerMod.dll`), con `/` como separador.
+
+**4. El empaquetado.** El `.fmod` es un ZIP (se puede inspeccionar con
+cualquier herramienta ZIP) con esta estructura:
+
+```
+MiPrimerMod.fmod
+├── ManifiestoMod.json
+└── bin/
+    └── MiPrimerMod.dll
+```
+
+**5. La instalación.** Copiar el `.fmod` a la carpeta de mods del motor (junto
+al ejecutable) y reiniciar el editor: los mods se cargan al arrancar.
+
+Un `.fmod` es para un sistema: el paquete lleva un binario por plataforma, así
+que hay que compilarlo en la plataforma destino.
+
+### 18.8 Confianza
+
+Los mods se cargan con **confianza total**: no hay firma ni sandbox, igual que
+en otros motores con mods. Un mod es código que corre dentro del editor, con
+los mismos permisos. Instala solo paquetes de autores en los que confíes; el
+motor no puede distinguir un mod benigno de uno malicioso.
+
+### 18.9 Estado activo
+
+El estado activo de cada mod se guarda por ámbito: los mods del motor en la
+configuración general del editor (`Configuracion.json`) y los del proyecto en
+la del proyecto (`ConfiguracionProyecto.json`). Un mod que no está en el mapa
+se considera activo por defecto.
+
+### 18.10 Actualización y alcance de esta versión
+
+No hay hot-reload: los mods se cargan al arrancar y se descargan al salir.
+Actualizar un mod es reemplazar su `.fmod` y reiniciar el editor. Esta versión
+cubre el **envase, la carga y los paneles**: descubre, valida y ordena los
+paquetes, extrae el binario de cada uno a la caché, lo abre y lo inicializa; el
+mod recibe la tabla de servicios, se actualiza una vez por frame y puede
+registrar paneles de GUI propios.
 
 ---
