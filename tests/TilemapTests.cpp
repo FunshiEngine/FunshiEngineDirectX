@@ -25,12 +25,35 @@
 // Patron de autoria (ver AGENTS.md): CHECK definido en este archivo, sin
 // dependencias de GUI/OpenGL, y salida final "OK/FALLOS: N comprobaciones".
 
+// ==== INSTRUMENTACION TEMPORAL DE DEPURACION (se retira al cerrar el fallo) ====
+// windows.h va antes de cualquier header de la stdlib: rpcndr.h define un
+// typedef global 'byte' que colisiona con std::byte (C++17).
+#ifdef _WIN32
+#ifndef _HAS_STD_BYTE
+#define _HAS_STD_BYTE 0
+#endif
+#ifndef WIN32_LEAN_AND_MEAN
+#define WIN32_LEAN_AND_MEAN
+#endif
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
+#include <windows.h>
+#include <dbghelp.h>
+#endif
+
 #include <cmath>
 #include <cstdint>
+#include <cstdio>
+#include <cstdlib>
 #include <fstream>
 #include <iostream>
 #include <memory>
 #include <string>
+
+#ifdef _WIN32
+#include <exception>
+#endif
 
 #include <btBulletDynamicsCommon.h>
 
@@ -43,12 +66,134 @@
 #include "../FunshiEngineGL/src/Objetos/GameObject.h"
 #include "../FunshiEngineGL/src/Objetos/GameObjectFactory.h"
 
+#ifdef _WIN32
+namespace {
+int g_diagnosticoImpresos = 0;
+
+// Simboliza una direccion: nombre de la funcion y archivo:linea del PDB.
+void simbolizar(HANDLE proceso, DWORD64 addr, const char* etiqueta) {
+    char nombre[512] = "?";
+    DWORD64 desplazamiento = 0;
+    const size_t maxNombre = 255;
+    SYMBOL_INFO* simbolo = reinterpret_cast<SYMBOL_INFO*>(
+        calloc(sizeof(SYMBOL_INFO) + (maxNombre + 1) * sizeof(char), 1));
+    if (simbolo) {
+        simbolo->SizeOfStruct = sizeof(SYMBOL_INFO);
+        simbolo->MaxNameLen = static_cast<DWORD>(maxNombre);
+        if (SymFromAddr(proceso, addr, &desplazamiento, simbolo)) {
+            std::snprintf(nombre, sizeof(nombre), "%s",
+                          reinterpret_cast<const char*>(simbolo->Name));
+        }
+        free(simbolo);
+    }
+
+    char archivo[MAX_PATH] = "";
+    unsigned long linea = 0;
+    IMAGEHLP_LINE64 datosLinea;
+    ZeroMemory(&datosLinea, sizeof(datosLinea));
+    datosLinea.SizeOfStruct = sizeof(datosLinea);
+    DWORD desplazamientoLinea = 0;
+    if (SymGetLineFromAddr64(proceso, addr, &desplazamientoLinea, &datosLinea)) {
+        std::snprintf(archivo, sizeof(archivo), "%s:%lu",
+                      datosLinea.FileName, datosLinea.LineNumber);
+        linea = datosLinea.LineNumber;
+    }
+
+    std::fprintf(stderr, "[DIAG] %s %s+0x%llX  %s:%lu\n", etiqueta, nombre,
+                 static_cast<unsigned long long>(desplazamiento), archivo, linea);
+    std::fflush(stderr);
+}
+
+LONG WINAPI manejadorVectorial(EXCEPTION_POINTERS* info) {
+    const DWORD codigo = info->ExceptionRecord->ExceptionCode;
+    if (codigo == 0xE06D7363) return EXCEPTION_CONTINUE_SEARCH;  // excepcion C++
+    if (++g_diagnosticoImpresos > 4) return EXCEPTION_CONTINUE_SEARCH;
+    void* dir = info->ExceptionRecord->ExceptionAddress;
+    HMODULE modulo = nullptr;
+    char nombre[MAX_PATH] = "<?>";
+    unsigned long largo = 0;
+    if (GetModuleHandleExA(
+            GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS |
+                GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
+            static_cast<LPCSTR>(dir), &modulo)) {
+        GetModuleFileNameA(modulo, nombre, MAX_PATH);
+        largo = static_cast<unsigned long>(
+            reinterpret_cast<unsigned char*>(dir) -
+            reinterpret_cast<unsigned char*>(modulo));
+    }
+    // En un fast-fail, ExceptionInformation[0] trae el codigo de fast-fail:
+    // 2 = cookie de pila, 5 = parametro invalido, 8 = desbordamiento de pila.
+    unsigned long parametro = 0;
+    if (info->ExceptionRecord->NumberParameters > 0) {
+        parametro = static_cast<unsigned long>(
+            info->ExceptionRecord->ExceptionInformation[0]);
+    }
+    std::fprintf(stderr,
+                 "[DIAG] EXCEPCION 0x%08lX en %p (offset 0x%lX) modulo=%s "
+                 "param=%lu\n",
+                 static_cast<unsigned long>(codigo), dir, largo, nombre,
+                 parametro);
+    std::fflush(stderr);
+
+    // Pila de llamadas en el momento de la excepcion: localiza la funcion.
+    HANDLE proceso = GetCurrentProcess();
+    SymInitialize(proceso, nullptr, TRUE);
+    simbolizar(proceso, reinterpret_cast<DWORD64>(dir), "culpable:");
+    void* pila[64];
+    const WORD frames = CaptureStackBackTrace(0, 64, pila, nullptr);
+    for (WORD i = 0; i < frames && i < 24; ++i) {
+        simbolizar(proceso, reinterpret_cast<DWORD64>(pila[i]), "marco:");
+    }
+    std::fflush(stderr);
+    return EXCEPTION_CONTINUE_SEARCH;
+}
+
+void instalarDiagnostico() {
+    AddVectoredExceptionHandler(1, manejadorVectorial);
+    std::set_terminate([]() {
+        std::exception_ptr ep = std::current_exception();
+        if (ep) {
+            try {
+                std::rethrow_exception(ep);
+            } catch (const std::exception& e) {
+                std::fprintf(stderr, "[DIAG] TERMINATE: %s\n", e.what());
+            } catch (...) {
+                std::fprintf(stderr, "[DIAG] TERMINATE: excepcion desconocida\n");
+            }
+        } else {
+            std::fprintf(stderr, "[DIAG] TERMINATE: sin excepcion activa\n");
+        }
+        std::fflush(stderr);
+        std::abort();
+    });
+}
+
+void etapa(const char* nombre) {
+    std::fprintf(stderr, "[DIAG] etapa: %s\n", nombre);
+    std::fflush(stderr);
+}
+}  // namespace
+#endif
+
+// Cada comprobacion anuncia su descripcion antes de evaluarse: el ultimo
+// anuncio por stderr es el punto donde se aborta el proceso.
+#ifdef _WIN32
+#define DIAG_CHECK(msg)                                     \
+    do {                                                    \
+        std::fprintf(stderr, "[DIAG] check: %s\n", msg);    \
+        std::fflush(stderr);                               \
+    } while (0)
+#else
+#define DIAG_CHECK(msg) do { } while (0)
+#endif
+
 int total = 0;
 int fallos = 0;
 
 #define CHECK(cond, msg)                                                       \
     do {                                                                       \
         ++total;                                                               \
+        DIAG_CHECK(msg);                                                        \
         if (!(cond)) {                                                         \
             ++fallos;                                                          \
             std::cout << "  [FALLO] " << msg << std::endl;                     \
@@ -344,17 +489,40 @@ void tilemapColliderTramos(const std::string& rutaTileset) {
 } // namespace
 
 int main() {
+#ifdef _WIN32
+    std::fprintf(stderr, "[DIAG] main: inicio\n");
+    std::fflush(stderr);
+    instalarDiagnostico();
+#endif
     TempPruebas::CarpetaPrueba carpeta("funshi_tilemap_tests");
     const std::string base = carpeta.ruta().string();
 
     const std::string rutaTileset = base + "/tileset.json";
     escribirTileset(rutaTileset);
 
+#ifdef _WIN32
+    etapa("tilesetValidoYMetadatos");
+#endif
     tilesetValidoYMetadatos(rutaTileset);
+#ifdef _WIN32
+    etapa("tilesetErrores");
+#endif
     tilesetErrores(base);
+#ifdef _WIN32
+    etapa("tilemapCapasYPintado");
+#endif
     tilemapCapasYPintado(rutaTileset);
+#ifdef _WIN32
+    etapa("tilemapGeometria");
+#endif
     tilemapGeometria(rutaTileset);
+#ifdef _WIN32
+    etapa("tilemapSerializacion");
+#endif
     tilemapSerializacion(base, rutaTileset);
+#ifdef _WIN32
+    etapa("tilemapColliderTramos");
+#endif
     tilemapColliderTramos(rutaTileset);
 
     std::cout << (fallos == 0 ? "OK" : "FALLOS") << ": " << total

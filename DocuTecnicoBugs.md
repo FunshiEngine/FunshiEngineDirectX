@@ -1053,7 +1053,96 @@ definición. De ahí que el mismo método aparezca con dos nombres.
 
 ---
 
-## 16. Historial de Cambios
+## 16. Duodécimo concepto: **El nombre de un tipo persistido depende del compilador**
+
+### 16.1 Patrón
+
+`typeid(x).name()` no devuelve el nombre del tipo: devuelve una **cadena opaca
+específica del compilador**. En MSVC es el nombre legible con el prefijo de
+class-key (`"class Transform"`, `"struct Color"`); en GCC y Clang es el
+*mangling* (`"9Transform"`, `"N6Objetos10Componentes6ColorE"`), y solo se puede
+leer si se des-*manglinga* con `__cxa_demangle`.
+
+Cuando ese nombre se **persiste** (en un prefab, en una escena, en un catálogo),
+el artefacto queda atado al compilador que lo escribió. Y cuando se **compara**
+contra un literal (`"Transform"`), el resultado depende de la plataforma: en
+Linux coincide, en Windows no.
+
+El nombre legible de un tipo, sea cual sea el compilador, es el último
+componente de su nombre *fully-qualified*: `Objetos::Componentes::Transform`
+→ `Transform`.
+
+### 16.2 Síntomas
+
+- En Windows, un prefab cargado **no conserva la posición** de su `Transform`:
+  el `Transform` del objeto no es el que se cargó, se crea **otro** y la
+  posición guardada se queda en el original (0, 0, 0).
+- Con la misma escena, los tests **pasan en Linux y fallan en Windows**.
+- Un componente cuyo nombre contiene una `E` o empieza por `E` desaparece al
+  guardarse: el recorte manual del *mangling* de GCC ("hasta la `E` final")
+  lo trunca (`"SpriteRenderer"` → `"SpriteRender"`) o lo deja vacío
+  (`"EsfereCollider"` → `""`), y con el nombre vacío se pierde **todo** el
+  prefab.
+- Un artefacto escrito en una plataforma no se puede leer en la otra.
+
+### 16.3 Causa
+
+El código tomaba `typeid(...).name()` como si fuera un nombre de tipo legible y
+estable, y lo comparaba con literales o con un nombre **parseado a mano** del
+*mangling*. Tres fallos encadenados:
+
+1. **Prefijo de class-key**: MSVC escribe `"class Transform"`; la comparación
+   contra `"Transform"` falla y el caso especial del `Transform` nunca se
+   alcanza.
+2. **Namespace**: el nombre *fully-qualified* no es la clave con la que se
+   registra un componente en el catálogo.
+3. **Parseo manual del *mangling***: recortar por la letra `E` (el terminador
+   del *mangling* de GCC) trunca los nombres que la contienen.
+
+### 16.4 Fix canónico (Patrón R20 — un único helper produce el nombre persistido)
+
+Un helper `nombreSimpleTipo()` en `Herramientas/TypeUtils` centraliza la
+normalización:
+
+1. des-*mangling* (en GCC y Clang) o 그대로 (en MSVC);
+2. quita el prefijo de class-key (`class `, `struct `, `union `, `enum `),
+   también cuando el nombre viene de un archivo escrito por otra plataforma;
+3. se queda con el último componente del namespace (`rfind("::")`).
+
+Ese helper se usa **tanto al escribir como al leer** y **tanto al comparar
+como al mostrar**. Nunca se persiste un `typeid().name()` crudo, y nunca se
+compara contra un literal sin pasar por el helper.
+
+Detalle que hace fallar el helper sin avisar: `find_last_of("::")` busca un
+**carácter**, no una subcadena → para el separador de namespace hay que usar
+`rfind("::")`.
+
+### 16.5 Checklist de mitigación
+
+- [ ] Ningún `typeid(...).name()` se persiste ni se compara sin pasar por
+      `nombreSimpleTipo()`.
+- [ ] El helper es el **único** punto donde se decide el nombre: escribir y
+      leer usan la misma función.
+- [ ] El catálogo reconoce un componente por su nombre simple; si acepta otras
+      formas, es por normalización, no por comparación literal.
+- [ ] La CI ejecuta las suites headless en **Windows** además de en Linux:
+      este tipo de fallo no se ve en una CI solo-Linux.
+- [ ] Hay un test que comprueba que el nombre escrito se puede leer en la
+      otra plataforma.
+
+### 16.6 Registro de Instancias
+
+| # | Ubicación | Operación | Herramienta | Fix Aplicado | Commit |
+|---|-----------|-----------|-------------|--------------|--------|
+| 1 | `FunshiEngineGL/src/Objetos/Prefab.cpp` (escritor y lector de prefabs) | Guardar y cargar un prefab con componentes | MSVC (Visual Studio) al ejecutar `prefab-tests` | El nombre del componente se normaliza con `nombreSimpleTipo()` al escribir y al leer (Patrón R20) | `fix(prefabs): persistir el nombre de tipo con un helper portable` |
+| 2 | `FunshiEngineGL/src/Objetos/Componentes/CatalogoComponentes.cpp` | Buscar un componente por su nombre | MSVC (Visual Studio) | La búsqueda normaliza el nombre recibido antes de comparar (Patrón R20) | `fix(prefabs): persistir el nombre de tipo con un helper portable` |
+| 3 | `FunshiEngineGL/src/Objetos/GameObject.cpp` (`serializeEntityComponents`, `getComponentByName`) | Serializar una escena y buscar un componente por nombre | MSVC (Visual Studio) | Ambos caminos usan el nombre simple del tipo (Patrón R20) | `fix(prefabs): persistir el nombre de tipo con un helper portable` |
+| 4 | `FunshiEngineGL/src/Objetos/ClonadorObjetos.cpp` | Clonar un objeto con sus componentes | MSVC (Visual Studio) | El cloner identifica los componentes por su nombre simple (Patrón R20) | `fix(prefabs): persistir el nombre de tipo con un helper portable` |
+| 5 | `FunshiEngineGL/src/Comandos/AgregarComponenteComando.cpp` | Nombrar el componente añadido desde el catálogo | MSVC (Visual Studio) | El nombre del componente se obtiene con el helper (Patrón R20) | `fix(prefabs): persistir el nombre de tipo con un helper portable` |
+
+---
+
+## 17. Historial de Cambios
 
 | Fecha | Autor | Cambio |
 |-------|-------|--------|
@@ -1072,10 +1161,11 @@ definición. De ahí que el mismo método aparezca con dos nombres.
 | 2026-10-16 | Gianfranco Ivan Enrique | Añadido el noveno concepto (Patrón R17, el motor web multiproceso relanza tu binario): `CefExecuteProcess` al comienzo de `main` en editor y juego exportado, con init tras GL, bombeo por frame y apagado antes de romper ImGui/GL. |
 | 2026-10-20 | Gianfranco Ivan Enrique | Añadido el décimo concepto (Patrón R18, un archivo generado en tiempo de configuración vale en una configuración y en ninguna más) con su instancia #1, a raíz del fallo de configuración del build de Windows con Visual Studio: el header con las rutas de los plugins de prueba se generaba en un archivo compartido y CMake abortaba al escribirlo una vez por configuración. |
 | 2026-10-20 | Gianfranco Ivan Enrique | Añadido el undécimo concepto (Patrón R19, un tipo declarado con un class-key distinto al de su definición produce dos símbolos distintos) con sus instancias #1–#2, a raíz del LNK2019 al enlazar el motor con Visual Studio: `Mesh` e `Image` se adelantaban como `class` y se definen como `struct`, y MSVC distingue los dos nombres de símbolo. |
+| 2026-10-20 | Gianfranco Ivan Enrique | Añadido el duodécimo concepto (Patrón R20, el nombre de un tipo persistido depende del compilador) con sus instancias #1–#5, a raíz del fallo de `prefab-tests` en Windows: MSVC escribe `"class Transform"` en `typeid().name()` y el recorte manual del mangling de GCC truncaba los nombres con `E`. |
 
 ---
 
-*Este documento es vivo: cada nuevo bug de esta clase debe registrarse en la tabla de su concepto (§2 para el primero, §6.5 para el segundo, §7.5 para el tercero, §8.5 para el cuarto, §9.5 para el quinto), §14.6 para el décimo, §15.6 para el undécimo y, si revela un patrón nuevo, añadirse a §4.*
+*Este documento es vivo: cada nuevo bug de esta clase debe registrarse en la tabla de su concepto (§2 para el primero, §6.5 para el segundo, §7.5 para el tercero, §8.5 para el cuarto, §9.5 para el quinto), §14.6 para el décimo, §15.6 para el undécimo, §16.6 para el duodécimo y, si revela un patrón nuevo, añadirse a §4.*
 ## CEF: "Invalid file descriptor to ICU data received" en InitializeICU
 
 - **Síntoma**: al arrancar el motor con `FUNSHI_CEF=ON`, `CefInitialize` aborta en

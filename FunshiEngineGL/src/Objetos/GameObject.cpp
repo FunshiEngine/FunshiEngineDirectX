@@ -20,6 +20,7 @@
 #include "Componentes/ComponentFactory.h"
 #include "Componentes/CameraComponent.h"
 #include "Componentes/Script.h"
+#include "Herramientas/TypeUtils.h"
 #include "TagRegistry.h"
 
 #include <cmath>
@@ -123,7 +124,7 @@ Component* GameObject::getComponentByName(const std::string& typeName) {
     while (position != nullptr) {
         Component* comp = position->getElement();
         if (comp) {
-            std::string name = demangle(typeid(*comp).name());
+            std::string name = nombreSimpleTipo(typeid(*comp));
             if (name == typeName) return comp;
         }
         position = (position != components->last())
@@ -561,7 +562,7 @@ void GameObject::serializeEntityComponents() {
             position->getElement();
 
         std::string typeName =
-            demangle(typeid(*component).name());
+            nombreSimpleTipo(typeid(*component));
 
         const size_t length =
             typeName.size();

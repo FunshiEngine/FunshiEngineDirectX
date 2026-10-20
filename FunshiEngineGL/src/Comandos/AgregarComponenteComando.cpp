@@ -35,7 +35,7 @@ AgregarComponenteComando::AgregarComponenteComando(EditorController* ec,
         nombreObjeto = obj->inputName;
     }
     if (componente) {
-        nombreComponente = demangle(typeid(*componente).name());
+        nombreComponente = nombreSimpleTipo(typeid(*componente));
     }
 }
 

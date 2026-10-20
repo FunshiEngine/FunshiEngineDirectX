@@ -39,6 +39,8 @@
 #include "Transform.h"
 #include "../GameObject.h"
 
+#include "../../Herramientas/TypeUtils.h"
+
 #include "../../GUI/ObjetosGUI/SettingsComponent.h"
 #include "../../GUI/ObjetosGUI/Animador2D/SettingsAnimador2D.h"
 #include "../../GUI/ObjetosGUI/Audio/SettingsAudioSource.h"
@@ -61,18 +63,6 @@
 #include "../../GUI/ObjetosGUI/Transform/SettingsTransform.h"
 
 namespace {
-
-// Tolera nombres de componente ya persistidos por builds viejos de Windows:
-// MSVC no demanglea y typeid().name() guardaba "class Transform"/"struct X".
-std::string normalizarNombre(const std::string& typeName) {
-    constexpr const char* prefijos[] = {"class ", "struct ", "union ", "enum "};
-    for (const char* prefijo : prefijos) {
-        const std::size_t len = std::char_traits<char>::length(prefijo);
-        if (typeName.rfind(prefijo, 0) == 0)
-            return typeName.substr(len);
-    }
-    return typeName;
-}
 
 constexpr const char* kSubmenuColliders = "Add Collider";
 
@@ -284,7 +274,10 @@ const CatalogoComponentes& CatalogoComponentes::instancia() {
 
 const DescriptorComponente* CatalogoComponentes::buscar(
     const std::string& nombre) const {
-    const std::string normalizado = normalizarNombre(nombre);
+    // El nombre se normaliza al simple (sin namespace y sin el prefijo de
+    // class-key de MSVC) para que el mismo tipo se encuentre con el nombre
+    // que se persistio en otra plataforma.
+    const std::string normalizado = nombreSimpleTipo(nombre);
     for (const DescriptorComponente& d : items_) {
         if (d.nombre == normalizado ||
             (!d.alias.empty() && d.alias == normalizado))
