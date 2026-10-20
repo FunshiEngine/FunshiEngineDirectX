@@ -452,8 +452,11 @@ Reglas:
   por otros colaboradores (no tocados por el agente), reportar el fallo,
   indicar que hay cambios ajenos pendientes, y esperar instrucciones;
   NO modificar archivos ajenos para "arreglar" el build.
-- El CI (`.github/workflows/ci.yml`) compila el engine en Ubuntu y corre la
-  suite en Linux/Windows/macOS; no pushear sin pasar los tests localmente.
+- El CI (`.github/workflows/ci.yml`) compila el engine en Ubuntu, corre la
+  suite headless en Linux/Windows, el backend Java en Ubuntu con JDK y las
+  headless en Windows con el generador multi-config (Visual Studio), que es el
+  mismo que usa el job de Windows de `release.yml`; no pushear sin pasar los
+  tests localmente.
 - **NO confirmar fixes hasta validación del usuario**: nunca declarar un bug
   como "resuelto" o "fix real" hasta que el usuario lo pruebe y lo confirme
   explícitamente. Los tests automatizados (ctest) no cubren flujos visuales

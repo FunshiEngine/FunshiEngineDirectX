@@ -110,6 +110,7 @@ recorrer(destFolder); // Ahora SÍ re-lee porque cache inválido
 | **R15 — El separador nativo manda al comparar rutas** | Quien arma una ruta con `std::filesystem` (o con `PATH_SEP`) produce el separador de su plataforma: en Windows, `base / "logs"` es `\logs`, no `/logs`. Un test que compare contra un literal con `/` solo pasa en Linux; comparar contra `(fs::path(base) / ...).string()` o rehacer el cálculo con la misma herramienta que el código bajo prueba | `tests/EditorConfigTests.cpp` (bloque `RutasLog::candidatas` y `relativizarRuta`) |
 | **R16 — La resolución del `mtime` depende del toolchain, no del FS** | NTFS registra el mtime con 100ns, pero la lectura de `std::filesystem::last_write_time` en el CRT de MinGW viene de `stat` (1 segundo) y su setter no aplica sobre directorios: una creación dentro del mismo segundo que la marca guardada no es observable ahi, mientras que con MSVC (FILETIME) si lo es. Quien compare mtimes para decidir (polling, invalidación de cache, hot reload) no debe depender de subsegundos, y un test que ejercite esa comparación debe hacer el cambio visible en ambas granularidades o constatar la limitación | `FileSystemWatcher` (fallback de polling), `tests/FileManagerTests.cpp` (bloque polling) |
 | **R17 — Tu binario también es el subproceso** | Un motor multiproceso (CEF) relanza el **mismo ejecutable** con `--type=...`: `CefExecuteProcess` debe correr al comienzo de `main`, antes de log/ventana/GL; devuelve -1 cuando el proceso no es subproceso y el motor sigue. Si no se corta ahí, el subproceso arranca la inicialización completa del motor en paralelo al proceso principal | `WebUIRuntime::ejecutarSubproceso` en `main.cpp` y `main_juego.cpp` (ver §13.4) |
+| **R18 — Generar por configuración lo que depende de la configuración** | Un generador multi-config (Visual Studio, Ninja Multi-Config) evalúa lo generado una vez por configuración: lo que dependa de la configuración (la ruta de un binario, `$<TARGET_FILE:...>`) no puede vivir en un único archivo compartido, o CMake aborta con `Evaluation file to be written multiple times with different content`. El archivo va a `.../$<CONFIG>/...` y el include del consumidor a la carpeta de su configuración | `FunshiEngineGL/CMakeLists.txt` (cabecera generada de los plugins de prueba; ver §14.4) |
 
 ---
 
@@ -855,7 +856,91 @@ externos y el bitmap se subió a textura byte a byte.
 
 ---
 
-## 14. Historial de Cambios
+## 14. Décimo concepto: **Un archivo generado en tiempo de configuración vale en una configuración y en ninguna más**
+
+### 14.1 Patrón
+
+Un generador **multi-config** (Visual Studio, Ninja Multi-Config) compila cada
+configuración en su propia carpeta (`build/Debug/`, `build/Release/`) y evalúa
+el contenido generado **una vez por configuración**. Lo que depende de la
+configuración —la ruta de un binario, la de una biblioteca— no puede escribirse
+en un único archivo compartido: cada evaluación produciría un contenido
+distinto en el mismo destino.
+
+CMake lo dice así: `file(GENERATE)` aborta con
+
+```
+CMake Error in CMakeLists.txt:
+  Evaluation file to be written multiple times with different content.
+```
+
+cuando el contenido varía entre configuraciones y la salida es la misma.
+
+### 14.2 Síntomas
+
+- La **configuración** falla con `Evaluation file to be written multiple times
+  with different content`, y el error nombra el archivo generado (por ejemplo
+  `generated/RutasPluginsMods.h`). El fallo es en la fase de generación: no
+  compila nada.
+- El mismo código **funciona** con Ninja o Makefiles (una sola configuración) y
+  **falla** con Visual Studio. Una CI en verde no dice nada del build de
+  Visual Studio, que es el que genera el instalador de Windows.
+- Con `Ninja Multi-Config` el fallo se reproduce en cualquier sistema operativo:
+  no es un problema de Windows.
+
+### 14.3 Causa
+
+`file(GENERATE)` se evalúa una vez por configuración. Si el contenido usa algo
+que cambia con la configuración —`$<TARGET_FILE:tgt>`, que apunta a
+`build/<CONFIG>/tgt`— y el archivo de salida es el mismo para todas, cada
+configuración quiere escribir un contenido distinto en el mismo sitio.
+
+### 14.4 Fix canónico (Patrón R18 — generar por configuración lo que depende de la configuración)
+
+1. El **archivo** generado lleva la configuración en su ruta, de modo que CMake
+   escriba uno por configuración y deje de quejarse:
+
+   ```cmake
+   file(GENERATE OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/generated/$<CONFIG>/RutasPluginsMods.h
+       CONTENT "... $<TARGET_FILE:mods-test-plugin-a> ...")
+   ```
+
+2. El **include** del consumidor apunta a la carpeta de su configuración:
+
+   ```cmake
+   target_include_directories(mods-tests PRIVATE
+       ${CMAKE_CURRENT_BINARY_DIR}/generated/$<CONFIG>)
+   ```
+
+   Con un generador de una sola configuración, `$<CONFIG>` es el tipo de build
+   (`Release`), así que el include sigue resolviendo igual que antes.
+
+Alternativas cuando el consumidor puede recibir la ruta por otros medios:
+`target_compile_definitions` con `$<TARGET_FILE:...>` (el valor también se
+evalúa por configuración) o localizar el artefacto en runtime a partir de la
+ruta del propio ejecutable.
+
+### 14.5 Checklist de mitigación
+
+- [ ] Ningún `file(GENERATE)` escribe en una ruta compartida si su contenido
+      depende de la configuración.
+- [ ] Todo include de un archivo generado por configuración apunta a la carpeta
+      `$<CONFIG>` correspondiente.
+- [ ] La CI compila y prueba **con un generador multi-config** (Visual Studio
+      en Windows), no solo con Ninja: es el generador que usa el job que
+      publica el instalador.
+- [ ] El fallo se puede reproducir sin Visual Studio: `Ninja Multi-Config`
+      reproduce la misma semántica en cualquier sistema.
+
+### 14.6 Registro de Instancias
+
+| # | Ubicación | Operación | Herramienta | Fix Aplicado | Commit |
+|---|-----------|-----------|-------------|--------------|--------|
+| 1 | `FunshiEngineGL/CMakeLists.txt` (`file(GENERATE)` de `RutasPluginsMods.h`) | Generar la ruta de las bibliotecas de prueba del sistema de mods | CMake `file(GENERATE)` con generador multi-config | El header se genera en `generated/$<CONFIG>/` y el include del test apunta a esa carpeta (Patrón R18) | `fix(cmake): generar por configuracion las rutas de los plugins de prueba` |
+
+---
+
+## 15. Historial de Cambios
 
 | Fecha | Autor | Cambio |
 |-------|-------|--------|
@@ -872,10 +957,11 @@ externos y el bitmap se subió a textura byte a byte.
 | 2026-10-11 | Gianfranco Ivan Enrique | Añadido el Patrón R15 (el separador nativo manda al comparar rutas) a la tabla de patrones: `std::filesystem` arma `\logs` en Windows y los tests comparaban contra literales con `/`, lo que dejaba 6 comprobaciones rojas solo en windows-latest. |
 | 2026-10-11 | Gianfranco Ivan Enrique | Añadido el Patrón R16 (la resolución del `mtime` depende del toolchain, no del FS): la lectura del CRT de MinGW viene de `stat` (1 segundo) y su setter no aplica sobre directorios, de modo que el fallback de polling del `FileSystemWatcher` no observa cambios subsegundo ahi. El ctor del watcher ahora siembra el mtime real de la raíz en vez del epoch (evita un rescaneo vano al arrancar) y el intervalo quedó inyectable para poder probar el contrato. |
 | 2026-10-16 | Gianfranco Ivan Enrique | Añadido el noveno concepto (Patrón R17, el motor web multiproceso relanza tu binario): `CefExecuteProcess` al comienzo de `main` en editor y juego exportado, con init tras GL, bombeo por frame y apagado antes de romper ImGui/GL. |
+| 2026-10-20 | Gianfranco Ivan Enrique | Añadido el décimo concepto (Patrón R18, un archivo generado en tiempo de configuración vale en una configuración y en ninguna más) con su instancia #1, a raíz del fallo de configuración del build de Windows con Visual Studio: el header con las rutas de los plugins de prueba se generaba en un archivo compartido y CMake abortaba al escribirlo una vez por configuración. |
 
 ---
 
-*Este documento es vivo: cada nuevo bug de esta clase debe registrarse en la tabla de su concepto (§2 para el primero, §6.5 para el segundo, §7.5 para el tercero, §8.5 para el cuarto, §9.5 para el quinto) y, si revela un patrón nuevo, añadirse a §4.*
+*Este documento es vivo: cada nuevo bug de esta clase debe registrarse en la tabla de su concepto (§2 para el primero, §6.5 para el segundo, §7.5 para el tercero, §8.5 para el cuarto, §9.5 para el quinto), §14.6 para el décimo y, si revela un patrón nuevo, añadirse a §4.*
 ## CEF: "Invalid file descriptor to ICU data received" en InitializeICU
 
 - **Síntoma**: al arrancar el motor con `FUNSHI_CEF=ON`, `CefInitialize` aborta en
