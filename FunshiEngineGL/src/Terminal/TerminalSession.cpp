@@ -107,10 +107,6 @@ struct TerminalSession::Impl {
     // Señal de parada solicitada por detener(): el lector la usa para acotar su
     // espera y drenar la salida final aunque la shell no muera de inmediato.
     std::atomic<bool> parada{false};
-    // Instante (reloj monotónico) en que detener() pidió la parada: la ventana
-    // de gracia del lector es absoluta desde ese instante y no se reinicia
-    // con datos, para que una emisión continua no impida la salida.
-    std::chrono::steady_clock::time_point limiteParada{};
     // Se pone en true al salir del lector para que detener() pueda esperar el
     // hilo con un deadline acotado en lugar de un join() potencialmente eterno.
     std::atomic<bool> lecturaTerminada{false};
@@ -140,20 +136,30 @@ struct TerminalSession::Impl {
         struct pollfd descriptor {};
         descriptor.fd = terminal;
         descriptor.events = POLLIN;
-        // Ventana absoluta de gracia: detener() fija limiteParada al pedir la
-        // parada y el lector sale 500 ms despues aunque siga llegando salida,
-        // para que una emision continua no impida terminar ni el join.
-        const auto limite = limiteParada + std::chrono::milliseconds(500);
+        // Ventana de gracia: al pedir la parada, el lector sigue leyendo 500 ms
+        // mas para no descartar la salida final de la shell (la que se emite
+        // al recibir la senal de parada). El plazo se calcula aqui, en el
+        // hilo que lo usa: compartir el instante con el hilo que pide la
+        // parada lo hacia escribir por un lado y leer por otro, y ademas se
+        // fijaba antes de que existiera (la ventana nunca llegaba a aplicar).
+        std::chrono::steady_clock::time_point limiteGracia{};
+        bool graciaIniciada = false;
         for (;;) {
             const int listo = ::poll(&descriptor, 1, 100);
             if (listo < 0) {
                 if (errno == EINTR) continue;
                 break;
             }
-            if (parada.load(std::memory_order_acquire) &&
-                std::chrono::steady_clock::now() >= limite) {
-                drenarResto(bloque, sizeof(bloque));
-                break;
+            if (parada.load(std::memory_order_acquire)) {
+                if (!graciaIniciada) {
+                    limiteGracia = std::chrono::steady_clock::now() +
+                                   std::chrono::milliseconds(500);
+                    graciaIniciada = true;
+                }
+                if (std::chrono::steady_clock::now() >= limiteGracia) {
+                    drenarResto(bloque, sizeof(bloque));
+                    break;
+                }
             }
             if (listo == 0) continue;
             if (!(descriptor.revents & (POLLIN | POLLHUP | POLLERR))) continue;
@@ -497,7 +503,6 @@ void TerminalSession::detener() {
     // lector drena la salida final hasta el cierre del esclavo; si la ignora
     // y sigue emitiendo, la ventana absoluta de gracia lo saca igual.
     impl_->parada.store(true, std::memory_order_release);
-    impl_->limiteParada = std::chrono::steady_clock::now();
     impl_->condicionLector.notify_all();
     if (impl_->proceso > 0) kill(-impl_->proceso, SIGHUP);
     {
@@ -524,6 +529,8 @@ void TerminalSession::detener() {
             int estado = 0;
             pid_t resultado = waitpid(impl_->proceso, &estado, WNOHANG);
             if (resultado == 0) {
+                // El hijo sigue vivo: se mata al grupo y se espera a que
+                // termine, para no dejar un zombie.
                 kill(-impl_->proceso, SIGKILL);
                 while (waitpid(impl_->proceso, &estado, 0) < 0 && errno == EINTR) {
                 }
