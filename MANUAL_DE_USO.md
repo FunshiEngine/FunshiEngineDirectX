@@ -577,7 +577,8 @@ El explorador de archivos (arbol + grid) emite el payload ImGui
 |---|---|---|
 | Panel **Model** del Inspector | `Model` | path completo (buffer 4096) |
 | Panel **Script** del Inspector | `Script` | path completo del fuente (`std::string`) |
-| Dropdown **Sonido** de AudioSource | `AudioSource` | nombre del clip |
+| Panel **Fuente de audio** del Inspector | `AudioSource` | ruta del archivo de audio |
+| Panel **Musica** del Inspector | `Musica` | ruta de la pista (se anade a la lista) |
 | Campo **Interfaz** de InterfaceComponent | `InterfaceComponent` | ruta del `.html` (no la asigna si no es `.html`) |
 | Panel **Tilemap** del Inspector | `Tilemap` | ruta del tileset JSON (no lo asigna si no valida) |
 | Panel **Prefab** del Inspector | `Prefab` | instancia el prefab completo (jerarquía + componentes) |
@@ -592,8 +593,9 @@ menos 4096 bytes, de modo que paths largos no se truncan (el componente
    "New File"); el FileSystemWatcher rescanea al detectar cambios externos.
 2. Selecciona el objeto y arrastra el asset sobre el control correspondiente
    del panel del componente ("Arrastra modelo", campo Fuente del script,
-   dropdown de Sonido, dropdown de Interfaz).
-3. La escena guarda el path o nombre; al recargar se resuelve de nuevo.
+   boton de la fuente de audio, zona de pistas de Musica, dropdown de
+   Interfaz).
+3. La escena guarda el path; al recargar se resuelve de nuevo.
 
 **Instanciar prefab por drag & drop (nuevo):**
 1. En el explorador, localiza un archivo `.prefab` en `Assets/Prefabs/`.
@@ -668,6 +670,25 @@ menos 4096 bytes, de modo que paths largos no se truncan (el componente
   `src<proyecto>/`).
 - Si el archivo no existe, el motor avisa en el log y no reproduce: el
   componente queda sin sonido.
+
+### 8.1 Musica: lista de pistas
+
+- Agrega `Musica` a un objeto y **arrastra los archivos de musica** al panel:
+  cada uno se anade a la **lista ordenada** de pistas del componente. El
+  archivo puede estar en cualquier carpeta dentro de `src<proyecto>/`, igual
+  que los efectos de sonido.
+- El orden de la lista es el orden en que suenan: `^` y `v` mueven una pista y
+  `x` la quita.
+- Ajusta **Volumen**, **Fundido (s)** (cuanto dura el cruce entre dos pistas),
+  **Repetir la lista** (al terminar la ultima vuelve a la primera) y
+  **Reproducir al activar**.
+- En Depuracion y Juego el motor reproduce la primera pista y, cuando se
+  acaba, pasa a la siguiente con un fundido cruzado. El boton **Reproducir**
+  del inspector arranca la lista en cualquier momento; **Detener** la para con
+  el mismo fundido.
+- La lista se guarda en la escena **relativa** a `src<proyecto>/`, como la ruta
+  del `AudioSource`: al mover o renombrar el proyecto entero sigue funcionando,
+  y en el juego exportado se resuelve contra la carpeta del juego.
 
 ---
 

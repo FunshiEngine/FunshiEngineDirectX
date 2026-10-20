@@ -284,6 +284,8 @@ FunshiEngineGL/                          ← raíz del repo
         │   │   │                                 densidad fija: no hay tamaño/separación)
         │   │   ├── AudioSource/SettingsAudioSource.* ← ruta del archivo de audio
         │   │   │                                 (drag & drop), volumen, loop
+        │   │   ├── Musica/SettingsMusica.*     ← lista ordenada de pistas de música
+        │   │   │                                 (drag & drop), volumen, fundido, repetición
         │   │   ├── Interface/SettingsInterface.* ← ruta del .html de la interfaz
         │   │   │                                 (drag & drop) + activa, ancla, tamaño y z
         │   │   ├── Skybox/SettingsSkybox.*       ← visible + las seis caras del cubemap
@@ -420,6 +422,9 @@ FunshiEngineGL/                          ← raíz del repo
         │       ├── Color.h / Model.h / Script.h ← varios scripts por objeto,
         │       │                                    nombre editable y metadatos reflejados
         │       │                                    serializados para el inspector
+        │       ├── AudioSource.h/.cpp    ← fuente de sonido: ruta del archivo, volumen y loop
+        │       ├── Musica.h/.cpp        ← reproductor de música: lista ordenada de pistas
+        │       │                            (rutas), volumen, fundido y repetición de la lista
         │       ├── RigidBody/RigidBody.h/.cpp ← cuerpo Bullet sincronizado, habilitable, con detección de apoyo (RAII); masa, gravedad por cuerpo (uso+escala), friccion y freeze por ejes via setGravity/setFriction/setLinearFactor/setAngularFactor, serial v2 con lectura v1
         │       └── Colliders/
         │           ├── Collider.h/.cpp   ← base abstracta; radio; visibilidad persistente y gizmo
@@ -638,9 +643,9 @@ solo como orquestador de arranque y bucle.
   tiene método de dibujado: la entidad no conoce la capa de Rendering, y es
   `SceneRenderer` quien la pinta vía `MeshRenderer`.
 - Los componentes concretos son: `Transform`, `Color`, `Model`, `Material`, `Light`,
-  `AudioSource`, `InterfaceComponent`, `Grid`, `Script`, `EsfereCollider`,
-  `CubeCollider`, `MallaCollider` y `RigidBody`. Todos heredan de `Component`
-  y serializan sus datos binarios.
+  `AudioSource`, `Musica`, `InterfaceComponent`, `Grid`, `Script`,
+  `EsfereCollider`, `CubeCollider`, `MallaCollider` y `RigidBody`. Todos heredan
+  de `Component` y serializan sus datos binarios.
 - `ComponentFactory` centraliza la creación por nombre de tipo tanto desde la GUI
   como durante la deserialización (`"CameraComponent"` acepta el alias `"Camera"`).
 - `Component::onLoaded(GameObject&)` es el hook polimórfico de post-carga:

@@ -56,6 +56,7 @@
 #include "../Audio/AudioEngine.h"
 #include "../Audio/MiniAudioBackend.h"
 #include "../Objetos/Componentes/AudioSource.h"
+#include "../Objetos/Componentes/Musica.h"
 #include "../Objetos/Componentes/InterfaceComponent.h"
 #include "../Configuracion/EditorConfig.h"
 #include "GizmoController.h"
@@ -166,26 +167,35 @@ AudioEngine* GameScene::getAudioEngine() const noexcept {
     return audioEngine.get();
 }
 
-// Reproduce o detiene los AudioSource de la escena segun la transicion de
-// modo play. Al ENTRAR en play: inyecta el motor y dispara los de reproduccion
-// automatica. Al SALIR de play: detiene todo (evita colas de audio en el
-// editor). El motor se inyecta siempre, para que el inspector pueda probar.
+// Reproduce o detiene los AudioSource y los Musica de la escena segun la
+// transicion de modo play. Al ENTRAR en play: inyecta el motor y dispara los
+// de reproduccion automatica. Al SALIR de play: detiene todo (evita colas de
+// audio en el editor). El motor se inyecta siempre, para que el inspector
+// pueda probar.
 void GameScene::sincronizarAudioPlay(bool entrarEnPlay) {
     auto* gameObjects = getGameObjectsScene();
     if (!gameObjects || gameObjects->isEmpty()) return;
     Position<GameObject*>* pos = gameObjects->first();
     while (pos && pos->getElement()) {
-        AudioSource* source = pos->getElement()->getComponent<AudioSource>();
-        if (!source) {
-            pos = (pos != gameObjects->last()) ? gameObjects->next(pos) : nullptr;
-            continue;
+        GameObject* objeto = pos->getElement();
+        if (AudioSource* source = objeto->getComponent<AudioSource>()) {
+            source->setMotor(audioEngine.get());
+            if (entrarEnPlay) {
+                if (source->isReproduccionAutomatica() && !source->isReproduciendo())
+                    source->reproducir();
+            } else {
+                source->detener();
+            }
         }
-        source->setMotor(audioEngine.get());
-        if (entrarEnPlay) {
-            if (source->isReproduccionAutomatica() && !source->isReproduciendo())
-                source->reproducir();
-        } else {
-            source->detener();
+        // La musica lleva su propia lista de pistas: al entrar en play suena
+        // la primera y el motor va pasando a las siguientes.
+        if (Musica* musica = objeto->getComponent<Musica>()) {
+            musica->setMotor(audioEngine.get());
+            if (entrarEnPlay) {
+                if (musica->isReproduccionAutomatica()) musica->reproducir();
+            } else {
+                musica->detener();
+            }
         }
         pos = (pos != gameObjects->last()) ? gameObjects->next(pos) : nullptr;
     }
