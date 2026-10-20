@@ -20,11 +20,16 @@
 #define NULL_AUDIO_BACKEND_H
 
 #include "IAudioBackend.h"
+#include "IMusicaBackend.h"
 
 // Backend sin dispositivo (no-op): permite montar AudioEngine sin hardware de
 // audio (tests headless, CI, o si el driver falla). La cola de comandos del
 // motor sigue funcionando normal: reproducir() devuelve 0 => "no se pudo".
-class NullAudioBackend : public IAudioBackend {
+//
+// Tambien implementa el contrato de musica: sin dispositivo no hay pistas
+// que abrir, asi que abrirPista() devuelve 0 y el reproductor informa que no
+// pudo reproducir. La cola de musica del motor se ejercita igual.
+class NullAudioBackend : public IAudioBackend, public IMusicaBackend {
 public:
     bool iniciar() override { return false; }
     void cerrar() override {}
@@ -33,6 +38,19 @@ public:
     void detenerTodo() override {}
     void setVolumenMaestro(float) override {}
     void despachar(float) override {}
+
+    IMusicaBackend* backendMusica() override { return this; }
+
+    int abrirPista(const std::string&) override { return 0; }
+    void cerrarPista(int) override {}
+    bool reproducirPista(int, float) override { return false; }
+    void detenerPista(int) override {}
+    void volumenPista(int, float) override {}
+    void volumenBus(float) override {}
+    void silenciarBus(bool) override {}
+    EstadoPista estadoPista(int) override { return EstadoPista::Detenida; }
+    float posicionPista(int) override { return 0.0f; }
+    float duracionPista(int) override { return 0.0f; }
 };
 
 #endif // NULL_AUDIO_BACKEND_H
