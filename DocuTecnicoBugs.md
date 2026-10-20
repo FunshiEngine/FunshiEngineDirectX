@@ -111,6 +111,7 @@ recorrer(destFolder); // Ahora SÍ re-lee porque cache inválido
 | **R16 — La resolución del `mtime` depende del toolchain, no del FS** | NTFS registra el mtime con 100ns, pero la lectura de `std::filesystem::last_write_time` en el CRT de MinGW viene de `stat` (1 segundo) y su setter no aplica sobre directorios: una creación dentro del mismo segundo que la marca guardada no es observable ahi, mientras que con MSVC (FILETIME) si lo es. Quien compare mtimes para decidir (polling, invalidación de cache, hot reload) no debe depender de subsegundos, y un test que ejercite esa comparación debe hacer el cambio visible en ambas granularidades o constatar la limitación | `FileSystemWatcher` (fallback de polling), `tests/FileManagerTests.cpp` (bloque polling) |
 | **R17 — Tu binario también es el subproceso** | Un motor multiproceso (CEF) relanza el **mismo ejecutable** con `--type=...`: `CefExecuteProcess` debe correr al comienzo de `main`, antes de log/ventana/GL; devuelve -1 cuando el proceso no es subproceso y el motor sigue. Si no se corta ahí, el subproceso arranca la inicialización completa del motor en paralelo al proceso principal | `WebUIRuntime::ejecutarSubproceso` en `main.cpp` y `main_juego.cpp` (ver §13.4) |
 | **R18 — Generar por configuración lo que depende de la configuración** | Un generador multi-config (Visual Studio, Ninja Multi-Config) evalúa lo generado una vez por configuración: lo que dependa de la configuración (la ruta de un binario, `$<TARGET_FILE:...>`) no puede vivir en un único archivo compartido, o CMake aborta con `Evaluation file to be written multiple times with different content`. El archivo va a `.../$<CONFIG>/...` y el include del consumidor a la carpeta de su configuración | `FunshiEngineGL/CMakeLists.txt` (cabecera generada de los plugins de prueba; ver §14.4) |
+| **R19 — Declarar cada tipo con el mismo class-key en la definición y en la declaración adelantada** | MSVC mete el class-key (`class`/`struct`) en el nombre del símbolo: si un header adelanta el tipo con un key y otro lo define con el otro, la definición y la referencia se llaman distinto y el enlazado falla con LNK2019 aunque el código sea idéntico (GCC y Clang lo ignoran). La declaración adelantada copia el key de la definición y el aviso que lo anticipa (C4099 en MSVC, `-Wmismatched-tags` en GCC y Clang) se convierte en error | `FunshiEngineGL/src/Rendering/MeshRenderer.h`, `FunshiEngineGL/src/Rendering/DibujoModelo.h` (ver §15.4) |
 
 ---
 
@@ -940,7 +941,119 @@ ruta del propio ejecutable.
 
 ---
 
-## 15. Historial de Cambios
+## 15. Undécimo concepto: **Un tipo declarado con un class-key distinto al de su definición produce dos símbolos distintos**
+
+### 15.1 Patrón
+
+En MSVC, el *class-key* (`class` o `struct`) con el que se declara un tipo
+forma parte del nombre del símbolo que genera el compilador: `struct Mesh`
+mangling como `PEBUMesh` y `class Mesh` como `PEBVMesh`, aunque el tipo sea el
+mismo y los miembros idénticos.
+
+Cuando un header **adelanta** el tipo con un key y otro header lo **define**
+con el otro, cada unidad de compilación ve una declaración distinta y genera
+un símbolo distinto para la misma función. La definición y la referencia ya no
+coinciden y el enlazado falla.
+
+GCC y Clang no distinguen el class-key: el nombre del símbolo es el mismo en
+las dos unidades y el enlace funciona. Por eso el fallo es exclusivo de
+Visual Studio, y una CI verde en Linux no dice nada del build de Windows.
+
+### 15.2 Síntomas
+
+- El **enlazado** falla con `LNK2019`, con el símbolo en forma no descompuesta
+  y descompuesta, y la diferencia se ve en el key:
+
+  ```
+  funshi_engine.lib(SceneRenderer.obj) : error LNK2019: unresolved external symbol
+    "public: bool __cdecl MeshRenderer::intentarRenderMesh(class GameObject *,
+     struct Mesh const *, ...)"
+    (?intentarRenderMesh@MeshRenderer@@QEAA_NPEAVGameObject@@PEBUMesh@@...@Z)
+  ```
+
+  La definición real del mismo método manglea como `PEBVMesh`: el mismo
+  método, dos nombres.
+- Todo **compila**: no hay error de compilación, el desajuste solo se ve al
+  enlazar.
+- El build con **GCC o Clang** enlaza sin problema, con el mismo código.
+- Con MSVC, el aviso que lo anticipa es **C4099** ("nombre de tipo visto
+  anteriormente usando 'class' ahora se ve usando 'struct'"), y sale en el
+  **nivel de aviso 4**: con el nivel por defecto no aparece.
+
+### 15.3 Causa
+
+Una declaración adelantada escrita con un class-key distinto del de la
+definición. El C++ estándar exige redeclarar un tipo con el mismo class-key;
+GCC y Clang lo aceptan como extensión sin avisar, MSVC lo diagnostica (C4099)
+pero solo con `/W4` y, aun así, el símbolo ya salió con el key equivocado.
+
+El efecto depende de **qué unidad ve qué declaración**: la unidad donde la
+declaración adelantada se lee primero genera el símbolo con el key de la
+adelantada, y la que ve primero la definición real lo genera con el key de la
+definición. De ahí que el mismo método aparezca con dos nombres.
+
+### 15.4 Fix canónico (Patrón R19 — declarar cada tipo con el mismo class-key en la definición y en la declaración adelantada)
+
+1. La **declaración adelantada** usa el mismo class-key que la definición:
+
+   ```cpp
+   // Assets/Mesh.h
+   struct Mesh { ... };
+
+   // Rendering/MeshRenderer.h
+   struct Mesh;   // igual que en la definición, no "class Mesh;"
+   ```
+
+2. El **compilador avisa y el aviso es error**, para que el desajuste no pueda
+   colarse:
+
+   ```cmake
+   if(MSVC)
+     # C4099: el tipo se vio antes como "class" y ahora como "struct".
+     check_cxx_compiler_flag("/we4099" FUNSHI_AVISO_CLASS_KEY)
+     if(FUNSHI_AVISO_CLASS_KEY)
+       add_compile_options($<$<COMPILE_LANGUAGE:CXX>:/we4099>)
+     endif()
+   else()
+     # Mismo desajuste, visto por GCC y Clang.
+     check_cxx_compiler_flag("-Werror=mismatched-tags" FUNSHI_AVISO_CLASS_KEY)
+     if(FUNSHI_AVISO_CLASS_KEY)
+       add_compile_options($<$<COMPILE_LANGUAGE:CXX>:-Werror=mismatched-tags>)
+     endif()
+   endif()
+   ```
+
+   Con el aviso como error, la inconsistencia aparece **al compilar** y no
+   como un LNK2019 al publicar el instalador.
+
+3. Cuando el fallo aparece en un símbolo concreto, se compara el nombre
+   descompuesto de la referencia con el de la definición: si solo difieren en
+   el class-key (`struct` frente a `class`), el desajuste está en una
+   declaración adelantada.
+
+### 15.5 Checklist de mitigación
+
+- [ ] Toda declaración adelantada (`class X;` / `struct X;`) usa el mismo
+      class-key que la definición del tipo.
+- [ ] El build de Windows con MSVC es parte de la CI, o el aviso C4099 está
+      activo como error: un fallo de enlace que solo aparece con Visual
+      Studio no lo detecta una CI que solo compila con Ninja.
+- [ ] La CI compila el **motor completo** (no solo las suites headless) en al
+      menos un compilador que enlace: un `LNK2019` solo se ve al enlazar.
+- [ ] Al comparar dos nombres de símbolo, se mira el **class-key**: dos
+      nombres que difieren solo en `struct`/`class` son el mismo tipo con dos
+      declaraciones distintas.
+
+### 15.6 Registro de Instancias
+
+| # | Ubicación | Operación | Herramienta | Fix Aplicado | Commit |
+|---|-----------|-----------|-------------|--------------|--------|
+| 1 | `FunshiEngineGL/src/Rendering/MeshRenderer.h` (`Mesh`, `Image`) y `FunshiEngineGL/src/Rendering/DibujoModelo.h` (`Mesh`) | Dibujado de mallas con el pipeline moderno | MSVC (Visual Studio) al enlazar `funshi_engine` | Las declaraciones adelantadas usan `struct`, igual que la definición, y C4099 pasa a ser error de compilación (Patrón R19) | `fix(render): declarar Mesh e Image con el mismo class-key que su definicion` |
+| 2 | `FunshiEngineGL/src/Objetos/Componentes/RigidBody/RigidBody.h` (`btDefaultMotionState`) | Cuerpo físico de Bullet | Aviso del compilador al activar `-Werror=mismatched-tags` (GCC) y `/we4099` (MSVC) | La declaración adelantada usa `struct`, que es el class-key con el que Bullet define el tipo (Patrón R19) | `fix(fisicas): declarar btDefaultMotionState con el class-key de bullet` |
+
+---
+
+## 16. Historial de Cambios
 
 | Fecha | Autor | Cambio |
 |-------|-------|--------|
@@ -958,10 +1071,11 @@ ruta del propio ejecutable.
 | 2026-10-11 | Gianfranco Ivan Enrique | Añadido el Patrón R16 (la resolución del `mtime` depende del toolchain, no del FS): la lectura del CRT de MinGW viene de `stat` (1 segundo) y su setter no aplica sobre directorios, de modo que el fallback de polling del `FileSystemWatcher` no observa cambios subsegundo ahi. El ctor del watcher ahora siembra el mtime real de la raíz en vez del epoch (evita un rescaneo vano al arrancar) y el intervalo quedó inyectable para poder probar el contrato. |
 | 2026-10-16 | Gianfranco Ivan Enrique | Añadido el noveno concepto (Patrón R17, el motor web multiproceso relanza tu binario): `CefExecuteProcess` al comienzo de `main` en editor y juego exportado, con init tras GL, bombeo por frame y apagado antes de romper ImGui/GL. |
 | 2026-10-20 | Gianfranco Ivan Enrique | Añadido el décimo concepto (Patrón R18, un archivo generado en tiempo de configuración vale en una configuración y en ninguna más) con su instancia #1, a raíz del fallo de configuración del build de Windows con Visual Studio: el header con las rutas de los plugins de prueba se generaba en un archivo compartido y CMake abortaba al escribirlo una vez por configuración. |
+| 2026-10-20 | Gianfranco Ivan Enrique | Añadido el undécimo concepto (Patrón R19, un tipo declarado con un class-key distinto al de su definición produce dos símbolos distintos) con sus instancias #1–#2, a raíz del LNK2019 al enlazar el motor con Visual Studio: `Mesh` e `Image` se adelantaban como `class` y se definen como `struct`, y MSVC distingue los dos nombres de símbolo. |
 
 ---
 
-*Este documento es vivo: cada nuevo bug de esta clase debe registrarse en la tabla de su concepto (§2 para el primero, §6.5 para el segundo, §7.5 para el tercero, §8.5 para el cuarto, §9.5 para el quinto), §14.6 para el décimo y, si revela un patrón nuevo, añadirse a §4.*
+*Este documento es vivo: cada nuevo bug de esta clase debe registrarse en la tabla de su concepto (§2 para el primero, §6.5 para el segundo, §7.5 para el tercero, §8.5 para el cuarto, §9.5 para el quinto), §14.6 para el décimo, §15.6 para el undécimo y, si revela un patrón nuevo, añadirse a §4.*
 ## CEF: "Invalid file descriptor to ICU data received" en InitializeICU
 
 - **Síntoma**: al arrancar el motor con `FUNSHI_CEF=ON`, `CefInitialize` aborta en

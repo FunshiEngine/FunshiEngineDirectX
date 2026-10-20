@@ -32,8 +32,8 @@
 class ShaderProgram;
 class MeshGPU;
 class TextureGL;
-class Mesh;
-class Image;
+struct Mesh;
+struct Image;
 class TextureManager;
 class Modelos3D;
 class GameObject;

@@ -30,6 +30,27 @@ set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
+# El class-key (class o struct) con el que se declara un tipo forma parte del
+# nombre del simbolo en MSVC: si un header adelanta "class Mesh" y otro define
+# "struct Mesh", cada unidad de compilacion genera un simbolo distinto y el
+# enlazado falla con LNK2019 aunque el codigo sea identico. GCC y Clang
+# ignoran el class-key (por eso el fallo solo se ve al compilar con MSVC) pero
+# avisan del desajuste: GCC con -Wmismatched-tags y MSVC con C4099, que sale
+# en el nivel de aviso 4. El aviso se convierte en error, con lo que la
+# inconsistencia aparece al compilar y no al publicar el instalador.
+include(CheckCXXCompilerFlag)
+if(MSVC)
+    check_cxx_compiler_flag("/we4099" FUNSHI_AVISO_CLASS_KEY)
+    if(FUNSHI_AVISO_CLASS_KEY)
+        add_compile_options($<$<COMPILE_LANGUAGE:CXX>:/we4099>)
+    endif()
+else()
+    check_cxx_compiler_flag("-Werror=mismatched-tags" FUNSHI_AVISO_CLASS_KEY)
+    if(FUNSHI_AVISO_CLASS_KEY)
+        add_compile_options($<$<COMPILE_LANGUAGE:CXX>:-Werror=mismatched-tags>)
+    endif()
+endif()
+
 # Runtime de C++ de MSVC (CMP0091): el engine y las .dll de script que compila
 # en runtime tienen que usar el MISMO CRT. Los SerializeField cruzan la frontera
 # de la .dll con std::string, std::vector y std::function: la memoria se aloca

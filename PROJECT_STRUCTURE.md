@@ -101,7 +101,7 @@ FunshiEngineGL/                          ← raíz del repo
 ├── ARQUITECTURA_ESTADOS_GUI.md          ← estados/menú/GUI internas (diseño + Fases 1-3)
 ├── MANUAL_DE_USO.md                     ← manual de usuario (editor + scripting C++/Java)
 ├── FLUJO_DE_RAMAS.md                    ← convención de ramas (develop/test/staging/release)
-├── .github/workflows/ci.yml             ← CI: engine en Ubuntu + pruebas headless en Linux/Win
+├── .github/workflows/ci.yml             ← CI: engine en Ubuntu y en Windows (MSVC) + pruebas headless
 ├── .github/workflows/release.yml        ← instaladores Qt IFW (.run) e Inno (.exe) por tag
 ├── .github/workflows/windows-release.yml← build+release específico de Windows
 ├── .gitignore / .gitattributes
@@ -1384,6 +1384,12 @@ GameScene → coordina todos los subsistemas del frame
   las headless en Windows con el **generador multi-config** (Visual Studio),
   donde cada configuración compila en su propia carpeta: lo que el proyecto
   genera en tiempo de configuración tiene que ser por configuración.
+- El *class-key* (`class` o `struct`) con el que se declara un tipo forma parte
+  del nombre del símbolo en MSVC: una declaración adelantada con un key y la
+  definición con el otro generan dos símbolos distintos y el enlazado falla
+  con `LNK2019` aunque el código sea idéntico (GCC y Clang lo ignoran). Por
+  eso el build avisa y el aviso es error: C4099 en MSVC (`/we4099`) y
+  `-Werror=mismatched-tags` en GCC y Clang.
 - `.github/workflows/release.yml` y `windows-release.yml` también ejecutan la
   suite (y `estructuras-tests`) al generar los instaladores por tag. El job de
   Windows usa el generador por defecto (multi-config), que es el mismo que

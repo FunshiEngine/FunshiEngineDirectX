@@ -22,9 +22,11 @@
 #include "../Colliders/Collider.h"
 
 // El cuerpo fisico de bullet se usa por puntero; el include pesado de bullet
-// solo lo necesita RigidBody.cpp.
+// solo lo necesita RigidBody.cpp. El class-key de cada tipo es el de su
+// definicion en bullet: MSVC lo incluye en el nombre del simbolo, asi que un
+// "class" aqui y un "struct" alla rompen el enlazado.
 class btRigidBody;
-class btDefaultMotionState;
+struct btDefaultMotionState;
 
 // RAII: es duenio de su btRigidBody y su btDefaultMotionState. createRigidBody
 // es reentrante (descarta el cuerpo anterior antes de recrearlo).
