@@ -19,6 +19,9 @@
 #include "AudioSource.h"
 
 #include "../../Audio/AudioEngine.h"
+#include "Herramientas/LimitesSerializacion.h"
+
+#include <iostream>
 
 void AudioSource::serializeComponent(std::ofstream* file) {
     if (!file || !file->is_open()) return;
@@ -34,7 +37,16 @@ void AudioSource::serializeComponent(std::ofstream* file) {
 void AudioSource::deserializeComponent(std::ifstream* file) {
     if (!file || !file->is_open()) return;
     std::size_t len = 0;
-    file->read(reinterpret_cast<char*>(&len), sizeof(len));
+    // El nombre del clip lo controla el archivo: sin cota, un valor enorme
+    // hace que la reserva lance `std::length_error` y el motor aborte.
+    if (!LimitesSerializacion::leerLongitud(*file, len,
+                                            LimitesSerializacion::kNombre, 1,
+                                            0)) {
+        std::cerr << "Nombre de clip de audio invalido en el binario (len "
+                  << len << "); se corta la lectura del componente\n";
+        file->setstate(std::ios::failbit);
+        return;
+    }
     if (len > 0) {
         clip.resize(len);
         file->read(clip.data(), static_cast<std::streamsize>(len));
