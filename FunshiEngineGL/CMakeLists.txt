@@ -834,7 +834,12 @@ target_compile_definitions(mods-test-plugin-sin-simbolo
 
 # Rutas de los plugins de prueba, resueltas en tiempo de generacion: el test
 # las empaqueta en un .fmod y las carga de verdad.
-file(GENERATE OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/generated/RutasPluginsMods.h CONTENT
+# El header se genera por configuracion porque la ruta del plugin depende de
+# ella: con un generador multi-config (Visual Studio, Ninja Multi-Config) cada
+# configuracion compila en su propia carpeta, de modo que un unico archivo con
+# un unico contenido no valdria para todas. El include del test apunta a la
+# carpeta de la configuracion que se esta compilando.
+file(GENERATE OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/generated/$<CONFIG>/RutasPluginsMods.h CONTENT
 "// Generado por CMake. No editar a mano.
 #pragma once
 #define FUNSHI_MODS_PLUGIN_A \"$<TARGET_FILE:mods-test-plugin-a>\"
@@ -864,7 +869,7 @@ target_link_libraries(mods-tests PRIVATE funshi_diagnostics_core funshi_miniz)
 target_include_directories(mods-tests PRIVATE
     ${SRC_DIR}
     ${CMAKE_SOURCE_DIR}/External
-    ${CMAKE_CURRENT_BINARY_DIR}/generated
+    ${CMAKE_CURRENT_BINARY_DIR}/generated/$<CONFIG>
 )
 set_target_properties(mods-tests PROPERTIES
     CXX_STANDARD 17
