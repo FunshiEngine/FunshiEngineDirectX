@@ -175,8 +175,14 @@ struct TerminalSession::Impl {
                 // EOF o error terminal: reapear el hijo para evitar zombie
                 if (proceso > 0) {
                     int estado = 0;
-                    waitpid(proceso, &estado, WNOHANG);
-                    hijoReapeado.store(true, std::memory_order_release);
+                    const pid_t reaped = waitpid(proceso, &estado, WNOHANG);
+                    // Solo se marca como reapeado si el hijo termino de verdad:
+                    // waitpid devuelve 0 cuando el hijo sigue vivo (aun no
+                    // fue reapeado) y -1 si ya no es hijo nuestro. Marcarlo
+                    // en cualquiera de los dos casos dejaba el proceso como
+                    // zombie para siempre.
+                    if (reaped == proceso)
+                        hijoReapeado.store(true, std::memory_order_release);
                 }
                 break;
             }
@@ -524,7 +530,9 @@ void TerminalSession::detener() {
         impl_->terminal = -1;
     }
     if (impl_->proceso > 0) {
-        // Evitar doble reap: si el lector ya lo reapeó, solo marcar.
+        // Evitar doble reap: si el lector ya lo reapeo, solo marcar. El lector
+        // solo marca cuando waitpid devolvio el pid, asi que aqui el hijo
+        // sigue vivo o ya no es hijo nuestro (ECHILD).
         if (!impl_->hijoReapeado.load(std::memory_order_acquire)) {
             int estado = 0;
             pid_t resultado = waitpid(impl_->proceso, &estado, WNOHANG);
