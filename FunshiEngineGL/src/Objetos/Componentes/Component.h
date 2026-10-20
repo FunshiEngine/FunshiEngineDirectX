@@ -35,7 +35,7 @@ protected:
 	virtual void deserializeComponent(std::ifstream* fileNamePathContentObject) = 0;
 public:
 	bool settingsObjectComponent = false;
-	virtual ~Component() {} // Destructor virtual para hacer que la clase sea polim�rfica.
+	virtual ~Component() {} // Destructor virtual para hacer que la clase sea polimórfica.
 
 	virtual void saveComponent(std::ofstream* fileNamePathContentObject) = 0;
 
