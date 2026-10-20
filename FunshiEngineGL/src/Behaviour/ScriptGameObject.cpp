@@ -291,6 +291,22 @@ void serviciosDetenerSonido(int handle) {
     g_sonidosScript.retirar(handle);
 }
 
+bool serviciosReproducirMusica(const char* ruta, float volumen, float fundido) {
+    if (!g_audio || !ruta) return false;
+    // La ruta se resuelve contra la raiz de assets del proyecto (src<nombre>),
+    // igual que los efectos de sonido.
+    const std::string archivo = EditorConfig::absolutizarRuta(ruta);
+    return g_audio->reproducirMusica(archivo, volumen, fundido);
+}
+
+void serviciosDetenerMusica(float fundido) {
+    if (g_audio) g_audio->detenerMusica(fundido);
+}
+
+void serviciosVolumenMusica(float volumen) {
+    if (g_audio) g_audio->setVolumenMusica(volumen);
+}
+
 void* serviciosObjetoPorNombre(const char* nombre) {
     if (!g_escena || !nombre) return nullptr;
     // Recorrido en preorden de la lista lineal del registro (ya ordenada por
@@ -625,7 +641,10 @@ const ScriptServices* tablaServicios() {
         /* .interfazEstablecerEstado = */ serviciosInterfazEstablecerEstado,
         /* .interfazEstablecerValor  = */ serviciosInterfazEstablecerValor,
         /* .interfazValor     = */ serviciosInterfazValor,
-        /* .version           = */ 7,
+        /* .reproducirMusica  = */ serviciosReproducirMusica,
+        /* .detenerMusica     = */ serviciosDetenerMusica,
+        /* .volumenMusica     = */ serviciosVolumenMusica,
+        /* .version           = */ 8,
     };
     return &tabla;
 }

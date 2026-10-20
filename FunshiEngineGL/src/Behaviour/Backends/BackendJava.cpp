@@ -124,6 +124,9 @@ const char* SRC_NATIVO =
     "    public static native void imprimir(String texto);\n"
     "    public static native int reproducirSonido(String ruta, float volumen, boolean bucle);\n"
     "    public static native void detenerSonido(int handle);\n"
+    "    public static native boolean reproducirMusica(String ruta, float volumen, float fundido);\n"
+    "    public static native void detenerMusica(float fundido);\n"
+    "    public static native void volumenMusica(float volumen);\n"
     "    public static native long objetoPorNombre(String nombre);\n"
     "    public static native long objetoPorId(int id);\n"
     "    public static native long objetoPorEtiqueta(String etiqueta);\n"
@@ -816,6 +819,21 @@ jint nativoReproducirSonido(JNIEnv* env, jclass, jstring ruta, jfloat volumen,
 void nativoDetenerSonido(JNIEnv*, jclass, jint handle) {
     MotorScript::tablaServicios()->detenerSonido(handle);
 }
+jboolean nativoReproducirMusica(JNIEnv* env, jclass, jstring ruta, jfloat volumen,
+                                jfloat fundido) {
+    if (!ruta) return JNI_FALSE;
+    const std::string archivo = leerCadena(env, ruta);
+    return MotorScript::tablaServicios()->reproducirMusica(
+               archivo.c_str(), volumen, fundido)
+               ? JNI_TRUE
+               : JNI_FALSE;
+}
+void nativoDetenerMusica(JNIEnv*, jclass, jfloat fundido) {
+    MotorScript::tablaServicios()->detenerMusica(fundido);
+}
+void nativoVolumenMusica(JNIEnv*, jclass, jfloat volumen) {
+    MotorScript::tablaServicios()->volumenMusica(volumen);
+}
 jlong nativoObjetoPorNombre(JNIEnv* env, jclass, jstring nombre) {
     if (!nombre) return 0;
     const std::string texto = leerCadena(env, nombre);
@@ -1104,6 +1122,13 @@ bool registrarNativos(const std::string& clasesDir, std::string& error) {
          reinterpret_cast<void*>(&nativoReproducirSonido)},
         {const_cast<char*>("detenerSonido"), const_cast<char*>("(I)V"),
          reinterpret_cast<void*>(&nativoDetenerSonido)},
+        {const_cast<char*>("reproducirMusica"),
+         const_cast<char*>("(Ljava/lang/String;FF)Z"),
+         reinterpret_cast<void*>(&nativoReproducirMusica)},
+        {const_cast<char*>("detenerMusica"), const_cast<char*>("(F)V"),
+         reinterpret_cast<void*>(&nativoDetenerMusica)},
+        {const_cast<char*>("volumenMusica"), const_cast<char*>("(F)V"),
+         reinterpret_cast<void*>(&nativoVolumenMusica)},
         {const_cast<char*>("objetoPorNombre"),
          const_cast<char*>("(Ljava/lang/String;)J"),
          reinterpret_cast<void*>(&nativoObjetoPorNombre)},

@@ -1153,7 +1153,7 @@ void onUpdate(GameObject* owner, float deltaTime) override {
 }
 ```
 
-### 13.4 Servicios de escena: tabla `servicios` (v4)
+### 13.4 Servicios de escena: tabla `servicios` (v8)
 
 Ademas de `api`, `IScriptBehaviour` expone `this->servicios`: acceso a los
 servicios del motor que **no son del objeto** sino de la escena (audio,
@@ -1193,6 +1193,9 @@ Misma convencion APPEND-ONLY con `servicios->version` al final.
 | `servicios->interfazEstablecerEstado(iface,json)` (v6) | `bool (void*, const char*)` | reemplaza el arbol de estado que el motor entrega a la interfaz; `false` si el texto no es un objeto JSON valido |
 | `servicios->interfazEstablecerValor(iface,ruta,valorJson)` (v6) | `bool (void*, const char*, const char*)` | fija un valor en la ruta (JSON Pointer, p. ej. `"/jugador/vida"`; se acepta sin la barra inicial), creando los objetos intermedios; `valorJson` es un literal JSON de cualquier tipo |
 | `servicios->interfazValor(iface,ruta)` (v6) | `const char* (void*, const char*)` | valor que la interfaz devolvio al motor en esa ruta, como texto JSON, o `nullptr` si no existe |
+| `servicios->reproducirMusica(ruta,vol,fundido)` (v8) | `bool (const char*, float, float)` | reproduce una pista de musica por **ruta** (relativa a `src<proyecto>/` o absoluta); `false` si el archivo no existe. Si la pista no esta en la lista del componente `Musica`, suena sola |
+| `servicios->detenerMusica(fundido)` (v8) | `void (float)` | detiene la musica (con fundido de salida opcional) |
+| `servicios->volumenMusica(vol)` (v8) | `void (float)` | volumen del bus de musica (todas las pistas juntas, de 0 a 1) |
 
 Los deltas del mouse se acumulan durante el frame y se reinician al avanzar al
 siguiente. Se capturan en Juego y cuando el cursor esta bloqueado durante
@@ -1378,6 +1381,7 @@ Las posiciones consultadas o fijadas por `Nativo.posicionX/Y/Z` y
 | Contactos | `colisionInicio`, `colisionPersistencia`, `colisionFin` |
 | Consola | `Nativo.imprimir` |
 | Audio de script | `Nativo.reproducirSonido(ruta, volumen, bucle)`, `Nativo.detenerSonido(handle)` |
+| Musica | `Nativo.reproducirMusica(ruta, volumen, fundido)`, `Nativo.detenerMusica(fundido)`, `Nativo.volumenMusica(volumen)` |
 | Busqueda de objetos | `Nativo.objetoPorNombre(nombre)`, `Nativo.objetoPorId(id)`, `Nativo.objetoPorEtiqueta(etiqueta)`; devuelven `0` si no existe |
 | Gravedad global | `Nativo.fijarGravedadGlobal(x, y, z)`, `Nativo.gravedadGlobalX/Y/Z` |
 | Gestion de objetos | `Nativo.crearObjeto(nombre, padre)`, `Nativo.destruirObjeto(objeto)`, `Nativo.clonarObjeto(original, padre)`, `Nativo.agregarColliderEsfera/cubo(objeto, radio)`, `Nativo.agregarRigidBody(objeto, masa)` |

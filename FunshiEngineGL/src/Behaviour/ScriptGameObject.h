@@ -36,7 +36,10 @@ namespace MotorScript {
 // versionar la tabla; no promete compatibilidad binaria entre versiones del
 // motor. Incrementar esta version cuando cambie el contrato/API/runtime: el
 // cache la incorpora y recompila los scripts con el motor actualizado.
-constexpr int versionRuntimeScript = 11;
+// La tabla de servicios tambien es APPEND-ONLY y comparte este numero: la
+// v8 anadio las funciones de musica, asi que los scripts compilados contra
+// el contrato viejo se recompilan con la cabecera nueva.
+constexpr int versionRuntimeScript = 12;
 struct ApiScriptGameObject {
     // --- v1 (original) ---
     const char* (*nombre)(const void* objeto);
@@ -213,6 +216,18 @@ struct ScriptServices {
     // o nullptr si no existe. El puntero vale hasta la proxima lectura de la
     // misma interfaz.
     const char* (*interfazValor)(void* interfaz, const char* rutaJson);
+
+    // --- v8: musica (por RUTA) ---
+    // Reproduce una pista de musica (por RUTA, como los efectos: relativa a la
+    // raiz de assets del proyecto o absoluta). Devuelve false si no hay motor
+    // o el archivo no existe (queda avisado en el log). Si la pista no esta en
+    // la lista del componente `Musica` de la escena, suena sola: al acabarse
+    // no hay pista siguiente.
+    bool (*reproducirMusica)(const char* ruta, float volumen, float fundido);
+    // Detiene la musica (con fundido de salida opcional).
+    void (*detenerMusica)(float fundido);
+    // Volumen del bus de musica (todas las pistas juntas, de 0 a 1).
+    void (*volumenMusica)(float volumen);
 
     // Version de la tabla (siempre al final).
     int version;

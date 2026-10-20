@@ -57,6 +57,7 @@
 #include <glm/gtc/type_ptr.hpp>
 
 #include "TempPruebas.h"
+#include "../FunshiEngineGL/src/Audio/AudioEngine.h"
 #include "../FunshiEngineGL/src/Assets/AssetException.h"
 #include "../FunshiEngineGL/src/Assets/AssetManager.h"
 #include "../FunshiEngineGL/src/Assets/Mesh.h"
@@ -2801,6 +2802,44 @@ void spriteRendererSerializaRoundTrip() {
           "un sprite nuevo cubre la textura completa");
 }
 
+// La API de scripts expone la musica por ruta (v8 de la tabla de servicios).
+void musicaDesdeScripts() {
+    TempPruebas::CarpetaPrueba carpeta("funshi_musica_scripts");
+    const std::string pista = (carpeta.ruta() / "tema.ogg").string();
+    std::ofstream(pista) << "contenido";
+
+    AudioEngine audio;
+    audio.esperarPilaVacia();
+
+    MotorScript::inyectarServiciosScript(&audio, nullptr, nullptr);
+    const MotorScript::ScriptServices* servicios = MotorScript::tablaServicios();
+    CHECK(servicios->version >= 8,
+          "los servicios publican la musica por ruta");
+    CHECK(servicios->reproducirMusica != nullptr &&
+              servicios->detenerMusica != nullptr &&
+              servicios->volumenMusica != nullptr,
+          "la tabla expone las tres funciones de musica");
+
+    CHECK(servicios->reproducirMusica(pista.c_str(), 0.8f, 0.0f),
+          "una pista existente se reproduce desde un script");
+    CHECK(!servicios->reproducirMusica("", 1.0f, 0.0f),
+          "una pista sin ruta no se reproduce");
+    const std::string inexistente = (carpeta.ruta() / "no_existe.ogg").string();
+    CHECK(!servicios->reproducirMusica(inexistente.c_str(), 1.0f, 0.0f),
+          "una pista cuyo archivo no existe no se reproduce");
+
+    // El volumen del bus y la deteccion no dejan nada sin cerrar.
+    servicios->volumenMusica(0.5f);
+    servicios->detenerMusica(0.0f);
+
+    // Sin motor de audio la API es tolerante: no reproduce y no falla.
+    MotorScript::inyectarServiciosScript(nullptr, nullptr, nullptr);
+    CHECK(!servicios->reproducirMusica(pista.c_str(), 1.0f, 0.0f),
+          "sin motor de audio la musica no se reproduce");
+    servicios->volumenMusica(1.0f);
+    servicios->detenerMusica(0.0f);
+}
+
 int main() {
     nombresPorDefecto();
     roundTripDeEscena();
@@ -2832,6 +2871,7 @@ int main() {
     movimientoFisicoYSaltoDesdeScripts();
     eventosDeContactoExponenColliderYPropietario();
     busquedaDeObjetosPorNombreIdYEtiqueta();
+    musicaDesdeScripts();
     propiedadesFisicasDesdeScripts();
     rigidBodySerializaPropiedadesNuevas();
     sensorDetectaSinRespuestaYPlano2D();

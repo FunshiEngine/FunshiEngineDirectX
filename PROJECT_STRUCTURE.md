@@ -816,8 +816,8 @@ solo como orquestador de arranque y bucle.
   `camposReflejados()`; el motor inyecta la tabla `MotorScript::ApiScriptGameObject`
   (nombre, transform completo con getters de rotacion/escala, log y control
   horizontal/salto sobre `RigidBody`) y la tabla
-  `MotorScript::ScriptServices` (audio, busqueda de objetos por nombre, id o
-  etiqueta y
+  `MotorScript::ScriptServices` (audio y musica por ruta, busqueda de objetos
+  por nombre, id o etiqueta y
   consulta de teclado via `InputScripts`, inyectadas por `GameScene` al iniciar
   la simulacion) para que el script no enlace contra el motor. Ambas tablas siguen
   versionado APPEND-ONLY con campo `version` final para guardas en runtime.
@@ -1079,8 +1079,8 @@ también con `BUILD_ENGINE=OFF`):
   largos).
 - `audio-tests` (25): `AudioEngine` con `NullAudioBackend` (contrato de la cola
   de comandos: reproducción por ruta, handles, encolado, detención, volumen) y
-  la cola de música con un backend falso (registro de pistas, reproducción,
-  bus, silencio, detención y el tick de la escena).
+  la cola de música con un backend falso (la lista de pistas por ruta, su
+  reproducción, el bus, el silencio, la detención y el tick de la escena).
 - `interface-component-tests` (16): serialización binaria del `InterfaceComponent`
   (ruta del `.html` + colocación): round-trip del formato nuevo y lectura del
   formato viejo (solo el nombre) sin consumir bytes de más, que desalinearía el
@@ -1144,7 +1144,7 @@ también con `BUILD_ENGINE=OFF`):
 - `orquestador-estado-tests`: transiciones de Depuración/Juego, pausa, solicitud
   consumible de Reset, fin/Escape por estado, teclas del editor y atajos frente
   a ImGui.
-- `escena-serializacion-tests` (151): round-trip completo de escena (guardar →
+- `escena-serializacion-tests` (358): round-trip completo de escena (guardar →
   recargar → conservar nombre, id y jerarquía), defensas del índice de escena
   (líneas corruptas saltadas con aviso, auto-sanado de hijos con id 0),
   apertura avisada de archivos `Binario` inexistente sin `std::remove()`
@@ -1158,7 +1158,9 @@ también con `BUILD_ENGINE=OFF`):
   agregar un componente crea unicamente el que falta. Cubre ademas el
   reparentado: preserva la pose mundial reescribiendo el local como
   `inverse(padre) × mundo` (los descendientes no saltan), refresca el cuerpo
-  fisico del objeto y deja el local consistente en disco.
+  fisico del objeto y deja el local consistente en disco. Comprueba tambien la
+  tabla de servicios de scripts: la música se reproduce por ruta (con y sin
+  motor de audio conectado) y el volumen del bus y la deteccion se aplican.
 - `diagnostic-registry-tests` (26): `RegistroDiagnosticos`: registro de eventos
   de diagnóstico (nivel, módulo, timestamp UTC), historial JSONL con retención y
   lectura acotada, deduplicación por clave y el volcado de `RuntimeException`.
