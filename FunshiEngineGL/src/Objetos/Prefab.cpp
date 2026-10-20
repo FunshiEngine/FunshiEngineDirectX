@@ -29,6 +29,7 @@
 #include "Scenes/EditorController.h"
 #include "ClonadorObjetos.h"
 #include "Configuracion/EditorConfig.h"
+#include "Herramientas/TypeUtils.h"
 #include "Objetos/Componentes/ComponentFactory.h"
 #include "Objetos/Componentes/Material.h"
 #include "Objetos/Componentes/Light.h"
@@ -123,29 +124,14 @@ GameObjectProps leerGameObjectProps(std::ifstream& in) {
     return props;
 }
 
-// Obtiene el nombre de tipo demangleado del componente (consistente con ComponentFactory y serializaciÃ³n de escena)
+// Obtiene el nombre de tipo demangleado del componente (consistente con ComponentFactory y serialización de escena)
 namespace {
 std::string obtenerNombreComponente(const Component* comp) {
-    const std::type_info& ti = typeid(*comp);
-    const char* name = ti.name();
-    // RTTI names (GCC/Clang): "N8Objetos10Componentes9TransformE", "N8Objetos10Componentes5ColorE", etc.
-    std::string typeName(name);
-    // Extraer nombre simple (despuÃ©s de :: final)
-    size_t pos = typeName.find_last_of(':');
-    if (pos != std::string::npos) typeName = typeName.substr(pos + 1);
-    // Eliminar prefijos de namespace comunes (GCC/Clang mangling)
-    if (typeName.rfind("N8Objetos10Componentes", 0) == 0) {
-        typeName = typeName.substr(21);
-    }
-    // Eliminar prefijo de longitud (dÃ­gitos iniciales que indican la longitud del nombre)
-    // Ej: "9TransformE" -> "TransformE"
-    while (!typeName.empty() && std::isdigit(typeName[0])) {
-        typeName = typeName.substr(1);
-    }
-    // Eliminar sufijos de template/size
-    size_t end = typeName.find('E');
-    if (end != std::string::npos) typeName = typeName.substr(0, end);
-    return typeName;
+    // Nombre simple y portable: sin namespace y sin el prefijo de class-key
+    // que MSVC deja en typeid().name() ("class Transform"). El nombre con el
+    // que se persiste un componente tiene que ser el mismo en Windows y en
+    // Linux, porque es la clave con la que el catalogo lo reconoce al leer.
+    return nombreSimpleTipo(typeid(*comp));
 }
 } // namespace
 
@@ -224,17 +210,22 @@ GameObject* leerArbol(std::ifstream& in, EditorController* editor, GameObject* p
         in.read(&typeName[0], static_cast<std::streamsize>(length));
         if (!in) return nullptr;
 
-        // Crear componente usando ComponentFactory (consistente con deserializaciÃ³n de escena)
+        // El nombre persistido puede venir con el prefijo de class-key o con
+        // el namespace (un build de Windows escribe "class Transform"); se
+        // normaliza al nombre simple con el que esta registrado el tipo.
+        const std::string tipoSimple = nombreSimpleTipo(typeName);
+
+        // Crear componente usando ComponentFactory (consistente con deserialización de escena)
         std::unique_ptr<Component> comp = nullptr;
 
         // Caso especial: Transform - el objeto ya tiene uno de Entity
-        if (typeName == "Transform") {
+        if (tipoSimple == "Transform") {
             if (Transform* t = crudo->getComponent<Transform>()) {
                 t->loadComponent(&in);
             }
         } else {
             // Usar ComponentFactory para los demÃ¡s
-            comp = ComponentFactory::create(typeName, *crudo);
+            comp = ComponentFactory::create(tipoSimple, *crudo);
             if (comp) {
                 comp->loadComponent(&in);
                 crudo->addComponent(std::move(comp));

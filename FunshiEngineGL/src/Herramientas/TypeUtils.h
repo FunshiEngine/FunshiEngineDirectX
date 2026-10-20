@@ -20,8 +20,19 @@
 #define TYPEUTILS_H
 
 #include <string>
+#include <typeinfo>
 
 // Demangling del nombre de clase RTTI. Definido en TypeUtils.cpp.
 std::string demangle(const char* name);
+
+// Nombre simple y portable de un tipo: sin el namespace y sin el prefijo de
+// class-key que MSVC deja en typeid().name() ("class Transform", "struct
+// Color"). Admite el nombre crudo de typeid() en cualquier plataforma y
+// tambien un nombre ya demangleado o persistido en un archivo, de modo que el
+// mismo nombre sirve para escribir y para leer en Windows y en Linux.
+std::string nombreSimpleTipo(const std::string& nombre);
+
+// Nombre simple del tipo de un objeto (ver nombreSimpleTipo).
+std::string nombreSimpleTipo(const std::type_info& tipo);
 
 #endif // TYPEUTILS_H

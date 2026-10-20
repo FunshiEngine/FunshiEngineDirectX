@@ -53,7 +53,7 @@ bool copiarComponente(GameObject* destino, Component* origen) {
         fs::remove(temporal, ec);
         return false;
     }
-    const std::string tipo = demangle(typeid(*origen).name());
+    const std::string tipo = nombreSimpleTipo(typeid(*origen));
     bool ok = false;
     if (tipo == "Transform") {
         // El objeto ya nace con su Transform (lo pone Entity): se copian los

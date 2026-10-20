@@ -1395,6 +1395,13 @@ GameScene → coordina todos los subsistemas del frame
   con `LNK2019` aunque el código sea idéntico (GCC y Clang lo ignoran). Por
   eso el build avisa y el aviso es error: C4099 en MSVC (`/we4099`) y
   `-Werror=mismatched-tags` en GCC y Clang.
+- `typeid(x).name()` no es el nombre del tipo: MSVC escribe `"class Transform"`
+  y GCC/Clang escriben el *mangling* (`"9Transform"`). Por eso el nombre con el
+  que se **persiste** un componente (prefabs, escenas, catálogo) lo produce un
+  único helper, `nombreSimpleTipo()` de `Herramientas/TypeUtils`, que quita el
+  prefijo de class-key y se queda con el último componente del namespace. Es el
+  mismo helper al escribir, al leer y al comparar, de modo que un artefacto
+  escrito en una plataforma se lee en la otra.
 - `.github/workflows/release.yml` y `windows-release.yml` también ejecutan la
   suite (y `estructuras-tests`) al generar los instaladores por tag. El job de
   Windows usa el generador por defecto (multi-config), que es el mismo que

@@ -31,7 +31,7 @@ namespace {
 // Esos prefijos no son plataforma-portables: en Linux el demangle produce el
 // nombre pelado ("Transform") y la serializacion de la escena pierde consistencia
 // en Windows (ComponentFactory no reconoce "class Transform" al deserializar).
-std::string normalizarNombreMSVC(std::string nombre) {
+void quitarPrefijoClassKey(std::string& nombre) {
     constexpr const char* prefijos[] = {"class ", "struct ", "union ", "enum "};
     for (const char* prefijo : prefijos) {
         const std::size_t len = std::char_traits<char>::length(prefijo);
@@ -40,7 +40,6 @@ std::string normalizarNombreMSVC(std::string nombre) {
             break;
         }
     }
-    return nombre;
 }
 } // namespace
 
@@ -54,6 +53,25 @@ std::string demangle(const char* name) {
 #else
     // En MSVC no necesita demangling, pero si normalizacion del prefijo de tipo
     // para que los nombres serializados coincidan con los de GCC/Linux.
-    return normalizarNombreMSVC(name ? name : "");
+    std::string resultado = name ? name : "";
+    quitarPrefijoClassKey(resultado);
+    return resultado;
 #endif
+}
+
+std::string nombreSimpleTipo(const std::string& nombre) {
+    std::string base = demangle(nombre.c_str());
+    // Un nombre persistido en un archivo puede traer el prefijo de class-key
+    // aunque el demangle de la plataforma no lo toque: p. ej. "class Transform"
+    // escrito por un build de Windows y leido en Linux.
+    quitarPrefijoClassKey(base);
+    // Namespace: se queda con el ultimo componente ("Objetos::Componentes::Color"
+    // -> "Color"), que es la clave con la que se registran los componentes.
+    const std::size_t separador = base.rfind("::");
+    if (separador != std::string::npos) base = base.substr(separador + 2);
+    return base;
+}
+
+std::string nombreSimpleTipo(const std::type_info& tipo) {
+    return nombreSimpleTipo(std::string(tipo.name()));
 }
