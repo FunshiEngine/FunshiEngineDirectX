@@ -30,7 +30,7 @@ public:
     ShaderUnavailableException()
         : RuntimeException("OpenGL moderna no disponible: no se pudieron "
                            "cargar las funciones de shaders/VAO (segun "
-                           "GLFuncs). Se usa el pipeline inmediato.") {}
+                           "GLFuncs).", "ShaderUnavailableException") {}
 };
 
 class ShaderCompileException : public RuntimeException {
@@ -38,14 +38,14 @@ public:
     ShaderCompileException(const std::string& stage,
                            const std::string& infoLog)
         : RuntimeException("Error de compilacion del shader " + stage + ":\n" +
-                           infoLog) {}
+                           infoLog, "ShaderCompileException") {}
 };
 
 class ShaderLinkException : public RuntimeException {
 public:
     ShaderLinkException(const std::string& infoLog)
         : RuntimeException("Error de linkeo del programa de shaders:\n" +
-                           infoLog) {}
+                           infoLog, "ShaderLinkException") {}
 };
 
 #endif

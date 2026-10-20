@@ -17,6 +17,7 @@
     SPDX-License-Identifier: Apache-2.0
 */
 #include "MeshRenderer.h"
+#include "../Diagnosticos/RegistroDiagnosticos.h"
 
 #include <glm/gtc/type_ptr.hpp>
 
@@ -31,6 +32,7 @@
 #include "../Objetos/Componentes/Color.h"
 #include "../Objetos/Componentes/Material.h"
 #include "../Objetos/Componentes/Model.h"
+#include "../Objetos/GameObject.h"
 #include "../Objetos/Modelos3D.h"
 #include "MeshGPU.h"
 #include "Shaders/ShaderProgram.h"
@@ -62,6 +64,8 @@ bool MeshRenderer::inicializar() {
                                       kDefaultFragmentShader));
         aplicarLuces();
     } catch (const std::exception& e) {
+        registrarExcepcionDiagnostica("Rendering/MeshRenderer", e,
+                                      NivelDiagnostico::Error);
         // Sin shader no hay pipeline: available() queda en false y la pasada
         // dibuja menos, sin objeto que avise uno por uno. El error va al log
         // porque es la causa raiz de una escena vacia.
@@ -138,7 +142,7 @@ void MeshRenderer::aplicarLuces() {
     }
 }
 
-void MeshRenderer::aplicarMaterial(Modelos3D* objeto) {
+void MeshRenderer::aplicarMaterial(GameObject* objeto) {
     if (Material* material = objeto->getComponent<Material>()) {
         shader_->setVec4("uMaterialAmbient", material->getAmbient());
         shader_->setVec4("uMaterialDiffuse", material->getDiffuse());
@@ -188,13 +192,15 @@ bool MeshRenderer::enlazarSlotTextura(const std::string& path, int unit,
         return true;
     } catch (const std::exception& e) {
         texturasFallidas_.insert(path); // no reintentar por frame
+        registrarExcepcionDiagnostica("Rendering/MeshRenderer", e,
+                                      NivelDiagnostico::Advertencia);
         std::cerr << "[MeshRenderer] Textura '" << path << "': " << e.what()
                   << '\n';
         return false;
     }
 }
 
-void MeshRenderer::aplicarTexturas(Modelos3D* objeto, const Mesh* mesh) {
+void MeshRenderer::aplicarTexturas(GameObject* objeto, const Mesh* mesh) {
     // Por defecto: sin texturas en ningun slot.
     shader_->setInt("uUseTexture", 0);
     shader_->setInt("uUseSpecularMap", 0);
@@ -237,13 +243,7 @@ void MeshRenderer::aplicarTexturas(Modelos3D* objeto, const Mesh* mesh) {
 bool MeshRenderer::intentarRender(Modelos3D* objeto, const float view[16],
                                   const float projection[16],
                                   float deltaTime) {
-    if (!inicializar()) return false;
-
-    // El render NO simula: los scripts y la fisica se actualizan una sola vez
-    // por frame en GameScene::update (y solo en play). Antes se llamaba aca a
-    // objeto->update(), lo que corria los scripts tambien en el editor, los
-    // duplicaba en play y reactivaba el loop al detener el play.
-    (void)deltaTime;
+    if (!objeto) return false;
 
     // El componente Model (path) manda sobre el path actual. Se toma el
     // puntero a la malla DESPUES de este paso, porque setPath() puede
@@ -253,7 +253,30 @@ bool MeshRenderer::intentarRender(Modelos3D* objeto, const float view[16],
         model && model->getPath() != objeto->getPath())
         objeto->setPath(model->getPath());
 
-    const Mesh* mesh = objeto->getMesh();
+    Transform* transform = objeto->getGlobalTransform();
+    if (!transform) return false;
+
+    float modelo[16];
+    buildMatrixFromTransform(transform, modelo);
+    return intentarRenderMesh(objeto, objeto->getMesh(), modelo, view,
+                              projection, deltaTime);
+}
+
+bool MeshRenderer::intentarRenderMesh(GameObject* contexto, const Mesh* mesh,
+                                      const float modelo[16],
+                                      const float view[16],
+                                      const float projection[16],
+                                      float deltaTime) {
+    if (!inicializar()) return false;
+
+    // El render NO simula: los scripts y la fisica se actualizan una sola vez
+    // por frame en GameScene::update (y solo en play). Antes se llamaba aca a
+    // objeto->update(), lo que corria los scripts tambien en el editor, los
+    // duplicaba en play y reactivaba el loop al detener el play.
+    (void)deltaTime;
+
+    if (!contexto) return false;
+
     // Sin malla, vacia o sin normales no hay nada que pintar. Ya no existe el
     // modo inmediato de respaldo, asi que se avisa una vez por malla (el loader
     // rellena las normales que faltan, de modo que esto solo deberia tocar a
@@ -268,12 +291,7 @@ bool MeshRenderer::intentarRender(Modelos3D* objeto, const float view[16],
         return false;
     }
 
-    Transform* transform = objeto->getGlobalTransform();
-    if (!transform) return false;
-
-    float modelArr[16];
-    buildMatrixFromTransform(transform, modelArr);
-    const glm::mat4 model = glm::make_mat4(modelArr);
+    const glm::mat4 model = glm::make_mat4(modelo);
 
     // Deja la matriz normal como transpose(inverse(model)) pero identidad si la
     // inversa degenero (fracciones no finitas); evita NaN en el shader.
@@ -290,9 +308,11 @@ bool MeshRenderer::intentarRender(Modelos3D* objeto, const float view[16],
     const glm::mat4 invView = glm::inverse(glm::make_mat4(view));
     shader_->setVec3("uCameraPosition",
                      glm::vec3(invView[3][0], invView[3][1], invView[3][2]));
+    shader_->setFloat("uDistanceFadeStart", horizonteInicio_);
+    shader_->setFloat("uDistanceFadeEnd", horizonteFin_);
 
-    aplicarMaterial(objeto);
-    aplicarTexturas(objeto, mesh);
+    aplicarMaterial(contexto);
+    aplicarTexturas(contexto, mesh);
 
     auto it = gpu_.find(mesh);
     if (it == gpu_.end()) {
@@ -313,7 +333,10 @@ bool MeshRenderer::intentarRender(Modelos3D* objeto, const float view[16],
 
     // El relleno de poligonos es el unico estado valido en un contexto core
     // (no hay glPolygonMode) y el depth test ya lo activa applyBaseState().
+    auto& backend = Rendering::Backend::activeBackend();
+    backend.setBlendEnabled(true);
     it->second->draw();
+    backend.setBlendEnabled(false);
     ShaderProgram::unbind();
     return true;
 }

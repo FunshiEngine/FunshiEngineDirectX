@@ -180,6 +180,14 @@ cd FunshiEngineGL && ./build/FunshiEngineGL.exe   # Windows
   arquitectura en `PROJECT_STRUCTURE.md`.
 - **Bugs técnicos por limitaciones de herramientas**: documentar en
   `DocuTecnicoBugs.md` (patrón, síntomas, fix canónico, checklist de mitigación).
+- **Enums y switch-case**: evaluar de forma recurrente el uso de enumeraciones
+  (`enum class`) y `switch-case` para comparaciones y condicionales en lugar
+  de cadenas de `if-else` sobre valores enteros, strings o magic numbers.
+  Los `enum class` con `switch` exhaustivo (con `default` que lance o loguee)
+  permiten al compilador avisar de casos no cubiertos al agregar valores,
+  evitan errores de typo en strings, y el código resultante es más legible
+  y mantenible. Aplicar al agregar nuevos tipos de componentes, eventos,
+  estados de máquinas, tags, o cualquier conjunto cerrado de valores.
 
 ## Reglas de arquitectura
 
@@ -201,32 +209,58 @@ cd FunshiEngineGL && ./build/FunshiEngineGL.exe   # Windows
   mantener compatibilidad de prefijos y acotar lecturas con `std::min`.
 - **Física** detrás de la fachada `PhysicsEngine` → `IPhysicsBackend`; no usar
   Bullet fuera de `Fisicas/`.
-- **Compatibilidad multiplataforma**: al usar APIs nativas del sistema operativo
-  (Windows API, POSIX, filesystem, threading, dynamic loading, etc.), SIEMPRE
-  verificar y mantener compatibilidad con **Linux y Windows**. Usar guardas
-  `#ifdef _WIN32` / `#else` (Linux/macOS) y aislar el código dependiente de
-  plataforma en capas de abstracción o backends dedicados (p. ej.
-  `IRenderBackend`, `FileSystemWatcher`, `BackendCpp`/`BackendJava`). No asumir
+- **Compatibilidad multiplataforma**: el motor es compatible con **Linux y Windows**,
+  sin excepción. Al usar APIs nativas del sistema operativo (Windows API, POSIX,
+  filesystem, threading, dynamic loading, etc.), SIEMPRE verificar y mantener las
+  dos plataformas. Usar guardas `#ifdef _WIN32` / `#else` (Linux/macOS) y aislar el
+  código dependiente de plataforma en capas de abstracción o backends dedicados
+  (p. ej. `IRenderBackend`, `FileSystemWatcher`, `BackendCpp`/`BackendJava`). No asumir
   que headers o comportamientos de un SO existen en el otro; probar o validar
   compilación cruzada en CI antes de confirmar cambios.
+  - **Énfasis en filesystem y servicios del SO**: es donde más divergen. Al trabajar
+    con rutas, archivos o servicios propios del sistema (separadores `/` frente a `\`,
+    mayúsculas y minúsculas, CRLF frente a LF, `mtime` y latencias del FS, permisos
+    y ACL, symlinks, variables de entorno, procesos hijo, carga dinámica, watchers
+    de archivos, toolchains), diseñar para las dos plataformas desde el primer
+    boceto: `std::filesystem` con el separador nativo, ramas `#ifdef _WIN32` con
+    fallback POSIX documentado, y decisiones probadas por escritura real (no por
+    existencia del directorio). Los patrones conocidos viven en `DocuTecnicoBugs.md`.
+  - **Tests de compatibilidad multisistema**: cada funcionalidad que toque filesystem
+    o servicios del SO lleva su prueba headless que la ejercite en Windows y en Linux
+    (ramas `#ifdef _WIN32` / `#else` en el propio test cuando el contrato difiera por
+    plataforma, o comparación contra `(fs::path(base) / ...).string()` en vez de
+    literales con `/`). Si el test resulta demasiado artificial (simular el SO sin
+    ejercer el contrato real), se deja constancia de por qué no se implementa y se
+    cubre con sonda local o CI en la plataforma real; la decisión queda a evaluar
+    según la funcionalidad.
 
 ## Memoria de trabajo: documentos locales ignorados por git
 
-Dos documentos de trabajo viven en la raíz del repo y están en `.gitignore` a
-propósito: no son documentación del proyecto ni se versionan, pero son la
-memoria con la que un agente retoma el trabajo sin re-investigarlo desde cero:
+Todo el estado local que un agente necesita para retomar el trabajo sin
+re-investigarlo desde cero vive bajo **una única carpeta ignorada por git**,
+`.agentes/`, en la raíz del repo. No es documentación del proyecto ni se
+versiona; es la memoria de trabajo del agente.
 
-| Archivo | Para qué sirve |
+| Ruta | Para qué sirve |
 |---|---|
-| `PLAN GENERAL DE FIX.md` | Lote de correcciones: cada hallazgo con su cadena `síntoma → evidencia → causa → fix → test`, la tabla de avance con los commits que cierran cada ítem y lo que queda por validar. |
-| `MemoryaAgente` | Memoria de contexto entre sesiones: estado del trabajo en curso, sistemas del código ya analizados (con punteros a archivos y líneas), supuestos abiertos, comandos de build/test que funcionan en el entorno y archivos que no se deben tocar. |
+| `.agentes/MEMORIA.md` | Memoria de contexto entre sesiones: estado del trabajo en curso, sistemas del código ya analizados (con punteros a archivos y líneas), supuestos abiertos, hallazgos pendientes, comandos de build/test que funcionan en el entorno y archivos que no se deben tocar. |
+| `.agentes/ARQUITECTURA.md` | Mapa de la estructura local de `.agentes/` y propósito de cada carpeta de trabajo. |
+| `.agentes/PLAN GENERAL DE FIX.md` | Lote de correcciones: cada hallazgo con su cadena `síntoma → evidencia → causa → fix → test`, la tabla de avance con los commits que cierran cada ítem y lo que queda por validar. |
+| `.agentes/auditorias/` | Informes de auditoría por área, uno por archivo: qué se revisó, qué se encontró, con evidencia `archivo:línea`, y si es regresión de un commit reciente o deuda preexistente. |
+| `.agentes/pendiente-revision/PENDIENTE_DE_REVISAR.md` | Lista local de verificaciones manuales todavía pendientes; no forma parte de la documentación versionada del proyecto. |
 
 Reglas:
 
-- **Si falta uno de los dos, recrearlo**: reconstruir su contenido desde el
-  estado real (git log, código fuente, esta guía) y tratarlo desde ese momento
-  como la fuente de contexto de la tarea — no empezar de cero sin comprobar
-  antes qué ya sabía el documento.
+- **Crear lo que haga falta, manteniendo la raíz ordenada**: `.agentes/` es
+  extensible. Un informe nuevo de una revisión puntual es un archivo nuevo en
+  `.agentes/auditorias/`; un tema que ya no tiene archivo propio (por ejemplo
+  un informe de depuración grande) se agrupa en un `.md` con nombre claro en
+  `.agentes/`. No crear archivos sueltos en la raíz del repo: la raíz es del
+  proyecto, `.agentes/` es del agente.
+- **Si falta un archivo, recrearlo**: reconstruir su contenido desde el estado
+  real (git log, código fuente, esta guía) y tratarlo desde ese momento como
+  la fuente de contexto de la tarea — no empezar de cero sin comprobar antes
+  qué ya sabía el documento.
 - **Leerlos al arrancar** una tarea que toque temas que cubren, y **escribir
   en ellos** lo nuevo relevante (decisiones, evidencia, estado verificado) de
   forma incremental durante el trabajo: así la siguiente sesión no repaga el
@@ -236,10 +270,10 @@ Reglas:
   ahí.
 - Lo que se vuelva regla estable del proyecto **se promueve** a los `.md` del
   repo (`MANUAL_DE_USO.md`, `PROJECT_STRUCTURE.md`, esta guía) en el commit
-  que lo justifica; mientras tanto vive solo en el documento local.
-- Al commitear, **nunca** incluir estos archivos: están ignorados a propósito
-  y un `git add <ruta>` explícito de los archivos propios de la tarea es la
-  única forma correcta de agregar cambios.
+  que lo justifica; mientras tanto vive solo en `.agentes/`.
+- Al commitear, **nunca** incluir esta carpeta: está ignorada a propósito y un
+  `git add <ruta>` explícito de los archivos propios de la tarea es la única
+  forma correcta de agregar cambios.
 
 ## Flujo de trabajo
 
@@ -374,11 +408,20 @@ Reglas:
   y convencionales (`feat:`, `fix:`, `docs:`, `refactor:`, `chore:`). El
   formato completo, con los tipos admitidos, los ámbitos frecuentes y las
   reglas de redacción, está en `.github/COMMIT_TEMPLATE.md`.
+- **Commits de funcionalidades grandes incompletas**: si se crea un commit
+  para guardar una funcionalidad grande que todavía no está terminada o
+  validada, el cuerpo del mensaje debe detallar explícitamente las
+  insuficiencias: qué partes faltan, qué validaciones se realizaron y cuáles
+  siguen pendientes, y qué limita su cierre. El asunto y el cuerpo no deben
+  presentar la funcionalidad como completa; actualizar el estado cuando se
+  integre o valide lo pendiente.
 - **Sin atribuciones ajenas al cambio**: los mensajes de commit (y cualquier
   metadato asociado) deben describir únicamente la implementación o los
   cambios realizados. No se permite adjudicar coautoría, autoría, firmas ni
   menciones a herramientas, asistentes o terceros que no correspondan al
   trabajo concreto sobre el código.
+- **Sin coautorías**: nunca agregar trailers `Co-authored-by` a los mensajes
+  de commit, independientemente de la persona o herramienta que se atribuya.
 - **Commits solo con archivos propios**: al commitear, agregar únicamente los
   archivos que modificó el agente en la tarea actual (`git add <archivos>`),
   NO usar `git add -A` ni `git add .` que incluyen cambios ajenos sin
@@ -409,8 +452,12 @@ Reglas:
   por otros colaboradores (no tocados por el agente), reportar el fallo,
   indicar que hay cambios ajenos pendientes, y esperar instrucciones;
   NO modificar archivos ajenos para "arreglar" el build.
-- El CI (`.github/workflows/ci.yml`) compila el engine en Ubuntu y corre la
-  suite en Linux/Windows/macOS; no pushear sin pasar los tests localmente.
+- El CI (`.github/workflows/ci.yml`) compila el engine en Ubuntu, compila y
+  **enlaza** el engine en Windows con MSVC (generador por defecto y
+  dependencias de vcpkg, como el job que publica el instalador), corre la
+  suite headless en Linux/Windows, el backend Java en Ubuntu con JDK y las
+  headless en Windows con el generador multi-config (Visual Studio); no
+  pushear sin pasar los tests localmente.
 - **NO confirmar fixes hasta validación del usuario**: nunca declarar un bug
   como "resuelto" o "fix real" hasta que el usuario lo pruebe y lo confirme
   explícitamente. Los tests automatizados (ctest) no cubren flujos visuales

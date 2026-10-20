@@ -20,6 +20,7 @@
 #define OPENGL3BACKEND_H
 
 #include <unordered_map>
+#include <utility>
 
 #include "GLFuncs.h"
 #include "IRenderBackend.h"
@@ -56,6 +57,12 @@ public:
     Handle createTexture2D(const Image2D& image) override;
     void destroyTexture2D(Handle texture) override;
     void bindTexture2D(Handle texture, int unit) override;
+    void updateTexture2D(Handle texture, const Image2D& image) override;
+
+    // --- Textura Cubemap ---
+    Handle createTextureCube(const ImageCube& image) override;
+    void destroyTextureCube(Handle texture) override;
+    void bindTextureCube(Handle texture, int unit) override;
 
     // --- Programa ---
     Handle createProgram(const char* vertexSource,
@@ -86,6 +93,14 @@ public:
     const char* diagnosticoGPU() const override;
     void setBlendEnabled(bool enabled) override;
 
+    // --- Estado de profundidad (para el cielo: depth test on + depth mask off)
+    void setDepthTestEnabled(bool enabled) override;
+    void setDepthMask(bool enabled) override;
+    void setDepthFunc(DepthFunc func) override;
+
+    // --- Pasada a pantalla completa (sin atributos) ---
+    void drawFullscreenTriangle() override;
+
 private:
     struct GpuMesh { unsigned int vao; unsigned int buffers[6]; };
     // El batch de lineas es un unico VBO interleaved (el layout lo fija
@@ -102,7 +117,17 @@ private:
     std::unordered_map<Handle, GpuMesh> meshes_;
     std::unordered_map<Handle, GpuLineBatch> lineBatches_;
     std::unordered_map<Handle, GpuTarget> targets_;
+    // Dimensiones vigentes de cada textura 2D creada: updateTexture2D las
+    // consulta para decidir entre glTexSubImage2D (mismo tamano) y reasignar
+    // (tamano distinto). Sin este registro no se puede saber el tamano actual
+    // sin preguntarselo a GL.
+    std::unordered_map<Handle, std::pair<int, int>> tamanosTextura2D_;
     bool fboCargadas_ = false;
+    // VAO sin atributos de la pasada a pantalla completa (cielo degradado): se
+    // crea en el primer dibujo y se reusa. Vive hasta que termina el proceso,
+    // igual que el resto de los recursos GPU del backend (no hay apagado de GL
+    // con contexto vivo despues del bucle principal).
+    unsigned int vaoPantallaCompleta_ = 0;
 };
 
 } // namespace Backend

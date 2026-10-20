@@ -33,14 +33,17 @@ using namespace std;
 class RuntimeException : public std::runtime_error {
 private:
     std::vector<std::string> stackTrace;
+    std::string tipoExcepcion;
 
     // Declaraci�n correcta de los m�todos privados
     std::vector<std::string> generateStackTrace();
     std::string formatStackTrace();
 
 public:
-    explicit RuntimeException(const string& msg);
+    explicit RuntimeException(const string& msg,
+                              const string& tipo = "RuntimeException");
     std::string getStackTrace() const;
+    const std::string& getTipoExcepcion() const noexcept;
     virtual ~RuntimeException() = default;
 };
 

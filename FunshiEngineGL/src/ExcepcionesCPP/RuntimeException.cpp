@@ -41,9 +41,14 @@
 #include <dlfcn.h>
 #endif
 using namespace std;
-RuntimeException::RuntimeException(const string& msg)
+
+RuntimeException::RuntimeException(const string& msg, const string& tipo)
     : std::runtime_error(msg),
-    stackTrace(generateStackTrace()) {
+      stackTrace(generateStackTrace()),
+      tipoExcepcion(tipo) {}
+
+const std::string& RuntimeException::getTipoExcepcion() const noexcept {
+    return tipoExcepcion;
 }
 
 std::string RuntimeException::getStackTrace() const {

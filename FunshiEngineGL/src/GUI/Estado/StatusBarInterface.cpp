@@ -18,6 +18,7 @@
 */
 #include "StatusBarInterface.h"
 
+#include "BarraProgresoTexto.h"
 #include "../WindowNames.h"
 #include "../../Events/EditorEventBus.h"
 #include "../../Objetos/GameObject.h"
@@ -25,6 +26,7 @@
 #include "../../Scenes/SceneRegistry.h"
 #include "../../EngineTime.h"
 #include "../../Estructuras/ListasEnlazadas/ListasDoblementeEnlazada/ListaDE.h"
+#include "../../Diagnosticos/RegistroDiagnosticos.h"
 
 #include <cstdio>
 #include <imgui.h>
@@ -45,17 +47,18 @@ void StatusBarInterface::setEstadoCompilacion(
     std::size_t total,
     const std::vector<ScriptRuntime::ResultadoCarga>& resultados,
     bool /*overlayProgreso*/, bool /*overlayResultado*/) {
-    // Convertir a log simple: "cargando scripts: #######42%"
+    // Convertir a log simple: "cargando scripts: #######42%". El formato acota
+    // hecha a total, asi que un productor desincronizado no puede construir una
+    // longitud negativa (length_error).
     if (enCurso && total > 0) {
-        int pct = static_cast<int>((static_cast<float>(hecha) / total) * 100.0f);
-        int bars = pct / 10;
-        std::string bar(bars, '#');
-        bar.append(10 - bars, ' ');
-        mensajeTemporal_ = "cargando scripts: " + bar + std::to_string(pct) + "%";
+        const std::string barra = BarraProgresoTexto::formatear(hecha, total);
+        const int pct = BarraProgresoTexto::porcentaje(hecha, total);
+        mensajeTemporal_ = "cargando scripts: " + barra + std::to_string(pct) + "%";
         temporizadorMensaje_ = 0.5f; // visible medio segundo por frame
     }
-    // Guardar estado para mostrar en contentGUI
-    compilando_ = enCurso;
+    // Guardar estado para mostrar en contentGUI. Con total 0 no hay progreso
+    // valido: se apaga el indicador para que la lista no divida por cero.
+    compilando_ = enCurso && total > 0;
     actual_ = actual;
     hecha_ = hecha;
     total_ = total;
@@ -115,23 +118,40 @@ void StatusBarInterface::contentGUI() {
             Position<GameObject*>* pos = objs->first();
             while (pos && pos->getElement()) {
                 GameObject* objeto = pos->getElement();
-                if (Script* s = objeto->getComponent<Script>()) {
-                    alguno = true;
-                    std::string fuente = s->rutaFuente();
-                    std::string estado;
-                    if (compilando_ && fuente == actual_)
-                        estado = "cargando " + std::to_string(static_cast<int>((static_cast<float>(hecha_) / total_) * 100.0f)) + "%";
-                    else if (s->estaCargado())
-                        estado = "cargado";
-                    else if (!s->ultimoError().empty())
-                        estado = "error";
-                    else
-                        estado = "esperando";
-                    ImGui::BulletText("%s  [%s]",
-                                      fuente.empty() ? "(sin fuente)" : fuente.c_str(),
-                                      estado.c_str());
-                    if (!s->ultimoError().empty())
-                        ImGui::TextWrapped("-> %s", s->ultimoError().c_str());
+                ListaDE<Component*>* componentes = objeto->getComponents();
+                if (componentes && !componentes->isEmpty()) {
+                    Position<Component*>* posicion = componentes->first();
+                    while (posicion) {
+                        if (Script* s =
+                                dynamic_cast<Script*>(posicion->getElement())) {
+                            alguno = true;
+                            std::string fuente = s->rutaFuente();
+                            std::string estado;
+                            if (compilando_ && fuente == actual_)
+                                estado = "cargando " +
+                                         std::to_string(
+                                             BarraProgresoTexto::porcentaje(
+                                                 hecha_, total_)) +
+                                         "%";
+                            else if (s->estaCargado())
+                                estado = "cargado";
+                            else if (!s->ultimoError().empty())
+                                estado = "error";
+                            else
+                                estado = "esperando";
+                            ImGui::BulletText(
+                                "%s  [%s]",
+                                fuente.empty() ? "(sin fuente)"
+                                               : fuente.c_str(),
+                                estado.c_str());
+                            if (!s->ultimoError().empty())
+                                ImGui::TextWrapped("-> %s",
+                                                   s->ultimoError().c_str());
+                        }
+                        posicion = posicion != componentes->last()
+                                       ? componentes->next(posicion)
+                                       : nullptr;
+                    }
                 }
                 pos = (pos != objs->last()) ? objs->next(pos) : nullptr;
             }
@@ -139,12 +159,52 @@ void StatusBarInterface::contentGUI() {
         }
     }
 
+    dibujarDiagnosticos();
+
     // Mensaje temporal (progreso de compilacion o exportacion)
     if (!mensajeTemporal_.empty()) {
         ImGui::Separator();
         ImGui::TextColored(ImVec4(0.2f, 0.8f, 0.2f, 1.0f), "%s",
                            mensajeTemporal_.c_str());
     }
+}
+
+void StatusBarInterface::dibujarDiagnosticos() {
+    ImGui::SeparatorText("Consola de estado/log");
+    const auto eventos = RegistroDiagnosticos::global().ultimos(100);
+    if (eventos.empty()) {
+        ImGui::TextDisabled("No hay diagnósticos registrados");
+        return;
+    }
+
+    const bool mostrarContenido =
+        ImGui::BeginChild("DiagnosticosRecientes", ImVec2(0.0f, 220.0f), true);
+    if (mostrarContenido) {
+        for (std::size_t i = 0; i < eventos.size(); ++i) {
+            const EventoDiagnostico& evento = eventos[i];
+            ImGui::PushID(static_cast<int>(i));
+            const std::string nivel =
+                RegistroDiagnosticos::nombreNivel(evento.nivel);
+            ImVec4 color(0.82f, 0.84f, 0.88f, 1.0f);
+            if (evento.nivel == NivelDiagnostico::Advertencia)
+                color = ImVec4(1.0f, 0.72f, 0.24f, 1.0f);
+            else if (evento.nivel == NivelDiagnostico::Error ||
+                     evento.nivel == NivelDiagnostico::Critico)
+                color = ImVec4(1.0f, 0.35f, 0.32f, 1.0f);
+            ImGui::TextColored(color, "[%s] [%s] %s", evento.fechaUtc.c_str(),
+                               nivel.c_str(), evento.modulo.c_str());
+            ImGui::TextWrapped("%s", evento.mensaje.c_str());
+            if (!evento.proyecto.empty())
+                ImGui::TextDisabled("Proyecto: %s", evento.proyecto.c_str());
+            if (!evento.traza.empty() && ImGui::TreeNode("Traza")) {
+                ImGui::TextWrapped("%s", evento.traza.c_str());
+                ImGui::TreePop();
+            }
+            ImGui::Separator();
+            ImGui::PopID();
+        }
+    }
+    ImGui::EndChild();
 }
 
 void StatusBarInterface::printGUI() {

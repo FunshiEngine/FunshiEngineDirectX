@@ -17,7 +17,9 @@
     SPDX-License-Identifier: Apache-2.0
 */
 #include "LineRenderer.h"
+#include "../Diagnosticos/RegistroDiagnosticos.h"
 
+#include <algorithm>
 #include <cmath>
 #include <iostream>
 
@@ -27,23 +29,9 @@
 #include "Backend/IRenderBackend.h"
 #include "LineBatch.h"
 #include "LineBuilder.h"
+#include "ProyeccionCamara.h"
 #include "Shaders/ShaderProgram.h"
 #include "Shaders/ShaderSources.h"
-
-namespace {
-
-// Distancia al plano cercano a partir de la matriz de proyeccion de la GL:
-// con m[2][2] = -(f+n)/(f-n) y m[2][3] = -2fn/(f-n) sale n = m23/(m22-1).
-// La usa el shader para recortar los segmentos contra el plano cercano.
-float nearDesdeProyeccion(const glm::mat4& p) {
-    const float den = p[2][2] - 1.0f;
-    if (std::fabs(den) < 1e-6f) return 0.01f;
-    const float near = p[2][3] / den;
-    if (!std::isfinite(near) || near <= 0.0f) return 0.01f;
-    return near;
-}
-
-} // namespace
 
 LineRenderer::LineRenderer() = default;
 
@@ -59,12 +47,24 @@ void LineRenderer::setVista(const float view[16],
     }
     view_ = glm::make_mat4(view);
     projection_ = glm::make_mat4(projection);
+    const glm::mat4 invView = glm::inverse(view_);
+    posicionCamara_ = glm::vec3(invView[3]);
     vistaValida_ = true;
 }
 
 void LineRenderer::setViewport(int width, int height) noexcept {
     viewportWidth_ = width > 0 ? width : 0;
     viewportHeight_ = height > 0 ? height : 0;
+}
+
+void LineRenderer::setHorizonteVisual(float inicio, float fin) noexcept {
+    if (!std::isfinite(inicio) || !std::isfinite(fin) || fin <= 0.0f) {
+        horizonteInicio_ = 0.0f;
+        horizonteFin_ = 150.0f;
+        return;
+    }
+    horizonteFin_ = fin;
+    horizonteInicio_ = std::clamp(inicio, 0.0f, fin);
 }
 
 bool LineRenderer::inicializar() {
@@ -74,6 +74,8 @@ bool LineRenderer::inicializar() {
         shader_ = std::make_unique<ShaderProgram>(
             ShaderProgram::fromSource(kLineVertexShader, kLineFragmentShader));
     } catch (const std::exception& e) {
+        registrarExcepcionDiagnostica("Rendering/LineRenderer", e,
+                                      NivelDiagnostico::Error);
         std::cerr << "[LineRenderer] Shader de lineas no disponible: " << e.what()
                   << '\n';
         shader_.reset();
@@ -97,7 +99,11 @@ bool LineRenderer::preparar(const float model[16], float anchoPx) {
                                static_cast<float>(viewportHeight_), 0.0f, 0.0f};
     shader_->setVec4("uViewport", viewport);
     shader_->setFloat("uWidth", anchoPx > 0.0f ? anchoPx : 1.0f);
-    shader_->setFloat("uNear", nearDesdeProyeccion(projection_));
+    shader_->setFloat("uNear", ProyeccionCamara::nearDesdeProyeccion(
+                                     glm::value_ptr(projection_)));
+    shader_->setVec3("uCameraPosition", posicionCamara_);
+    shader_->setFloat("uDistanceFadeStart", horizonteInicio_);
+    shader_->setFloat("uDistanceFadeEnd", horizonteFin_);
     return true;
 }
 
@@ -105,7 +111,10 @@ void LineRenderer::dibujar(const LineBatch& batch, const float model[16],
                            float anchoPx) {
     if (!batch.isUploaded() || batch.getVertexCount() == 0) return;
     if (!preparar(model, anchoPx)) return;
+    auto& backend = Rendering::Backend::activeBackend();
+    backend.setBlendEnabled(true);
     batch.draw();
+    backend.setBlendEnabled(false);
     ShaderProgram::unbind();
 }
 
@@ -126,4 +135,3 @@ LineRenderer& lineRenderer() {
     static LineRenderer renderer;
     return renderer;
 }
-

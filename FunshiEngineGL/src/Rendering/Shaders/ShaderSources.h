@@ -75,6 +75,8 @@ in mat3 vTbn;
 out vec4 FragColor;
 
 uniform vec3 uCameraPosition;
+uniform float uDistanceFadeStart;
+uniform float uDistanceFadeEnd;
 uniform vec3 uGlobalAmbient;
 uniform int uLightCount;
 const int MAX_LIGHTS = 8;
@@ -160,6 +162,13 @@ vec3 contribucionLuz(int i, vec3 N, vec3 V, vec3 fragPos, vec3 baseDiffuse,
 }
 
 void main() {
+    float distanciaCamara = length(vWorldPos - uCameraPosition);
+    if (distanciaCamara >= uDistanceFadeEnd) discard;
+    float rangoDifuminado = max(0.0001, uDistanceFadeEnd - uDistanceFadeStart);
+    float t = clamp((distanciaCamara - uDistanceFadeStart) / rangoDifuminado,
+                    0.0, 1.0);
+    float opacidadDistancia = 1.0 - t * t;
+
     // Normal del fragmento: con normal map se perturba en espacio tangente
     // (vTbn); sin el, es la normal interpolada de la geometria.
     vec3 N = normalizarSeguro(vNormalWorld);
@@ -186,7 +195,7 @@ void main() {
     if (uUseEmissionMap == 1) emision *= texture(uEmissionTex, vUv).rgb;
     color += emision;
 
-    FragColor = vec4(color, uMaterialDiffuse.a);
+    FragColor = vec4(color, uMaterialDiffuse.a * opacidadDistancia);
 }
 )";
 
@@ -221,13 +230,16 @@ uniform float uWidth;    // ancho de la linea en pixeles
 uniform float uNear;     // distancia al plano cercano (positivo)
 
 out vec4 vColor;
+out vec3 vWorldPosition;
 
 void main() {
     // 1. Recorte del plano cercano en espacio vista (z hacia -near). La
     //    geometria viene en el espacio local del objeto (grilla, collider), asi
     //    que pasa por uModel antes que por la vista.
-    vec3 s = (uView * uModel * vec4(aStart, 1.0)).xyz;
-    vec3 e = (uView * uModel * vec4(aEnd, 1.0)).xyz;
+    vec3 worldS = (uModel * vec4(aStart, 1.0)).xyz;
+    vec3 worldE = (uModel * vec4(aEnd, 1.0)).xyz;
+    vec3 s = (uView * vec4(worldS, 1.0)).xyz;
+    vec3 e = (uView * vec4(worldE, 1.0)).xyz;
     float nearZ = -uNear;
     bool sAdelante = s.z <= nearZ;
     bool eAdelante = e.z <= nearZ;
@@ -235,10 +247,19 @@ void main() {
         // Enteramente detras de la camara: vertice degenerado fuera de pantalla.
         gl_Position = vec4(0.0, 0.0, 2.0, 1.0);
         vColor = aColor;
+        vWorldPosition = worldS;
         return;
     }
-    if (!sAdelante) s = mix(s, e, (nearZ - s.z) / (e.z - s.z));
-    if (!eAdelante) e = mix(e, s, (nearZ - e.z) / (s.z - e.z));
+    if (!sAdelante) {
+        float t = (nearZ - s.z) / (e.z - s.z);
+        s = mix(s, e, t);
+        worldS = mix(worldS, worldE, t);
+    }
+    if (!eAdelante) {
+        float t = (nearZ - e.z) / (s.z - e.z);
+        e = mix(e, s, t);
+        worldE = mix(worldE, worldS, t);
+    }
 
     // 2. A clip space y de ahí a NDC.
     vec4 clipS = uProjection * vec4(s, 1.0);
@@ -259,15 +280,110 @@ void main() {
     clip.xy += (offsetPx / px) * clip.w;
     gl_Position = clip;
     vColor = aColor;
+    vWorldPosition = mix(worldS, worldE, aAlong);
 }
 )";
 
 static const char* const kLineFragmentShader = R"(#version 330 core
 in vec4 vColor;
+in vec3 vWorldPosition;
 out vec4 FragColor;
 
+uniform vec3 uCameraPosition;
+uniform float uDistanceFadeStart;
+uniform float uDistanceFadeEnd;
+
 void main() {
-    FragColor = vColor;
+    float distanciaCamara = length(vWorldPosition - uCameraPosition);
+    if (distanciaCamara >= uDistanceFadeEnd) discard;
+    float rango = max(0.0001, uDistanceFadeEnd - uDistanceFadeStart);
+    float t = clamp((distanciaCamara - uDistanceFadeStart) / rango, 0.0, 1.0);
+    float opacidad = 1.0 - t * t;
+    FragColor = vec4(vColor.rgb, vColor.a * opacidad);
+}
+)";
+
+// Shader de sprites 2D (componente SpriteRenderer): quad texturizado sin
+// iluminacion, dibujado con el pipeline moderno sobre la malla de
+// Primitivas2D::quad(). El layout del VAO es el de createMesh: posicion en el
+// atributo 0 y UV en el atributo 2 (el 1 queda para la normal, que un sprite no
+// usa). No expone tangentes ni normales.
+//
+// El recorte de la region de la textura (spritesheet) viaja en uUvRect
+// (u0,v0,u1,v1) y se mezcla por vertice con la UV base del quad; asi una sola
+// malla compartida sirve para cualquier region, sin duplicar geometria. El tinte
+// y la opacidad (fade del componente) van en uTint y se multiplican sobre el
+// texel (modo MODULATE, igual que el material 3D).
+static const char* const kSpriteVertexShader = R"(#version 330 core
+layout(location = 0) in vec3 aPosition;
+layout(location = 2) in vec2 aUv;
+
+uniform mat4 uModel;
+uniform mat4 uView;
+uniform mat4 uProjection;
+uniform vec4 uUvRect;  // (u0, v0, u1, v1)
+
+out vec2 vUv;
+
+void main() {
+    vUv = mix(uUvRect.xy, uUvRect.zw, aUv);
+    gl_Position = uProjection * uView * uModel * vec4(aPosition, 1.0);
+}
+)";
+
+static const char* const kSpriteFragmentShader = R"(#version 330 core
+in vec2 vUv;
+out vec4 FragColor;
+
+uniform sampler2D uTexture;
+uniform int uUseTexture;
+uniform vec4 uTint;
+
+void main() {
+    vec4 color = uTint;
+    if (uUseTexture == 1) color *= texture(uTexture, vUv);
+    if (color.a <= 0.0001) discard;
+    FragColor = color;
+}
+)";
+
+static const char* const kSkyVertexShader = R"(#version 330 core
+// Fullscreen triangle (no VBO needed): gl_VertexID 0..2 maps to the three
+// corners of a triangle that covers the viewport. Solo emite la coordenada NDC
+// del pixel: el color sale de la DIRECCION de vista de ese pixel, no de su
+// posicion en pantalla.
+out vec2 vNdc;
+void main() {
+    vec2 pos[3] = vec2[3](
+        vec2(-1.0, -1.0),
+        vec2( 3.0, -1.0),
+        vec2(-1.0,  3.0)
+    );
+    vec2 p = pos[gl_VertexID];
+    vNdc = p;
+    gl_Position = vec4(p, 0.0, 1.0);
+}
+)";
+
+static const char* const kSkyFragmentShader = R"(#version 330 core
+in vec2 vNdc;
+out vec4 FragColor;
+uniform vec3 uColorTop;    // color del cenit (mirando bien hacia arriba)
+uniform vec3 uColorBottom; // color del suelo (mirando bien hacia abajo)
+uniform mat4 uInvViewProj; // inversa de projection*view
+uniform vec3 uCamPos;      // posicion de la camara en el mundo
+uniform float uTransicion; // media anchura de la transicion en unidades de dir.y
+void main() {
+    // Rayo de vista de ESTE pixel en espacio de mundo: se des-proyecta el NDC
+    // al plano lejano y se resta la camara. Asi el color depende de hacia donde
+    // se mira y no de donde cae el pixel: el cielo va con la camara.
+    vec4 lejano = uInvViewProj * vec4(vNdc, 1.0, 1.0);
+    vec3 dir = normalize(lejano.xyz / lejano.w - uCamPos);
+
+    // dir.y va de -1 (suelo) a +1 (cenit) y vale 0 en el horizonte: el degradado
+    // se reparte alrededor del horizonte y satura en los dos extremos.
+    float t = clamp(dir.y / uTransicion * 0.5 + 0.5, 0.0, 1.0);
+    FragColor = vec4(mix(uColorBottom, uColorTop, t), 1.0);
 }
 )";
 

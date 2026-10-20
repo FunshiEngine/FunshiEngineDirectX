@@ -51,6 +51,7 @@ private:
     bool estadoPublicado_ = false;
 
     void dibujarToolchain();
+    void dibujarDiagnosticos();
 
 public:
     explicit StatusBarInterface(bool stateGUI);

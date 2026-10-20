@@ -32,10 +32,11 @@
 class ShaderProgram;
 class MeshGPU;
 class TextureGL;
-class Mesh;
-class Image;
+struct Mesh;
+struct Image;
 class TextureManager;
 class Modelos3D;
+class GameObject;
 
 // Renderer de objetos con el pipeline moderno (VBO/VAO + shader). Sustituyo al
 // dibujado de Modelos3D que vivia en glBegin/glEnd, que ya no existe. Replica
@@ -66,6 +67,10 @@ public:
     // globalAmbient = modelo de luz.
     void setLuces(const LightData* luces, int lucesCount,
                   const float* globalAmbient);
+    void setHorizonteVisual(float inicio, float fin) noexcept {
+        horizonteInicio_ = inicio;
+        horizonteFin_ = fin;
+    }
 
     // Dibuja el modelo con el pipeline moderno (update + material + malla).
     // Devuelve false si no se drew: shader/VAO no disponible, o malla vacía o
@@ -73,6 +78,15 @@ public:
     // pipeline de respaldo:false significa "esta pasada no dibujo nada".
     bool intentarRender(Modelos3D* objeto, const float view[16],
                         const float projection[16], float deltaTime);
+
+    // Dibuja una malla ya resuelta con su matriz mundo ya calculada. Es el
+    // camino que debe usar un GameObject con componente Model (no es un
+    // Modelos3D): el contexto solo aporta Material/Color para la iluminacion, y
+    // la transformacion viene del Transform global del objeto, de modo que la
+    // jerarquia padre/hijo se respeta sin fabricar un objeto temporal.
+    bool intentarRenderMesh(GameObject* contexto, const Mesh* mesh,
+                            const float modelo[16], const float view[16],
+                            const float projection[16], float deltaTime);
 
     // Libera los MeshGPU/TextureGL cacheados (por ejemplo tras recargar
     // mallas o texturas).
@@ -90,16 +104,18 @@ private:
     std::unordered_set<const Mesh*> mallasSinNormales_;
     std::vector<LightData> luces_;
     float globalAmbient_[3] = {0.15f, 0.15f, 0.15f};
+    float horizonteInicio_ = 40.0f;
+    float horizonteFin_ = 150.0f;
 
     // Compila el shader por defecto la primera vez. No lanza: si el pipeline
     // moderno no esta disponible, deja available() == false.
     bool inicializar();
     void aplicarLuces();
-    void aplicarMaterial(Modelos3D* objeto);
+    void aplicarMaterial(GameObject* objeto);
     // Resuelve los 4 slots de textura del Material (difusa/especular/emision/
     // normal) contra el TextureManager inyectado y enlaza las unidades de
     // sampleo correspondientes. La normal exige que la malla tenga tangentes.
-    void aplicarTexturas(Modelos3D* objeto, const Mesh* mesh);
+    void aplicarTexturas(GameObject* objeto, const Mesh* mesh);
     // Enlaza un slot: devuelve true si quedo bindeado en la unidad indicada.
     bool enlazarSlotTextura(const std::string& path, int unit,
                             const char* samplerUniform);

@@ -47,5 +47,11 @@ public:
 	// el GameObejct tenga que despachar por nombre de tipo.
 	virtual void onLoaded(GameObject& /*owner*/) {}
 
+	// Hook polimorico por frame, invocado desde GameObject::update. Por defecto
+	// no hace nada; los componentes con comportamiento en tiempo de ejecucion
+	// (animaciones, temporizadores) lo sobrescriben. El dueno se pasa para que
+	// el componente lea/escriba componentes hermanos sin acoplarse a su tipo.
+	virtual void onUpdate(GameObject& /*owner*/, float /*deltaTime*/) {}
+
 };
 #endif

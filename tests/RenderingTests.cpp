@@ -23,10 +23,16 @@
 
 #include <cmath>
 #include <iostream>
+#include <string>
 
+#include "../FunshiEngineGL/src/Assets/Primitivas2D.h"
 #include "../FunshiEngineGL/src/Configuracion/Apariencia.h"
+#include "../FunshiEngineGL/src/Rendering/CacheCubemap.h"
+#include "../FunshiEngineGL/src/Rendering/Cielo.h"
+#include "../FunshiEngineGL/src/Rendering/Difuminado.h"
 #include "../FunshiEngineGL/src/Rendering/GuiaEje.h"
 #include "../FunshiEngineGL/src/Rendering/LineBuilder.h"
+#include "../FunshiEngineGL/src/Rendering/Shaders/ShaderSources.h"
 
 namespace {
 
@@ -260,9 +266,10 @@ void testAcumulacion() {
           "bytes() es coherente con la cuenta de vertices");
 }
 
-// Difuminado de la guia: los mismos valores que usa la grilla, para que la
-// recta se desvanzca en el mismo horizonte que el piso.
-constexpr GuiaEje::Difuminado kDif = {40.0f, 150.0f, 16};
+// Difuminado de la guia: el MISMO tipo y el mismo radio que usa la grilla
+// (Difuminado, en Difuminado.h), para que la recta se desvanezca en el mismo
+// horizonte que el piso.
+constexpr Difuminado kDif = {40.0f, 150.0f, 16};
 constexpr float kEps = 1e-4f;
 
 // Matriz identidad (column-major) con la traslacion en tx,ty,tz.
@@ -356,16 +363,16 @@ void testGuiaIgnoraEscala() {
 
 // La opacidad cae como en la grilla: plena cerca, 0 en el horizonte.
 void testOpacidad() {
-    CHECK(cerca(GuiaEje::opacidad(0.0f, kDif), 1.0f), "opaca en la camara");
-    CHECK(cerca(GuiaEje::opacidad(kDif.inicio, kDif), 1.0f),
+    CHECK(cerca(kDif.opacidad(0.0f), 1.0f), "opaca en la camara");
+    CHECK(cerca(kDif.opacidad(kDif.inicio), 1.0f),
           "opaca hasta el inicio del difuminado");
-    CHECK(GuiaEje::opacidad(95.0f, kDif) < 1.0f &&
-              GuiaEje::opacidad(95.0f, kDif) > 0.0f,
+    CHECK(kDif.opacidad(95.0f) < 1.0f &&
+              kDif.opacidad(95.0f) > 0.0f,
           "a mitad de camino esta a medio opaca");
-    CHECK(cerca(GuiaEje::opacidad(kDif.fin, kDif), 0.0f),
+    CHECK(cerca(kDif.opacidad(kDif.fin), 0.0f),
           "invisible en el horizonte");
-    CHECK(cerca(GuiaEje::opacidad(kDif.fin * 3.0f, kDif), 0.0f),
-          "invisible mas alla del horizonte (no seNegative)");
+    CHECK(cerca(kDif.opacidad(kDif.fin * 3.0f), 0.0f),
+          "invisible mas alla del horizonte (no se hace negativa)");
 }
 
 // La recta llega al horizonte en los dos sentidos y no se sale de la esfera:
@@ -502,7 +509,7 @@ void testEmiteDefensiva() {
     const float color[3] = {1.0f, 0.25f, 0.25f};
     LineBuilder b;
 
-    GuiaEje::Difuminado dif;
+    Difuminado dif;
     dif.fin = 0.0f;
     GuiaEje::emitir(b, e, camara, color, dif);
     CHECK(b.vacio(), "un horizonte de radio 0 no dibuja nada");
@@ -600,6 +607,234 @@ void testGuiaColorEfectivo() {
 }
 } // namespace
 
+// El radio de difuminado es un valor de configuracion del usuario (arriba y
+// abajo se lo elige en Opciones) y de el sale TODO: el tramo opaco, el
+// horizonte que hace de limite de dibujado y la caida en el medio. Grilla y
+// guia de eje parten del MISMO radio, asi que un cambio se ve en los dos a la
+// vez; el inicio del difuminado se deriva del radio en proporcion constante
+// (la misma que el radio por defecto), de modo que agrandar el circulo agranda
+// el degradado en vez de estirarlo.
+void testDifuminadoDesdeRadio() {
+    const Difuminado porDefecto =
+        Difuminado::desdeRadio(AparienciaUtil::kRadioDifuminadoPorDefecto, 6);
+    CHECK(cerca(porDefecto.fin, 150.0f),
+          "el radio por defecto deja el horizonte en 150");
+    CHECK(cerca(porDefecto.inicio, 40.0f),
+          "el inicio se deriva del radio con la proporcion historica");
+    CHECK(cerca(porDefecto.inicio,
+                porDefecto.fin * Difuminado::kProporcionInicio),
+          "el inicio es siempre la misma fraccion del radio");
+    CHECK(porDefecto.subdivisiones == 6,
+          "las subdivisiones las elige el llamador (grilla o guia)");
+
+    const Difuminado amplio = Difuminado::desdeRadio(600.0f, 24);
+    CHECK(cerca(amplio.fin, 600.0f), "un radio mayor aleja el horizonte");
+    CHECK(cerca(amplio.inicio, 160.0f),
+          "un radio mayor Tambien aleja el inicio del difuminado");
+    CHECK(amplio.subdivisiones == 24,
+          "un radio con mas subdivisiones no se pierde al derivarlo");
+
+    const Difuminado chico = Difuminado::desdeRadio(20.0f, 6);
+    CHECK(cerca(chico.fin, 20.0f), "un radio menor acerca el horizonte");
+    CHECK(chico.inicio < chico.fin, "con radio pequeno el tramo opaco es corto");
+    CHECK(chico.inicio > 0.0f, "el inicio nunca se sale del circulo");
+}
+
+// El radio se acota en el mismo lugar donde se deriva, para que un valor
+// corrupto en la configuracion (o un radio negativo) no pueda dejar la grilla o
+// la guia sin horizonte o con una division por cero en la curva.
+void testDifuminadoAcotaElRadio() {
+    CHECK(cerca(Difuminado::desdeRadio(1e6f, 6).fin,
+                AparienciaUtil::kRadioDifuminadoMaximo),
+          "un radio enorme se acota al maximo");
+    CHECK(cerca(Difuminado::desdeRadio(-50.0f, 6).fin,
+                AparienciaUtil::kRadioDifuminadoMinimo),
+          "un radio negativo se acota al minimo");
+    CHECK(cerca(Difuminado::desdeRadio(0.0f, 6).fin,
+                AparienciaUtil::kRadioDifuminadoMinimo),
+          "un radio nulo se acota al minimo");
+
+    const Difuminado acotado = Difuminado::desdeRadio(1e6f, 6);
+    CHECK(acotado.fin > acotado.inicio,
+          "radio acotado: el horizonte sigue dejando tramo opaco");
+    CHECK(std::isfinite(Difuminado::desdeRadio(NAN, 6).fin) &&
+              std::isfinite(Difuminado::desdeRadio(NAN, 6).inicio),
+          "un radio NaN no deja un horizonte invalido");
+    CHECK(std::isfinite(acotado.opacidad(0.0f)) &&
+              std::isfinite(acotado.opacidad(acotado.fin)) &&
+              std::isfinite(acotado.opacidad(acotado.fin * 4.0f)),
+          "la curva da numeros finitos en todo el rango");
+}
+
+// La curva es la misma que usaba la grilla y la guia por separado: opaca en el
+// centro, caida cuadratica y exactamente 0 en el horizonte (y antes de cero,
+// nunca negativa).
+void testDifuminadoOpacidad() {
+    const Difuminado dif = Difuminado::desdeRadio(150.0f, 6);
+    CHECK(cerca(dif.opacidad(0.0f), 1.0f), "opaca en la camara");
+    CHECK(cerca(dif.opacidad(dif.inicio), 1.0f),
+          "opaca hasta el inicio del difuminado");
+    CHECK(cerca(dif.opacidad(dif.fin), 0.0f), "invisible en el horizonte");
+    CHECK(cerca(dif.opacidad(dif.fin * 5.0f), 0.0f),
+          "invisible mas alla del horizonte (no se hace negativa)");
+    const float mitad = dif.opacidad((dif.inicio + dif.fin) * 0.5f);
+    CHECK(mitad < 1.0f && mitad > 0.0f, "a mitad de camino esta a medio opaca");
+    CHECK(cerca(mitad, 0.75f),
+          "la caida es cuadratica: a la mitad del tramo queda 3/4 de opacidad");
+    // Un radio distinto no cambia la FORMA de la curva, solo la escala.
+    const Difuminado otro = Difuminado::desdeRadio(300.0f, 6);
+    CHECK(cerca(otro.opacidad((otro.inicio + otro.fin) * 0.5f), mitad),
+          "la forma de la curva no depende del radio");
+}
+
+void testShaderLineasRespetaHorizonteRadial() {
+    const std::string vertex = kLineVertexShader;
+    const std::string fragment = kLineFragmentShader;
+    CHECK(vertex.find("out vec3 vWorldPosition") != std::string::npos &&
+              vertex.find("vWorldPosition = mix(worldS, worldE, aAlong)") !=
+                  std::string::npos,
+          "el shader de lineas entrega la posicion mundial de cada fragmento");
+    CHECK(fragment.find("length(vWorldPosition - uCameraPosition)") !=
+                  std::string::npos &&
+              fragment.find("distanciaCamara >= uDistanceFadeEnd") !=
+                  std::string::npos &&
+              fragment.find("discard") != std::string::npos,
+          "el shader descarta las lineas fuera del radio de horizonte");
+    CHECK(fragment.find("uDistanceFadeStart") != std::string::npos &&
+              fragment.find("1.0 - t * t") != std::string::npos,
+          "el shader difumina las lineas hasta el borde radial");
+}
+
+// Cielo: los colores efectivos resuelven el modo B/N y el tema, devolviendo
+// los dos extremos del degradado (superior e inferior).
+void testCieloColoresEfectivos() {
+    Apariencia ap;
+    // Default: gris oscuro en ambas partes.
+    float sup[3], inf[3];
+    Cielo::coloresEfectivos(ap, sup, inf);
+    CHECK(cerca(sup[0], 0.10f) && cerca(sup[1], 0.10f) && cerca(sup[2], 0.10f),
+          "default: superior gris oscuro");
+    CHECK(cerca(inf[0], 0.10f) && cerca(inf[1], 0.10f) && cerca(inf[2], 0.10f),
+          "default: inferior gris oscuro");
+
+    // Modo B/N con tema oscuro -> ambas negro.
+    ap.blancoYNegro = true;
+    ap.temaClaro = false;
+    Cielo::coloresEfectivos(ap, sup, inf);
+    CHECK(cerca(sup[0], 0.0f) && cerca(sup[1], 0.0f) && cerca(sup[2], 0.0f),
+          "B/N oscuro: superior negro");
+    CHECK(cerca(inf[0], 0.0f) && cerca(inf[1], 0.0f) && cerca(inf[2], 0.0f),
+          "B/N oscuro: inferior negro");
+
+    // Modo B/N con tema claro -> ambas blanco.
+    ap.temaClaro = true;
+    Cielo::coloresEfectivos(ap, sup, inf);
+    CHECK(cerca(sup[0], 1.0f) && cerca(sup[1], 1.0f) && cerca(sup[2], 1.0f),
+          "B/N claro: superior blanco");
+    CHECK(cerca(inf[0], 1.0f) && cerca(inf[1], 1.0f) && cerca(inf[2], 1.0f),
+          "B/N claro: inferior blanco");
+
+    // Modo normal con colores personalizados.
+    ap.blancoYNegro = false;
+    ap.fondoSuperior[0] = 0.2f; ap.fondoSuperior[1] = 0.3f; ap.fondoSuperior[2] = 0.8f;
+    ap.fondoInferior[0] = 0.8f; ap.fondoInferior[1] = 0.4f; ap.fondoInferior[2] = 0.2f;
+    Cielo::coloresEfectivos(ap, sup, inf);
+    CHECK(cerca(sup[0], 0.2f) && cerca(sup[1], 0.3f) && cerca(sup[2], 0.8f),
+          "normal: superior personalizado");
+    CHECK(cerca(inf[0], 0.8f) && cerca(inf[1], 0.4f) && cerca(inf[2], 0.2f),
+          "normal: inferior personalizado");
+}
+
+// CacheCubemap: la clave que decide cuando hay que volver a subir el cubemap a
+// GPU cambia exactamente cuando cambia algo que lo altera (una ruta o su fecha
+// de modificacion), y solo entonces.
+void testCacheCubemapClave() {
+    const std::string rutas[6] = {"+x.png", "-x.png", "+y.png",
+                                  "-y.png", "+z.png", "-z.png"};
+    const std::int64_t mtimes[6] = {10, 20, 30, 40, 50, 60};
+    const std::string base = CacheCubemap::claveDeCaras(rutas, mtimes);
+
+    CHECK(!base.empty(), "clave no vacia");
+    CHECK(base == CacheCubemap::claveDeCaras(rutas, mtimes),
+          "mismas caras y mismo mtime -> misma clave (se reusa la textura)");
+
+    std::int64_t mtimesOtraCara[6] = {10, 20, 31, 40, 50, 60};
+    CHECK(CacheCubemap::claveDeCaras(rutas, mtimesOtraCara) != base,
+          "una cara reescrita cambia la clave (se vuelve a subir)");
+
+    std::int64_t mtimesAusentes[6] = {0, 0, 0, 0, 0, 0};
+    CHECK(CacheCubemap::claveDeCaras(rutas, mtimesAusentes) != base,
+          "caras inexistentes dan otra clave (mtime 0 != mtime real)");
+
+    std::string rutasOtra[6] = {"+x.png", "-x.png", "+y.png",
+                                "-y.png", "+z.png", "otro.png"};
+    CHECK(CacheCubemap::claveDeCaras(rutasOtra, mtimes) != base,
+          "ruta distinta en una cara cambia la clave");
+
+    std::string rutasIntercambiadas[6] = {"-x.png", "+x.png", "+y.png",
+                                          "-y.png", "+z.png", "-z.png"};
+    CHECK(CacheCubemap::claveDeCaras(rutasIntercambiadas, mtimes) != base,
+          "el orden de las caras importa (+X y -X intercambiadas no emparejan)");
+}
+
+// Quad compartido de los sprites 2D: el renderer lo sube a GPU una sola vez y
+// el recorte de la region (uUvRect) y el tamano son por componente, asi que la
+// geometria tiene que ser la unitaria centrada en el origen y con UVs 0..1.
+void testPrimitivaQuad2D() {
+    const Mesh quad = Primitivas2D::quad();
+    CHECK(quad.vertices.size() == 4, "el quad tiene 4 vertices");
+    CHECK(quad.uvs.size() == 4, "el quad tiene una UV por vertice");
+    CHECK(quad.indices.size() == 6, "el quad tiene 6 indices (dos triangulos)");
+    CHECK(!quad.isEmpty(), "el quad no esta vacio");
+    CHECK(quad.hasUvs(), "el quad tiene UVs por vertice (necesarias para texturar)");
+
+    bool centrado = true;
+    bool planoZ = true;
+    for (const vec3& v : quad.vertices) {
+        if (v.x < -0.5f || v.x > 0.5f || v.y < -0.5f || v.y > 0.5f)
+            centrado = false;
+        if (v.z != 0.0f) planoZ = false;
+    }
+    CHECK(centrado, "los vertices van de -0.5 a 0.5 (quad 1x1 centrado)");
+    CHECK(planoZ, "el quad esta en el plano Z=0");
+
+    bool uvValidas = true;
+    for (const vec2& uv : quad.uvs) {
+        if (uv.x < 0.0f || uv.x > 1.0f || uv.y < 0.0f || uv.y > 1.0f)
+            uvValidas = false;
+    }
+    CHECK(uvValidas, "las UVs cubren [0,1]");
+
+    bool indicesValidos = true;
+    for (unsigned int i : quad.indices) {
+        if (i >= quad.vertices.size()) indicesValidos = false;
+    }
+    CHECK(indicesValidos, "los indices referencian vertices existentes");
+}
+
+// Shader de sprites: los atributos tienen que coincidir con el layout fijo del
+// VAO de createMesh (posicion en 0, UV en 2) y el fragment tiene que aplicar
+// tinte, textura opcional y descarte por alpha.
+void testShaderSprites() {
+    const std::string vertex = kSpriteVertexShader;
+    const std::string fragment = kSpriteFragmentShader;
+    CHECK(vertex.find("layout(location = 0) in vec3 aPosition") !=
+                  std::string::npos &&
+              vertex.find("layout(location = 2) in vec2 aUv") !=
+                  std::string::npos,
+          "el shader de sprites lee posicion (0) y UV (2) del VAO de createMesh");
+    CHECK(vertex.find("uUvRect") != std::string::npos &&
+              vertex.find("mix(uUvRect.xy, uUvRect.zw, aUv)") !=
+                  std::string::npos,
+          "el shader recorta la region de la textura por vertice");
+    CHECK(fragment.find("uUseTexture") != std::string::npos &&
+              fragment.find("texture(uTexture, vUv)") != std::string::npos,
+          "el fragment multiplica el texel cuando el sprite tiene textura");
+    CHECK(fragment.find("uTint") != std::string::npos &&
+              fragment.find("discard") != std::string::npos,
+          "el fragment aplica el tinte y descarta los fragmentos transparentes");
+}
+
 int main() {
     testConstantes();
     testVacio();
@@ -619,6 +854,14 @@ int main() {
     testEmiteDefensiva();
     testGuiaColor();
     testGuiaColorEfectivo();
+    testDifuminadoDesdeRadio();
+    testDifuminadoAcotaElRadio();
+    testDifuminadoOpacidad();
+    testShaderLineasRespetaHorizonteRadial();
+    testCieloColoresEfectivos();
+    testCacheCubemapClave();
+    testPrimitivaQuad2D();
+    testShaderSprites();
 
     std::cout << "Resultado: " << (total - fallos) << "/" << total
               << " OK" << std::endl;

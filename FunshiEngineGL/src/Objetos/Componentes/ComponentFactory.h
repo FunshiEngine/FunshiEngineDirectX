@@ -24,6 +24,7 @@
 
 class Component;
 class GameObject;
+class Component;
 
 class ComponentFactory {
 public:

@@ -39,8 +39,8 @@
 //     el grid): la ruta nueva es hermana de la vieja, el disco lo hace
 //     FileManager y solo un cambio real publica ArchivosReubicados.
 //   - Busqueda por ruta en el arbol vigente.
-//   - FileSystemWatcher (solo en Linux, donde usa inotify): deteccion de
-//     cambios externos y de ramas multi-nivel.
+//   - FileSystemWatcher: deteccion de cambios externos (inotify en Linux,
+//     polling temporal en el resto, con el intervalo inyectado).
 
 #include <chrono>
 #include <cstdio>
@@ -54,12 +54,11 @@
 
 #include "TempPruebas.h"
 #include "../FunshiEngineGL/src/FileManager/FileManager.h"
+#include "../FunshiEngineGL/src/FileManager/FileSystemWatcher.h"
+#include "../FunshiEngineGL/src/GUI/FileManagerGUI/CrearCarpeta.h"
 #include "../FunshiEngineGL/src/GUI/FileManagerGUI/RenombrarElemento.h"
 #include "../FunshiEngineGL/src/GUI/FileManagerGUI/SoltarEnCarpeta.h"
-
-#if defined(__linux__)
-#include "../FunshiEngineGL/src/FileManager/FileSystemWatcher.h"
-#endif
+#include "../FunshiEngineGL/src/GUI/ObjetosGUI/Skybox/SelectorArchivoCubemap.h"
 
 namespace fs = std::filesystem;
 
@@ -159,6 +158,68 @@ int main() {
     CHECK(fm.crearArchivo(rutaArchivo, "12345"), "crearArchivo crea en disco");
     CHECK(contenidoDe(rutaArchivo) == "12345", "el archivo nuevo tiene contenido");
 
+    // --- Crear carpeta: "se creo" en vez de "existe" ------------------------
+    // Un destino ya ocupado tiene que informar que esta vez no se creo nada; si
+    // no, el explorador cierra el modal creyendo que la carpeta nacio.
+    const std::string rutaRepetida = unir(proy, "Assets/Repetida");
+    CHECK(fm.crearCarpeta(rutaRepetida), "la primera creacion si crea");
+    CHECK(!fm.crearCarpeta(rutaRepetida),
+          "crearCarpeta no reporta exito si la carpeta ya existe");
+    CHECK(fs::is_directory(rutaRepetida),
+          "la carpeta existente sigue en su sitio");
+
+    CHECK(!fm.crearCarpeta(""), "crearCarpeta rechaza la ruta vacia");
+    const std::string archivoOcupado = unir(proy, "Assets/ocupado.txt");
+    CHECK(fm.crearArchivo(archivoOcupado, "x"), "archivo que ocupa el nombre");
+    CHECK(!fm.crearCarpeta(archivoOcupado),
+          "crearCarpeta falla si el destino es un archivo");
+
+    // El helper compartido por arbol y grid valida el nombre y decide el cierre.
+    CHECK(CrearCarpeta::nombreValido("Carpeta con espacios"),
+          "un nombre normal es valido");
+    CHECK(!CrearCarpeta::nombreValido(""), "el nombre vacio no es valido");
+    CHECK(!CrearCarpeta::nombreValido("."), "'.' no es un nombre de carpeta");
+    CHECK(!CrearCarpeta::nombreValido(".."), "'..' no es un nombre de carpeta");
+    CHECK(!CrearCarpeta::nombreValido("con/separador"),
+          "un nombre con '/' no es un nombre de carpeta");
+    CHECK(!CrearCarpeta::nombreValido("con\\separador"),
+          "un nombre con '\\' no es un nombre de carpeta");
+
+    CHECK(!CrearCarpeta::crear(nullptr, unir(proy, "Assets"), "SinProyecto").creada,
+          "sin FileManager no se crea nada");
+    CHECK(!CrearCarpeta::crear(&fm, "", "SinPadre").creada,
+          "sin carpeta padre no se crea nada");
+
+    const std::string rutaPadre = unir(proy, "Assets");
+    const unsigned long contadorAntes = sel->contadorCambios;
+    const CrearCarpeta::Resultado creadaOk =
+        CrearCarpeta::crear(&fm, rutaPadre, "Creada");
+    CHECK(creadaOk.creada && creadaOk.error.empty(),
+          "el helper crea con un nombre libre");
+    CHECK(fs::is_directory(unir(rutaPadre, "Creada")),
+          "la carpeta creada queda donde se pidio");
+    CHECK(sel->contadorCambios == contadorAntes + 1,
+          "crear una carpeta sube el contador exactamente una vez");
+
+    const unsigned long contadorTrasCrear = sel->contadorCambios;
+    const CrearCarpeta::Resultado repetida =
+        CrearCarpeta::crear(&fm, rutaPadre, "Creada");
+    CHECK(!repetida.creada, "el helper no reporta exito si el nombre se repite");
+    CHECK(repetida.error.find("Ya existe") != std::string::npos,
+          "el helper explica que el nombre ya esta en uso");
+    CHECK(sel->contadorCambios == contadorTrasCrear,
+          "un intento fallido no sube el contador");
+
+    CHECK(fm.crearCarpeta(unir(proy, "Assets/pruebas")),
+          "carpeta padre para el nombre con separador");
+    const CrearCarpeta::Resultado conSeparador =
+        CrearCarpeta::crear(&fm, rutaPadre, "pruebas/nueva");
+    CHECK(!conSeparador.creada,
+          "un nombre con separador no crea una carpeta anidada");
+    CHECK(!fs::exists(unir(proy, "Assets/pruebas/nueva")),
+          "no aparece la carpeta que el nombre pedia en otra ruta");
+
+
     // Renombrar carpeta.
     const std::string rutaRenombrada = unir(proy, "Assets/Renombrada");
     CHECK(fm.renombrar(rutaNueva, "Renombrada"), "renombrar mueve la carpeta");
@@ -183,6 +244,35 @@ int main() {
           "copiarCarpeta copia la rama");
     CHECK(fs::is_directory(unir(copiaCarpeta, "nucleo")),
           "copiarCarpeta es recursiva (nucleo existe dentro)");
+
+    // Copiar una carpeta dentro de si misma (Ctrl+arrastrar sobre una
+    // subcarpeta del propio arbol): el recorrido se copia a si mismo y se
+    // reproduce hasta que la ruta deja de caber, dejando un arbol basura a
+    // medias. Se usa un arbol propio para que el resto de la prueba no dependa
+    // de lo que quede colgando del caso anidado.
+    CHECK(fm.crearCarpeta(unir(proy, "Assets/anidado")),
+          "crea la carpeta padre del caso anidado");
+    CHECK(fm.crearCarpeta(unir(proy, "Assets/anidado/origen")),
+          "crea el origen del caso anidado");
+    CHECK(fm.crearArchivo(unir(proy, "Assets/anidado/origen/dato.txt"), "x"),
+          "archivo dentro del origen del caso anidado");
+    const std::string raizAnidada = unir(proy, "Assets/anidado/origen");
+    // Un destino que solo empieza por el nombre del origen NO esta dentro de
+    // el: el cotejo tiene que cerrar en un separador.
+    CHECK(fm.copiarCarpeta(raizAnidada, unir(proy, "Assets/anidado/origenCopia")),
+          "copiarCarpeta acepta un destino que solo empieza igual que el origen");
+    CHECK(fs::is_regular_file(unir(proy, "Assets/anidado/origenCopia/dato.txt")),
+          "la copia legitima al lado del origen esta entera");
+    const std::string anidado = unir(raizAnidada, "dentro");
+    CHECK(!fm.copiarCarpeta(raizAnidada, anidado),
+          "copiarCarpeta rechaza un destino dentro del propio origen");
+    CHECK(!fs::exists(anidado), "el destino anidado ni siquiera se crea");
+    CHECK(!fs::exists(unir(anidado, "dato.txt")),
+          "no se copia nada al destino anidado");
+    CHECK(!fm.copiarCarpeta(raizAnidada, raizAnidada),
+          "copiarCarpeta rechaza el origen sobre si mismo");
+    CHECK(contenidoDe(unir(raizAnidada, "dato.txt")) == "x",
+          "el origen queda intacto tras rechazar la copia anidada");
 
     // --- Mover (drag&drop del explorador) -----------------------------------
     // Es la operacion que usa el arrastre: por defecto mueve, con Ctrl copia.
@@ -292,7 +382,10 @@ int main() {
     CHECK(fm.buscarCarpetaPorRuta(unir(proy, "Assets/DiscDirecto")) != nullptr,
           "el rescaneo incorpora carpetas creadas fuera del editor");
 
-    // --- FileSystemWatcher (inotify, solo Linux) ----------------------------
+    // --- FileSystemWatcher ----------------------------------------------------
+    // En Linux: inotify. En el resto (Windows): polling temporal sobre el mtime
+    // de la raiz, con el intervalo inyectado para ejercer el contrato sin
+    // esperar el pulso de produccion.
 #if defined(__linux__)
     const fs::path proyw = base / "proyecto_watch";
     fs::create_directories(proyw / "ok");
@@ -311,6 +404,41 @@ int main() {
         std::this_thread::sleep_for(std::chrono::milliseconds(100));
         CHECK(w.huboCambiosYConsumir(),
               "detecta cambios profundos dentro de la rama nueva");
+    }
+#else
+    const fs::path proyw = base / "proyecto_watch";
+    fs::create_directories(proyw / "ok");
+    {
+        // Intervalo corto: el contrato del polling es "un pulso periodico
+        // compara el mtime de la raiz", no la duracion del pulso.
+        FileSystemWatcher w(proyw.string(), std::chrono::milliseconds(50));
+        CHECK(!w.huboCambiosYConsumir(),
+              "sin eventos al arrancar (polling)");
+        // Un pulso completo sin tocar nada no debe inventar un cambio: la
+        // marca inicial del mtime es la de la raiz, no el epoch.
+        std::this_thread::sleep_for(std::chrono::milliseconds(100));
+        CHECK(!w.huboCambiosYConsumir(),
+              "sin cambios en la raiz el pulso no inventa eventos (polling)");
+        fs::create_directory(proyw / "nueva");
+        // La DETECCION solo es verificable donde la lectura del mtime tiene
+        // la precision del FS: con MSVC (CI Windows) se lee FILETIME (100ns)
+        // y el cambio es observable. El CRT de MinGW trae la lectura de stat
+        // (1 segundo, y su setter no aplica sobre directorios), de modo que
+        // una creacion dentro del mismo segundo que la semilla no cambia el
+        // valor leido; ahi el contrato del polling queda cubierto por la
+        // verificacion de que NO inventa eventos, y la deteccion por la
+        // corrida de CI en la plataforma real.
+#if defined(_MSC_VER)
+        bool detecto = false;
+        for (int i = 0; i < 26 && !detecto; ++i) {
+            std::this_thread::sleep_for(std::chrono::milliseconds(100));
+            detecto = w.huboCambiosYConsumir();
+        }
+        CHECK(detecto,
+              "el pulso detecta la creacion de una carpeta (polling)");
+        CHECK(!w.huboCambiosYConsumir(),
+              "la marca se consume (polling)");
+#endif
     }
 #endif
 
@@ -385,6 +513,29 @@ int main() {
               "carpeta dentro de si misma: la operacion se cancela");
         CHECK(recibidos.size() == 1,
               "una carpeta en si misma no publica evento");
+
+#ifndef _WIN32
+        // En Linux y macOS la barra invertida es un caracter LEGAL del nombre de
+        // archivo: "Assets/con\\barra.txt" es un archivo, no una ruta. Si al
+        // partir la ruta se trata como separador, el arrastre lo renombra a
+        // "barra.txt" y ademas invalida el cache de una carpeta que no existe.
+        CHECK(fm.crearCarpeta(unir(proy, "Assets/ConBarra")), "carpeta destino con barra");
+        const std::string conBarra = unir(proy, "Assets/con\\barra.txt");
+        CHECK(fm.crearArchivo(conBarra, "con barra"), "archivo con barra invertida en el nombre");
+        std::string padreReportado;
+        CHECK(soltarEnCarpeta(&fm, &bus, conBarra, unir(proy, "Assets/ConBarra"),
+                              false, &padreReportado),
+              "soltar un archivo con barra invertida lo mueve");
+        CHECK(fs::is_regular_file(unir(proy, "Assets/ConBarra/con\\barra.txt")),
+              "el archivo conserva su nombre completo (no se renombra)");
+        CHECK(!fs::exists(unir(proy, "Assets/ConBarra/barra.txt")),
+              "no aparece un archivo truncado en el destino");
+        CHECK(padreReportado == unir(proy, "Assets"),
+              "la carpeta padre reportada es la real, para invalidar su cache");
+        CHECK(recibidos.size() == 2 &&
+                  recibidos[1].rutaNueva == unir(proy, "Assets/ConBarra/con\\barra.txt"),
+              "el evento lleva la ruta nueva con la barra intacta");
+#endif
     }
 
     // --- Drag&Drop: invalidacion de vistas (arbol + grid) ---------------------
@@ -570,6 +721,79 @@ int main() {
               "el origen sigue en su sitio tras el renombre rechazado");
         CHECK(recibidos.size() == 1,
               "el renombre a un destino ocupado no publica evento");
+    }
+
+    // --- Selector de caras del cubemap: filtro y validacion ------------------
+    // La logica del modal vive en funciones puras aparte del dibujo, para poder
+    // ejercitarla sin ventana. Cubre las dos condiciones que hacen que el motor
+    // descarte el cubemap sin avisar en pantalla: una cara sin asignar y dos
+    // caras que no midan lo mismo.
+    {
+        CHECK(SelectorArchivoCubemap::esImagenCubemap("cielo_px.png"),
+              "una .png sirve como cara del cubemap");
+        CHECK(SelectorArchivoCubemap::esImagenCubemap("cielo_px.PNG"),
+              "el filtro no distingue mayusculas");
+        CHECK(SelectorArchivoCubemap::esImagenCubemap("a/b/cielo.tga"),
+              "una .tga anidada en carpetas sirve");
+        CHECK(SelectorArchivoCubemap::esImagenCubemap("cielo.hdr"),
+              "una .hdr sirve");
+        CHECK(!SelectorArchivoCubemap::esImagenCubemap("cielo.obj"),
+              "una malla no es una cara del cubemap");
+        CHECK(!SelectorArchivoCubemap::esImagenCubemap("notas.txt"),
+              "un texto no es una cara del cubemap");
+        CHECK(!SelectorArchivoCubemap::esImagenCubemap("cielo"),
+              "un archivo sin extension no es una cara");
+
+        const std::string vacias[6] = {"", "", "", "", "", ""};
+        CHECK(SelectorArchivoCubemap::carasSinAsignar(vacias) == 6,
+              "sin nada asignado faltan las seis caras");
+
+        const SelectorArchivoCubemap::Dimensiones iguales[6] = {
+            {512, 512}, {512, 512}, {512, 512},
+            {512, 512}, {512, 512}, {512, 512},
+        };
+        CHECK(SelectorArchivoCubemap::caraConDimensionDistinta(iguales) == -1,
+              "seis caras de las mismas dimensiones no se descartan");
+
+        // El caso que la comparacion por peso de archivo nocia: dos archivos con
+        // distinto peso pero los mismos pixeles. Con el criterio de pixeles no
+        // hay nada que avisar.
+        SelectorArchivoCubemap::Dimensiones mismoTamano[6];
+        for (int i = 0; i < 6; ++i) mismoTamano[i] = {1024, 1024};
+        CHECK(SelectorArchivoCubemap::caraConDimensionDistinta(mismoTamano) == -1,
+              "caras con los mismos pixeles no se descartan aunque pesen distinto");
+
+        // Una cara exportada a otra resolucion: el motor descarta el cubemap
+        // entero, asi que el selector avisa cual es.
+        SelectorArchivoCubemap::Dimensiones dispares[6];
+        for (int i = 0; i < 6; ++i) dispares[i] = {512, 512};
+        dispares[3] = {256, 256};
+        CHECK(SelectorArchivoCubemap::caraConDimensionDistinta(dispares) == 3,
+              "avisa la cara cuya resolucion no coincide");
+
+        // Ancho y alto se comparan por separado: 512x256 no es lo mismo que
+        // 256x512 aunque los dos produzcan el mismo numero de pixeles.
+        SelectorArchivoCubemap::Dimensiones transpuesta[6];
+        for (int i = 0; i < 6; ++i) transpuesta[i] = {512, 256};
+        transpuesta[1] = {256, 512};
+        CHECK(SelectorArchivoCubemap::caraConDimensionDistinta(transpuesta) == 1,
+              "avisa una cara transpuesta aunque tenga igual cantidad de pixeles");
+
+        // Una cara que no se pudo medir (no existe, o formato que no se pudo
+        // leer) queda en 0x0 y no falsea la comparacion.
+        SelectorArchivoCubemap::Dimensiones conIlegible[6];
+        for (int i = 0; i < 6; ++i) conIlegible[i] = {512, 512};
+        conIlegible[5] = {};
+        CHECK(SelectorArchivoCubemap::caraConDimensionDistinta(conIlegible) == -1,
+              "una cara ilegible no se reporta como dimension distinta");
+
+        // Si la +X no se pudo medir no hay contra que comparar: el motor igual
+        // va a avisar por su cuenta al no poder decodificar.
+        SelectorArchivoCubemap::Dimensiones sinReferencia[6];
+        for (int i = 0; i < 6; ++i) sinReferencia[i] = {512, 512};
+        sinReferencia[0] = {};
+        CHECK(SelectorArchivoCubemap::caraConDimensionDistinta(sinReferencia) == -1,
+              "sin dimensiones de la +X no se reporta desajuste");
     }
 
     // --- Resultado ----------------------------------------------------------

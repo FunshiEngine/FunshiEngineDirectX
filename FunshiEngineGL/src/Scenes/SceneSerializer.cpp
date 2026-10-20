@@ -18,6 +18,7 @@
 */
 #include "SceneSerializer.h"
 
+#include <exception>
 #include <filesystem>
 #include <iostream>
 #include <memory>
@@ -25,6 +26,7 @@
 
 #include "EditorController.h"
 #include "SceneRegistry.h"
+#include "../Diagnosticos/RegistroDiagnosticos.h"
 #include "../Objetos/GameObject.h"
 #include "../Objetos/Modelos3D.h"
 #include "../Objetos/ObjetoEscena.h"
@@ -32,14 +34,43 @@
 
 SceneSerializer::SceneSerializer(SceneRegistry* value,
                                  EditorController* controller,
-                                 AssetManager* assetsManager)
+                                 AssetManager* assetsManager,
+                                 RegistroDiagnosticos* registro)
     : scene(value),
       editor(controller),
-      assets(assetsManager) {
+      assets(assetsManager),
+      diagnosticos(registro) {
 }
 
 
 namespace {
+
+void publicarFalloEscena(RegistroDiagnosticos* diagnosticos,
+                         const std::string& codigo,
+                         const std::string& mensaje,
+                         NivelDiagnostico nivel) {
+    if (diagnosticos) {
+        registrarFalloDiagnostico(*diagnosticos, "Scenes/SceneSerializer",
+                                  codigo, mensaje, nivel);
+    } else {
+        registrarFalloDiagnostico("Scenes/SceneSerializer", codigo, mensaje,
+                                  nivel);
+    }
+}
+
+void publicarExcepcionEscena(RegistroDiagnosticos* diagnosticos,
+                             const std::string& pathTxt,
+                             const std::exception& excepcion) {
+    const std::string clave = "scene-load:" + pathTxt;
+    if (diagnosticos) {
+        registrarExcepcionDiagnostica(*diagnosticos,
+                                      "Scenes/SceneSerializer", excepcion,
+                                      NivelDiagnostico::Error, clave);
+    } else {
+        registrarExcepcionDiagnostica("Scenes/SceneSerializer", excepcion,
+                                      NivelDiagnostico::Error, clave);
+    }
+}
 
 /*
  * getline que ademas recorta el '\r' final de los archivos con CRLF.
@@ -350,7 +381,8 @@ void SceneSerializer::save(const std::string& filename)
 void SceneSerializer::loadPreOrder(
     std::ifstream& file,
     GameObject* parent,
-    const std::string& semiPath)
+    const std::string& semiPath,
+    bool& cargaCompleta)
 {
     std::string line;
 
@@ -403,6 +435,12 @@ void SceneSerializer::loadPreOrder(
          */
         int idParseado = 0;
         if (!idDesdeLinea(name, idParseado)) {
+            cargaCompleta = false;
+            publicarFalloEscena(
+                diagnosticos, "SCENE_INDEX_INVALID",
+                "Línea inválida en el índice de escena; se ignora: '" + line +
+                    "'",
+                NivelDiagnostico::Advertencia);
             std::cerr << "[escena] linea invalida en el indice de escena; se "
                          "ignora: '"
                       << line << "'\n";
@@ -410,6 +448,12 @@ void SceneSerializer::loadPreOrder(
             continue;
         }
         if (parent && idParseado == 0) {
+            cargaCompleta = false;
+            publicarFalloEscena(
+                diagnosticos, "SCENE_INDEX_INVALID",
+                "El índice de escena referencia el objeto raíz como hijo: '" +
+                    line + "'",
+                NivelDiagnostico::Advertencia);
             std::cerr << "[escena] hijo con id=0 en el indice (ObjectN0.db es "
                          "la raiz); se ignora: '"
                       << line << "'\n";
@@ -433,6 +477,7 @@ void SceneSerializer::loadPreOrder(
         } else {
             auto modelo = std::make_unique<Modelos3D>();
             modelo->setAssetManager(assets);
+            modelo->setRegistroDiagnosticos(diagnosticos);
             object = std::move(modelo);
         }
 
@@ -454,6 +499,16 @@ void SceneSerializer::loadPreOrder(
          * semiPath/ObjectN#.db
          */
         if (!object->loadEntity(semiPath)) {
+            cargaCompleta = false;
+            const std::filesystem::path rutaObjeto =
+                std::filesystem::path(semiPath) /
+                ("ObjectN" + std::to_string(object->getId()) + ".db");
+            publicarFalloEscena(
+                diagnosticos, "SCENE_OBJECT_LOAD_FAILED",
+                "No se pudo cargar el binario del objeto id=" +
+                    std::to_string(object->getId()) + " desde '" +
+                    rutaObjeto.string() + "'",
+                NivelDiagnostico::Error);
             std::cerr << "[escena] no se pudo cargar el binario del objeto id="
                       << object->getId() << " desde: " << semiPath << std::endl;
         }
@@ -496,6 +551,12 @@ void SceneSerializer::loadPreOrder(
          * tiene) para no desalinear los marcadores, y continuar.
          */
         if (!loaded) {
+            cargaCompleta = false;
+            publicarFalloEscena(
+                diagnosticos, "SCENE_OBJECT_INSERT_FAILED",
+                "No se pudo insertar el objeto id=" +
+                    std::to_string(idParseado) + " durante la carga de escena",
+                NivelDiagnostico::Error);
             saltarBloqueHijos(file);
             continue;
         }
@@ -553,7 +614,8 @@ void SceneSerializer::loadPreOrder(
             loadPreOrder(
                 file,
                 loaded,
-                semiPath
+                semiPath,
+                cargaCompleta
             );
 
             continue;
@@ -582,20 +644,12 @@ void SceneSerializer::loadPreOrder(
 }
 
 
-void SceneSerializer::load(
+bool SceneSerializer::load(
     const std::string& pathTxt,
     const std::string& semiPath)
 {
     if (!scene)
-        return;
-
-    /*
-     * Limpiar la escena actual antes de reconstruirla.
-     */
-    if (editor)
-        editor->clearScene();
-    else
-        scene->clear();
+        return false;
 
     /*
      * Abrir el archivo de descripción de la escena.
@@ -610,25 +664,57 @@ void SceneSerializer::load(
     std::ifstream file(pathTxt, std::ios::binary);
 
     if (!file.is_open()) {
-
-        /*
-         * Si no existe, crear un archivo vacío.
-         */
-        std::ofstream newFile(
-            pathTxt,
-            std::ios::trunc
-        );
-
-        if (!newFile.is_open()) {
-
-            std::cerr
-                << "No se pudo crear el archivo de escena: "
-                << pathTxt
-                << '\n';
+        std::error_code errorRuta;
+        const bool existe = std::filesystem::exists(pathTxt, errorRuta);
+        if (errorRuta || existe) {
+            const std::string detalle = errorRuta
+                ? errorRuta.message()
+                : "el archivo existe pero no se puede abrir";
+            publicarFalloEscena(
+                diagnosticos, "SCENE_OPEN_FAILED",
+                "No se pudo abrir el archivo de escena '" + pathTxt +
+                    "': " + detalle,
+                NivelDiagnostico::Error);
+            std::cerr << "No se pudo abrir el archivo de escena: " << pathTxt
+                      << '\n';
+            return false;
         }
 
-        return;
+        // La ausencia del índice es normal al crear una escena nueva. Solo
+        // se reporta si no se puede materializar el archivo vacío.
+        std::ofstream nuevo(pathTxt, std::ios::out | std::ios::trunc |
+                                         std::ios::binary);
+        if (!nuevo.is_open()) {
+            publicarFalloEscena(
+                diagnosticos, "SCENE_CREATE_FAILED",
+                "No se pudo crear el archivo de escena '" + pathTxt + "'",
+                NivelDiagnostico::Error);
+            std::cerr << "No se pudo crear el archivo de escena: " << pathTxt
+                      << '\n';
+            return false;
+        }
+        nuevo.close();
+        if (!nuevo) {
+            publicarFalloEscena(
+                diagnosticos, "SCENE_CREATE_FAILED",
+                "No se pudo completar el archivo de escena '" + pathTxt + "'",
+                NivelDiagnostico::Error);
+            return false;
+        }
+
+        if (editor)
+            editor->clearScene();
+        else
+            scene->clear();
+        return true;
     }
+
+    // No destruir la escena vigente hasta confirmar que el índice puede
+    // abrirse; un archivo existente pero ilegible no equivale a escena nueva.
+    if (editor)
+        editor->clearScene();
+    else
+        scene->clear();
 
     /*
      * Reconstruir la escena siguiendo la estructura:
@@ -640,11 +726,32 @@ void SceneSerializer::load(
      *
      * de forma recursiva.
      */
-    loadPreOrder(
-        file,
-        nullptr,
-        semiPath
-    );
+    bool cargaCompleta = true;
+    try {
+        loadPreOrder(file, nullptr, semiPath, cargaCompleta);
+    } catch (const std::exception& excepcion) {
+        publicarExcepcionEscena(diagnosticos, pathTxt, excepcion);
+        std::cerr << "Error al reconstruir la escena '" << pathTxt << "': "
+                  << excepcion.what() << '\n';
+        file.close();
+        return false;
+    } catch (...) {
+        publicarFalloEscena(
+            diagnosticos, "SCENE_LOAD_UNKNOWN",
+            "Fallo desconocido al reconstruir la escena '" + pathTxt + "'",
+            NivelDiagnostico::Error);
+        file.close();
+        return false;
+    }
+
+    if (file.bad()) {
+        cargaCompleta = false;
+        publicarFalloEscena(
+            diagnosticos, "SCENE_READ_FAILED",
+            "Error de lectura en el archivo de escena '" + pathTxt + "'",
+            NivelDiagnostico::Error);
+    }
 
     file.close();
+    return cargaCompleta;
 }

@@ -23,26 +23,40 @@
 #include <map>
 #include <string>
 #include <memory>
+#include <utility>
+#include <vector>
 #include "../ObjetosGUI/SettingsObjectInterface.h"
 #include "../../Events/EditorEventBus.h"
-#include "../../Exportador/GameExporter.h"
 #include "../Export/ExportDialog.h"
 #include <imgui.h>
 
 using namespace std;
 
+class IconosGUI;
+
 class SceneMenuBarInterface : public GeneralUserInterface {
+public:
+    enum class AccionSimulacion {
+        IniciarDepuracion,
+        IniciarJuego,
+        Pausa,
+        Reset,
+        Terminar
+    };
+
 protected:
     bool* toggleBool = nullptr;
+    bool* pausada_ = nullptr;
+    bool* modoJuego_ = nullptr;
     bool* gizmoGlobal = nullptr;
-    bool cargarScripts = false;
-    // Peticion de arrancar/detener la simulacion. La inyecta main y delega en
-    // el orquestador de estados, el dueno de esa decision: el boton no escribe
-    // el estado de la simulacion, lo pide. Sin accion inyectada el boton no
-    // puede decidir nada.
-    std::function<void()> accionAlternarSimulacion;
+    std::function<void(AccionSimulacion)> accionSimulacion_;
+    IconosGUI* iconosGUI_ = nullptr;
     EditorEventBus* busEditor = nullptr;
     std::map<std::string, bool> ventanas_;
+    // Paneles que aportan los mods cargados: clave de la ventana y etiqueta
+    // visible en el menu. La lista cambia con los mods que se cargan, asi que
+    // se refresca cada frame.
+    std::vector<std::pair<std::string, std::string>> panelesMods_;
     std::unique_ptr<ExportDialog> exportDialog_;
     bool mostrarExportDialog_ = false;
     std::string proyectoActual_;
@@ -50,15 +64,17 @@ protected:
 public:
     SceneMenuBarInterface(bool stateGUI);
     void setActivador(bool* targetBool);
+    void setPausa(bool* pausada) noexcept;
+    void setModoJuego(bool* modoJuego) noexcept;
     bool* getActivador();
-    // El boton Activar/Detener pide el cambio de play/stop por esta accion (la
-    // inyecta main). El bool de activator queda solo para mostrar el estado.
-    void setAccionAlternarSimulacion(std::function<void()> accion);
+    void setAccionSimulacion(
+        std::function<void(AccionSimulacion)> accion);
+    void setIconosGUI(IconosGUI* iconos) noexcept;
     void setGizmoGlobal(bool* target);
-    bool getCargarScripts();
-    void setCargarScripts(bool value);
     void setEditorEventBus(EditorEventBus* bus);
     void setVentanas(const std::map<std::string, bool>& estados);
+    void setPanelesMods(
+        const std::vector<std::pair<std::string, std::string>>& paneles);
     void setProyectoActual(const std::string& proyecto);
     virtual void initGUI() override;
     virtual void contentGUI() override;

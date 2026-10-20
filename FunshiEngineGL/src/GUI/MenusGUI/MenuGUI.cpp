@@ -121,6 +121,34 @@ void MenuGUI::limpiarProyectoAEliminar() noexcept {
     model.limpiarProyectoAEliminar();
 }
 
+MenuModel::SeccionConfig MenuGUI::getSeccionConfig() const noexcept {
+    return model.getSeccionConfig();
+}
+
+void MenuGUI::setSeccionConfig(MenuModel::SeccionConfig seccion) noexcept {
+    model.setSeccionConfig(seccion);
+}
+
+MenuModel::AccionProyecto MenuGUI::getAccionProyecto() const noexcept {
+    return model.getAccionProyecto();
+}
+
+void MenuGUI::setAccionProyecto(MenuModel::AccionProyecto accion) noexcept {
+    model.setAccionProyecto(accion);
+}
+
+void MenuGUI::limpiarAccionProyecto() noexcept {
+    model.limpiarAccionProyecto();
+}
+
+DimensionProyecto MenuGUI::getDimensionProyecto() const noexcept {
+    return model.getDimensionProyecto();
+}
+
+void MenuGUI::setDimensionProyecto(DimensionProyecto dimension) noexcept {
+    model.setDimensionProyecto(dimension);
+}
+
 void MenuGUI::actualizarProyectos() {
     // Los proyectos son carpetas de MotorGrafico/Proyects/ (una por
     // proyecto: Memory + src<Nombre>). Vista unica, sin duplicar la logica;

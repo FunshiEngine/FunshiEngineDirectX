@@ -30,6 +30,9 @@
 #include "../src/GUIManager/GUIManager.h"
 #include "../src/Configuracion/EditorConfig.h"
 #include "../src/Configuracion/ProjectPaths.h"
+#include "../src/Configuracion/ProyectoInicial.h"
+#include "../src/Configuracion/RutasLog.h"
+#include "../src/Exportador/ConfigJuegoExportado.h"
 #include "../src/GUI/WindowNames.h"
 #include "../src/GUI/Tema/TemaEditor.h"
 #include <imgui.h>
@@ -46,11 +49,23 @@
 #include "../src/Ventana.h"
 #include "../src/Input/EditorInput.h"
 #include "../src/Rendering/Backend/IRenderBackend.h"
+#include "../src/Diagnosticos/RegistroDiagnosticos.h"
+#include "../src/Mods/GestorMods.h"
+#include "../src/Mods/CargadorMods.h"
+#include "../src/Mods/DatosEscenaMods.h"
+#include "../src/Mods/ServiciosMods.h"
+#include "../src/ExcepcionesCPP/RuntimeException.h"
+#ifdef FUNSHI_CEF
+#include "../src/WebUI/WebUIRuntime.h"
+#endif
 #include "ImGuizmo.h"
 #include <iostream>
 #include <cstdio>
 #include <ctime>
 #include <cstdlib>
+#include <exception>
+#include <typeinfo>
+#include <utility>
 #include <filesystem>
 #include <string>
 
@@ -97,46 +112,91 @@ static float deltaTime = 0.0f;
 static FILE* g_logSalida = nullptr;
 
 // Redirige stdout y stderr (cubriendo cout/cerr y printf) a un archivo de log
-// en la carpeta "logs/" junto al ejecutable, con timestamp por arranque. Asi el
-// editor NO escupe texto a la terminal: se puede lanzar con doble clic o desde
-// un .desktop y no queda ninguna consola atras de la ventana que moleste.
-// Devuelve la ruta del archivo de log (vacia si no se pudo crear).
+// en la carpeta "logs/" de la primera candidata que acepte escritura, con
+// timestamp por arranque. Asi el editor NO escupe texto a la terminal: se puede
+// lanzar con doble clic o desde un .desktop y no queda ninguna consola atras de
+// la ventana que moleste.
+// La carpeta no es siempre la del ejecutable: instalado en Program Files sin
+// elevar no admite escritura, y ahi el log se va a la raiz de datos (que el
+// motor ya resuelve a la carpeta del usuario) o, en ultimo caso, a la temporal.
+// Devuelve la ruta del archivo de log (vacia si no se pudo crear en ninguna).
 static std::string redirigirSalidaALog(char* argv0) {
     namespace fs = std::filesystem;
-    try {
-        const fs::path ejecutable =
-            argv0 && argv0[0] != '\0' ? fs::path(argv0).parent_path()
-                                      : fs::path(".");
-        const fs::path carpetaLogs = ejecutable / "logs";
-        fs::create_directories(carpetaLogs);
+    const fs::path ejecutable =
+        argv0 && argv0[0] != '\0' ? fs::path(argv0).parent_path() : fs::path(".");
+    std::error_code ec;
+    const fs::path temporal = fs::temp_directory_path(ec);
 
-        const std::time_t ahora = std::time(nullptr);
-        // gmtime() del <ctime> estandar: portable entre MSVC, MinGW y Linux
-        // (gmtime_s y gmtime_r no existen en todos los compiladores de Windows).
-        // No hay threads en este punto del arranque, asi que la zona estatica
-        // que devuelve es segura.
-        const std::tm tmUtc = *std::gmtime(&ahora);
-        char sufijo[32];
-        std::strftime(sufijo, sizeof(sufijo), "%Y%m%d_%H%M%S", &tmUtc);
-        const std::string ruta =
-            (carpetaLogs / ("FunshiEngineGL_" + std::string(sufijo) + ".log"))
-                .string();
+    const std::time_t ahora = std::time(nullptr);
+    // gmtime() del <ctime> estandar: portable entre MSVC, MinGW y Linux
+    // (gmtime_s y gmtime_r no existen en todos los compiladores de Windows).
+    // No hay threads en este punto del arranque, asi que la zona estatica
+    // que devuelve es segura.
+    const std::tm tmUtc = *std::gmtime(&ahora);
+    char sufijo[32];
+    std::strftime(sufijo, sizeof(sufijo), "%Y%m%d_%H%M%S", &tmUtc);
+    const std::string nombre = "FunshiEngineGL_" + std::string(sufijo) + ".log";
 
-        // freopen redirige el FILE* de C (printf, cin/cout via sync_with_stdio
-        // y fprintf). Se reabre en modo append por si ya existe.
-        g_logSalida = std::freopen(ruta.c_str(), "a", stdout);
-        if (std::freopen(ruta.c_str(), "a", stderr) == nullptr) {
+    for (const std::string& carpeta :
+         RutasLog::candidatas(ProjectPaths::directorioBase(),
+                              ejecutable.string(), temporal.string())) {
+        try {
+            fs::create_directories(carpeta);
+            const std::string ruta = (fs::path(carpeta) / nombre).string();
+            // freopen redirige el FILE* de C (printf, cin/cout via
+            // sync_with_stdio y fprintf). Se reabre en modo append por si ya
+            // existe.
+            g_logSalida = std::freopen(ruta.c_str(), "a", stdout);
+            if (!g_logSalida) continue;
+            // stderr sin redirigir no es motivo para renunciar: stdout ya lleva
+            // el log y el resto de la salida (cout) sigue llegando ahi.
+            std::freopen(ruta.c_str(), "a", stderr);
+            std::cout << "\n========== Arranque FunshiEngineGL " << sufijo
+                      << " ==========\n";
+            std::cout << "Log en: " << ruta << "\n";
+            return ruta;
+        } catch (...) {
             g_logSalida = nullptr;
         }
-        if (g_logSalida) {
-            std::cout << "\n========== Arranque FunshiEngineGL "
-                      << sufijo << " ==========\n";
-            std::cout << "Log en: " << ruta << "\n";
-        }
-        return g_logSalida ? ruta : std::string();
-    } catch (...) {
-        return std::string();
     }
+    return std::string();
+}
+
+static void registrarExcepcionNoCapturada() noexcept {
+    std::string tipo = "excepcion_no_capturada";
+    std::string mensaje = "El proceso termino por una excepcion no capturada";
+    std::string traza;
+    try {
+        const std::exception_ptr pendiente = std::current_exception();
+        if (pendiente) {
+            try {
+                std::rethrow_exception(pendiente);
+            } catch (const RuntimeException& excepcion) {
+                tipo = excepcion.getTipoExcepcion();
+                mensaje = excepcion.what();
+                traza = excepcion.getStackTrace();
+            } catch (const std::exception& excepcion) {
+                tipo = typeid(excepcion).name();
+                mensaje = excepcion.what();
+            } catch (...) {
+                tipo = "excepcion_desconocida";
+            }
+        }
+        EventoDiagnostico evento;
+        evento.nivel = NivelDiagnostico::Critico;
+        evento.modulo = "main";
+        evento.mensaje = mensaje;
+        evento.tipoExcepcion = tipo;
+        evento.traza = traza;
+        RegistroDiagnosticos::global().registrarUnaVez(
+            std::move(evento), "ExcepcionesCPP:" + mensaje);
+    } catch (...) {
+        // La ruta de terminacion no debe lanzar otra excepcion.
+    }
+    std::fprintf(stderr, "[excepcion critica] %s: %s\n", tipo.c_str(),
+                 mensaje.c_str());
+    std::fflush(stderr);
+    std::abort();
 }
 
 #if defined(_WIN32)
@@ -182,16 +242,60 @@ int WINAPI WinMain(HINSTANCE /*hInstance*/, HINSTANCE /*hPrevInstance*/,
 
 static int EjecutarMotor(int argc, char* argv[])
 {
+#ifdef FUNSHI_CEF
+    // Rol de subproceso CEF (renderer/gpu/utility/zygote): CEF relanza este
+    // mismo binario con --type=... y CefExecuteProcess ejecuta ese rol. Va
+    // ANTES de todo (log, ventana, GL): el subproceso no arranca el motor.
+    // Devuelve >=0 si este proceso ES un subproceso; -1 si debe seguir.
+    {
+        const int codigoSubproceso = WebUIRuntime::ejecutarSubproceso(argc, argv);
+        if (codigoSubproceso >= 0) return codigoSubproceso;
+    }
+#endif
+    // Motor web de interfaces (CEF): se arranca UNA vez por proceso, ANTES de
+    // cualquier inicializacion del motor (ventana, GL, log). Con
+    // windowless_rendering_enabled no necesita la ventana GLFW para
+    // inicializarse; el contexto GL solo se necesita despues, en render().
+    // Si no puede arrancar, el runtime cae al backend nulo y el motor sigue.
+#ifdef FUNSHI_CEF
+    if (!WebUIRuntime::inicializar(argc, argv)) {
+        std::cout << "[webui] Sin backend web real: las interfaces HTML "
+                     "quedan sin textura (backend nulo)." << std::endl;
+    } else {
+        std::cout << "[webui] Backend activo: " << WebUIRuntime::nombreBackendActivo()
+                  << std::endl;
+    }
+#endif
+    std::set_terminate(registrarExcepcionNoCapturada);
     // Parseo simple de --proyecto <nombre> para arrancar directo en editor
     // (skip menu). Usado para ejecutar un juego exportado: FunshiEngineGL
-    // --proyecto MiJuego.
+    // --proyecto MiJuego. --juego fuerza el modo juego, que es como arranca
+    // una exportacion (tambien via JuegoExportado.json, ver mas abajo).
     std::string proyectoCLI;
+    bool modoJuegoExportado = false;
     for (int i = 1; i < argc; ++i) {
         std::string arg = argv[i];
         if (arg == "--proyecto" && i + 1 < argc) {
             proyectoCLI = argv[++i];
         } else if (arg.rfind("--proyecto=", 0) == 0) {
             proyectoCLI = arg.substr(11);
+        } else if (arg == "--juego") {
+            modoJuegoExportado = true;
+        }
+    }
+
+    // Manifiesto de arranque de una exportacion: si JuegoExportado.json existe
+    // junto al binario, el juego arranca directo en modo juego sin argumentos
+    // (doble clic). Un --proyecto explicito tiene prioridad sobre el nombre.
+    {
+        std::string proyectoManifiesto;
+        bool modoManifiesto = false;
+        if (ConfigJuegoExportado::leer(
+                ConfigJuegoExportado::rutaPorDefecto(
+                    ProjectPaths::directorioEjecutable()),
+                proyectoManifiesto, modoManifiesto)) {
+            if (proyectoCLI.empty()) proyectoCLI = proyectoManifiesto;
+            modoJuegoExportado = modoJuegoExportado || modoManifiesto;
         }
     }
 
@@ -199,6 +303,13 @@ static int EjecutarMotor(int argc, char* argv[])
     // [diag] de render ya escriben al log, no a la terminal.
     std::string rutaLog = redirigirSalidaALog(argc > 0 ? argv[0] : nullptr);
     (void)rutaLog;
+
+    EventoDiagnostico inicio;
+    inicio.nivel = NivelDiagnostico::Informacion;
+    inicio.modulo = "main";
+    inicio.proyecto = proyectoCLI;
+    inicio.mensaje = "Editor iniciado";
+    RegistroDiagnosticos::global().registrar(std::move(inicio));
 
     Ventana* auxVentana = new Ventana();
     auxVentana->initVentana();
@@ -213,13 +324,33 @@ static int EjecutarMotor(int argc, char* argv[])
     // maquina de estado de movimiento (diagonales WASD normalizadas).
     EditorInput* input =
         new EditorInput(scene, &appStateMachine, &orquestadorDeGUI);
-    // El boton Activar/Detener del menu de escena pide aqui su cambio de
-    // play/stop: la accion va al orquestador, dueno de la decision, igual que
-    // las teclas F5/F7. Asi el boton no puede dejar la maquina de estados
-    // desfasada respecto de la simulacion que se ve.
+    // Los controles del menu de escena piden transiciones al orquestador,
+    // unica fuente de verdad para Depuracion, Juego, pausa, reset y fin.
     if (SceneMenuBarInterface* menuBarEscena = managerOfGUI->getMenuBarGUI())
-        menuBarEscena->setAccionAlternarSimulacion(
-            [] { orquestadorDeGUI.alternarSimulacion(); });
+        menuBarEscena->setAccionSimulacion(
+            [](SceneMenuBarInterface::AccionSimulacion accion) {
+                using Accion = SceneMenuBarInterface::AccionSimulacion;
+                switch (accion) {
+                    case Accion::IniciarDepuracion:
+                        orquestadorDeGUI.manejarTeclaSimulacion(
+                            OrquestadorEstadoGUI::TeclaSimulacion::Depuracion);
+                        break;
+                    case Accion::IniciarJuego:
+                        orquestadorDeGUI.iniciarJuego();
+                        break;
+                    case Accion::Pausa:
+                        orquestadorDeGUI.manejarTeclaSimulacion(
+                            OrquestadorEstadoGUI::TeclaSimulacion::Pausa);
+                        break;
+                    case Accion::Reset:
+                        orquestadorDeGUI.solicitarReset();
+                        break;
+                    case Accion::Terminar:
+                        orquestadorDeGUI.manejarTeclaSimulacion(
+                            OrquestadorEstadoGUI::TeclaSimulacion::Stop);
+                        break;
+                }
+            });
     Time::start();
 
     // Resolucion de la raiz de datos y recuperacion de datos previos. Va antes
@@ -251,28 +382,27 @@ static int EjecutarMotor(int argc, char* argv[])
     // exportar + imgui.ini): main delega todo en esta fachada.
     GestorDeProyectos gestor(editorConfig, scene, managerOfGUI, mainMenu);
 
-    // Crear proyecto por defecto "NuevoProyecto" si no hay ninguno
-    EditorConfig::crearProyectoPorDefecto();
+    // Estructura base de datos del motor (Proyects/, Configuraciones/,
+    // Exportaciones/) y migraciones de estructuras antiguas. No crea ningun
+    // proyecto: elegirlo (o crearlo) es una decision del usuario en el menu.
+    EditorConfig::asegurarEstructuraBase();
 
-    std::string proyectoActual = editorConfig.datos().nombreProyecto;
-    // Primer arranque (sin Configuracion.json todavia): no hay proyecto abierto.
-    // Se deja el nombre vacio para OBLIGAR a elegir (o crear) un proyecto en el
-    // menu — "Iniciar Estudio" queda deshabilitado — y evitar que las carpetas
-    // de "Nuevo Proyecto" se creen solas al arrancar. Si ya hay config, el
-    // ultimo proyecto vuelve preseleccionado en el menu.
-    const bool primerArranque =
-        !std::filesystem::exists(EditorConfig::rutaPorDefecto());
-    if (!proyectoCLI.empty()) {
-        // --proyecto tiene prioridad: fuerza ese proyecto y entra directo al
-        // editor (skip menu).
-        proyectoActual = proyectoCLI;
-    } else if (primerArranque) {
-        proyectoActual.clear();
-        mainMenu->setNombreProyecto("");
-    } else if (proyectoActual.empty()) {
-        proyectoActual = "Nuevo Proyecto";
-    }
+    // Proyecto activo al arrancar: lo decide ProyectoInicial::resolver a partir
+    // de --proyecto (si se pasa) o vacio para forzar el menu. NO se usa
+    // ultimoProyecto persistido automaticamente: siempre arranca en el menu
+    // salvo que se pase --proyecto (skip menu). Asi se evita entrada automatica
+    // al editor por config previa.
+    const bool hayConfigGeneral =
+        std::filesystem::exists(EditorConfig::rutaPorDefecto());
+    const ProyectoInicial::Resolucion arranque = ProyectoInicial::resolver(
+        editorConfig.datos().nombreProyecto, proyectoCLI, hayConfigGeneral);
+    std::string proyectoActual = arranque.nombre;
     gestor.fijarProyectoActual(proyectoActual);
+    // El nombre persistido debe reflejar el proyecto realmente resuelto: en
+    // primer arranque queda vacio para que guardarGeneral no escriba
+    // "ultimoProyecto" (si no, al releer se crearian las carpetas de "Nuevo
+    // Proyecto" solas).
+    editorConfig.datos().nombreProyecto = proyectoActual;
 
     // Contexto de rutas de la serializacion portable: con proyecto, la raiz de
     // assets (src<nombre>) es el ancla con la que se guardan (relativas) y se
@@ -283,14 +413,51 @@ static int EjecutarMotor(int argc, char* argv[])
             ? std::string()
             : EditorConfig::directorioSrc(gestor.proyectoActual()));
 
+    // Descubrimiento y carga de mods: se leen los .fmod de la carpeta global
+    // del motor y, si hay proyecto abierto, los de su carpeta. El resultado se
+    // reporta al registro de diagnosticos (panel de estado/log). Los paquetes
+    // validos se cargan de verdad: su binario se extrae a la cache y se abre,
+    // y el mod recibe su inicializacion. Las carpetas se crean en
+    // asegurarEstructuraBase / al crear el proyecto.
+    //
+    // La lista de mods cargados vive hasta el final del proceso: se descargan
+    // en orden inverso al salir (cada mod apaga sus recursos antes de que su
+    // binario se cierre).
+    std::vector<ModCargado> modsCargados;
+    {
+        std::vector<CarpetaMods> carpetasMods = {
+            {ProjectPaths::directorioMods(), AmbitoMod::Motor}};
+        if (gestor.hayProyecto()) {
+            carpetasMods.push_back({ProjectPaths::directorioModsProyecto(
+                                        gestor.proyectoActual()),
+                                    AmbitoMod::Proyecto});
+        }
+        const GestorMods::Resultado modsDescubiertos =
+            GestorMods::descubrir(carpetasMods);
+        GestorMods::reportar(modsDescubiertos);
+
+        const CargadorMods::ResultadoCarga modsCargadosResultado =
+            CargadorMods::cargar(modsDescubiertos);
+        CargadorMods::reportar(modsCargadosResultado);
+        modsCargados = modsCargadosResultado.modsCargados;
+    }
+
+    // Los mods consultan los datos de la escena (objetos, componentes) a
+    // traves de la tabla de servicios: se conecta la fuente de datos real y
+    // el nombre del proyecto abierto.
+    FunshiMods::inyectarEscenaMods(scene);
+    FunshiMods::inyectarDatosEscena(FunshiMods::fuenteDatosEscenaMods());
+    FunshiMods::fijarNombreProyecto(gestor.proyectoActual().c_str());
+
     if (gestor.hayProyecto())
         gestor.prepararProyectoAlArrancar();
 
-    mainMenu->setNombreProyecto(editorConfig.datos().nombreProyecto);
+    mainMenu->setNombreProyecto(proyectoActual);
     mainMenu->setIdioma(editorConfig.datos().idioma);
     mainMenu->setSensibilidadCamara(editorConfig.datos().sensibilidadCamara);
     mainMenu->setSensibilidadMovimientoCamara(
         editorConfig.datos().sensibilidadMovimientoCamara);
+
     mainMenu->setApariencia(editorConfig.datos().apariencia);
     scene->setVentanaCamarasAbierta(editorConfig.datos().ventanaCamarasAbierta);
     scene->setSensibilidadMovimientoCamara(
@@ -306,9 +473,18 @@ static int EjecutarMotor(int argc, char* argv[])
     bool menuReflejadoEnFachada = appStateMachine.is(ApplicationState::MainMenu);
 
     // --proyecto: forzar modo editor y mostrar paneles sin pasar por el menu.
-    if (!proyectoCLI.empty()) {
+    if (!proyectoCLI.empty() && !modoJuegoExportado) {
         appStateMachine.transitionTo(ApplicationState::Editing);
         scene->setMenuActivo(true);
+    }
+
+    // Juego exportado: arrancar directo en modo juego sobre la escena cargada,
+    // por el mismo camino que el boton Iniciar Juego del menu de escena.
+    if (modoJuegoExportado && !proyectoCLI.empty()) {
+        // El proyecto ya se cargara via gestor.prepararProyectoAlArrancar()
+        // al entrar en el bucle principal. Forzamos modo Playing.
+        appStateMachine.transitionTo(ApplicationState::Playing);
+        scene->setModoJuego(true);
     }
 
     
@@ -338,6 +514,36 @@ static int EjecutarMotor(int argc, char* argv[])
     float FPS = 60.0;    //LIMITE DE FPS
     IMGUI_CHECKVERSION();
     ImGui::CreateContext();
+    // El contexto de ImGui se lo entrega el motor a los mods (opaco): lo
+    // dibujan con su propia copia de ImGui, asi que necesitan el puntero al
+    // contexto del motor para poder fijar el suyo.
+    FunshiMods::fijarContextoImGui(ImGui::GetCurrentContext());
+
+    // Suscriptores del bus de GUI. Se registran despues de crear el contexto
+    // porque AparienciaCambio aplica TemaEditor::aplicarEstilo, que necesita
+    // ImGui. La apariencia inicial no depende de esto: la escena la recibe
+    // directo y el estilo se aplica mas abajo. Los cambios en vivo del usuario
+    // si llegan por el bus.
+    EditorEventBus* eventosGUI = managerOfGUI->getEditorEventBus();
+    if (eventosGUI) {
+        eventosGUI->subscribe([scene, &editorConfig](const EditorEvent& ev) {
+            if (ev.type != EditorEventType::AparienciaCambio) return;
+            scene->setApariencia(ev.apariencia);
+            TemaEditor::aplicarEstilo(ev.apariencia);
+            float fondo[3];
+            AparienciaUtil::fondoEfectivo(ev.apariencia, fondo);
+            Rendering::Backend::activeBackend().setClearColor(fondo);
+            auto& cfg = editorConfig.datos();
+            cfg.apariencia = ev.apariencia;
+            editorConfig.solicitarGuardadoGeneral();
+        });
+        eventosGUI->subscribe([&editorConfig](const EditorEvent& ev) {
+            if (ev.type != EditorEventType::IdiomaCambio) return;
+            editorConfig.datos().idioma = ev.idioma;
+            editorConfig.solicitarGuardadoGeneral();
+        });
+    }
+
     ImGuiIO& io = ImGui::GetIO(); (void)io;
     io.ConfigFlags |= ImGuiConfigFlags_DockingEnable;
     // El imgui.ini (layout de docks y geometria de ventanas) lo gestiona el
@@ -352,39 +558,26 @@ static int EjecutarMotor(int argc, char* argv[])
     // ya no por relectura por frame del menu.
     TemaEditor::aplicarEstilo(mainMenu->getApariencia());
     ImGui_ImplGlfw_InitForOpenGL(window, true);
-    ImGui_ImplOpenGL3_Init("#version 440"); //460 PARA PC , 440 PARA NOTEBOOK
+    // El contexto que pide Ventana es OpenGL 3.3 core, asi que el GLSL del
+    // backend tiene que caber en ese contexto (un "#version 440" no compila en
+    // 3.3 y el shader del backend queda rechazado). El backend parsea el numero
+    // con sscanf("#version %d"), por eso la variante "core" no altera la
+    // eleccion de shaders y el string se prepende tal cual al fuente GLSL.
+    // El retorno se chequea: si el backend no arranca, io.BackendRendererUserData
+    // queda en nullptr y en Release (sin IM_ASSERT) la primera llamada a
+    // ImGui_ImplOpenGL3_NewFrame() desreferencia ese puntero. Con el flag el
+    // bucle omite los llamados del renderer y la app corre sin UI dibujada en
+    // vez de caerse.
+    bool imguiGl3Listo = ImGui_ImplOpenGL3_Init("#version 330 core");
+    if (!imguiGl3Listo)
+        std::cerr << "[main] ImGui_ImplOpenGL3_Init fallo: no se dibujara la "
+                     "interfaz ImGui (renderer OpenGL3 no disponible)\n";
 
-    // Suscriptores del canal de GUI interna (Fase 2): main reacciona a los
-    // cambios que publican el menu (apariencia/idioma) y la ventana Estado;
-    // la escena y las ventanas no se pasan punteros entre si. El bus lo posee
-    // GUIManager y ya esta cableado a los publicadores.
-    EditorEventBus* eventosGUI = managerOfGUI->getEditorEventBus();
+    // Ventana Estado: al cerrarla con la 'X' se persiste en la config
+    // del proyecto activo, no en la general. El mismo canal sirve para el
+    // menu "Ventanas" de la barra: al tildar/destildar un panel se aplica
+    // su visibilidad aqui y se persiste (asi el explorador reabre).
     if (eventosGUI) {
-        // Apariencia: aplica el estilo ImGui, el fondo del viewport y la
-        // apariencia de la escena (grilla/vistas previas), y encola el guardado
-        // de la config GENERAL (diferido: mientras se arrastra el selector de
-        // color se escribe como maximo una vez por kIntervaloEscritura).
-        eventosGUI->subscribe([scene, &editorConfig](const EditorEvent& ev) {
-            if (ev.type != EditorEventType::AparienciaCambio) return;
-            scene->setApariencia(ev.apariencia);
-            TemaEditor::aplicarEstilo(ev.apariencia);
-            float fondo[3];
-            AparienciaUtil::fondoEfectivo(ev.apariencia, fondo);
-            Rendering::Backend::activeBackend().setClearColor(fondo);
-            auto& cfg = editorConfig.datos();
-            cfg.apariencia = ev.apariencia;
-            editorConfig.solicitarGuardadoGeneral();
-        });
-        // Idioma: se persiste en la config general (guardado diferido, ver arriba).
-        eventosGUI->subscribe([&editorConfig](const EditorEvent& ev) {
-            if (ev.type != EditorEventType::IdiomaCambio) return;
-            editorConfig.datos().idioma = ev.idioma;
-            editorConfig.solicitarGuardadoGeneral();
-        });
-        // Ventana Estado: al cerrarla con la 'X' se persiste en la config
-        // del proyecto activo, no en la general. El mismo canal sirve para el
-        // menu "Ventanas" de la barra: al tildar/destildar un panel se aplica
-        // su visibilidad aqui y se persiste (asi el explorador reabre).
         eventosGUI->subscribe([&gestor, &editorConfig, managerOfGUI](
                                   const EditorEvent& ev) {
             if (ev.type != EditorEventType::VentanaEstadoCambio) return;
@@ -447,18 +640,13 @@ static int EjecutarMotor(int argc, char* argv[])
             if (ev.type != EditorEventType::ArchivosReubicados) return;
             gestor.manejarArchivosReubicados(ev.rutaAnterior, ev.rutaNueva);
         });
-        // Exportar juego: copia la carpeta del proyecto a
-        // <directorioBase>/Exportaciones/<proyecto> para distribucion junto
-        // al ejecutable. El usuario lanza el juego con: FunshiEngineGL
-        // --proyecto <nombre>.
-        eventosGUI->subscribe([&gestor](const EditorEvent& ev) {
-            if (ev.type != EditorEventType::ExportarJuego) return;
-            gestor.exportarProyecto();
-        });
     }
 
     const std::string sceneBBDD = EditorConfig::rutaSceneBBDD(gestor.proyectoActual());
     const std::string sceneDir = EditorConfig::rutaSceneDir(gestor.proyectoActual());
+    // La dimension del proyecto se fija ANTES de cargar la escena: la siembra
+    // de la grilla y la posicion de la camara inicial dependen de ella.
+    scene->setDimension(editorConfig.datos().dimension);
     scene->loadScene(sceneBBDD, sceneDir);
 
      // Restaura la camara activa elegida con "Usar" (persistida por id). Si el
@@ -478,6 +666,12 @@ static int EjecutarMotor(int argc, char* argv[])
         // hasta un frame (~16ms) de latencia a la reaccion del editor.
         glfwPollEvents();
 
+#ifdef FUNSHI_CEF
+        // Bucle de mensajes del motor web (external_message_pump): una vez por
+        // frame, en el hilo principal. Sin CEF es no-op.
+        WebUIRuntime::bombear();
+#endif
+
         Time::limitFPS(FPS);
         deltaTime = Time::getDeltaTime();
 
@@ -491,12 +685,16 @@ static int EjecutarMotor(int argc, char* argv[])
         // reaplica estilo/fondo cada frame.
 
         // El estado de simulacion de la escena es un reflejo del orquestador: lo
-        // piden las teclas (F5/F6/F7/Escape) y el boton Activar/Detener, y aca se
-        // escribe una sola vez por frame. La pausa se refleja aparte porque
+        // piden las teclas y los controles del menu, y aca se escribe una sola
+        // vez por frame. La pausa y el modo se reflejan aparte porque
         // congela fisica y scripts sin tocar `start` (asi no se dispara la
         // limpieza de play->editor).
         scene->setStart(orquestadorDeGUI.enSimulacion());
+        scene->setModoJuego(orquestadorDeGUI.enModoJuego());
         scene->setSimulacionPausada(orquestadorDeGUI.simulacionPausada());
+        input->aplicarModoCursor(window);
+        if (orquestadorDeGUI.consumirSolicitudReset())
+            scene->solicitarResetSimulacion();
 
         // GameScene::update() se llama siempre: adentro cada bloque se auto-gatea
         // por start (fisicas, scripts, cola de compilacion solo corren en play).
@@ -507,13 +705,23 @@ static int EjecutarMotor(int argc, char* argv[])
         // el segundo arranque no disparaba su flanco de subida.
         scene->update(deltaTime);
 
-        
+        // Actualizacion de los mods cargados: una vez por frame, cada mod que
+        // implemente update() recibe el delta del frame. El nombre del
+        // proyecto se refresca aqui porque puede cambiar desde el menu de
+        // inicio (los mods lo leen de la tabla de servicios).
+        CargadorMods::actualizar(modsCargados, deltaTime);
+        FunshiMods::fijarNombreProyecto(gestor.proyectoActual().c_str());
+
         // Limpieza del framebuffer de la ventana con el color de fondo vigente
         // (setClearColor). El backend lo limpia y queda el default framebuffer
         // listo para ImGui y la pasada de la escena.
         Rendering::Backend::activeBackend().clearScreen(nullptr);
 
-            ImGui_ImplOpenGL3_NewFrame();
+            // El frame del renderer solo si el backend arranco: con
+            // ImGui_ImplOpenGL3_Init() fallido no hay backend data y en Release
+            // (sin IM_ASSERT) NewFrame desreferencia un puntero nulo.
+            if (imguiGl3Listo)
+                ImGui_ImplOpenGL3_NewFrame();
             ImGui_ImplGlfw_NewFrame();
             ImGui::NewFrame();
 
@@ -598,8 +806,8 @@ static int EjecutarMotor(int argc, char* argv[])
                 mainMenu->Renderizar();             // la vista dibuja la vista activa del modelo
             }
 
-            // La escena corre en cualquier estado que no sea el menu (Editing,
-            // y futuramente Playing); el menu visible la detiene y dibuja solo.
+            // La escena corre en Editing y en ambos modos de simulacion; el
+            // menu visible la detiene y dibuja solo.
             const bool sceneRunning =
                 orquestadorDeGUI.escenaDebeCorrer();
 
@@ -615,26 +823,35 @@ static int EjecutarMotor(int argc, char* argv[])
             editorConfig.volcarGuardadoGeneral();
 
             if (sceneRunning) {
-                if (scene->isEditorActivo())
-                    managerOfGUI->getDockSpaceGUI()->printGUI();
+                ImGui::PushStyleVar(
+                    ImGuiStyleVar_Alpha,
+                    scene->isEditorGUIVisible() ? 1.0f : 0.0f);
+                managerOfGUI->getDockSpaceGUI()->printGUI();
+                ImGui::BeginDisabled(scene->isModoJuego() ||
+                                     !scene->isEditorGUIVisible());
+                treeFilesInterface->printGUI();
+                contentFolderInterface->printGUI();
+                ImGui::EndDisabled();
+                ImGui::PopStyleVar();
                 scene->gameScene();
+                // Paneles que aportan los mods cargados: cada uno es una
+                // ventana propia que el motor dibuja alrededor del callback
+                // que entrego el mod.
+                managerOfGUI->getPanelesModsGUI()->printGUI();
+                managerOfGUI->getDockSpaceGUI()->repararVentanasFlotantes();
             }
             // El estado abierto/cerrado del menu de inicio lo gobierna el
             // modelo del paquete MenuGUI (MenuModel), no un bool suelto de main.
 
-            if (scene->isEditorActivo()) {
-                treeFilesInterface->printGUI();
-                // R3: el panel de contenido se gobierna solo (lee la seleccion
-                // compartida del FileManager) y ya no depende de que main le
-                // sincronice la carpeta con setContentFolderGUI().
-                contentFolderInterface->printGUI();
-            }
-
-        // Sidebar de radio de orbita (editor oculto + clic derecho).
-        input->dibujarSidebarOrbita();
+        // Sidebar de radio de orbita (editor oculto + clic derecho): es una
+        // ayuda de navegacion del editor, no una superposicion del Juego.
+        if (!scene->isModoJuego()) input->dibujarSidebarOrbita();
 
         ImGui::Render();
-        ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
+        // Mismo guardia que NewFrame: sin backend, RenderDrawData tambien
+        // desreferencia el puntero nulo del backend data.
+        if (imguiGl3Listo)
+            ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
 
         glfwSwapBuffers(window);    
     }
@@ -643,6 +860,7 @@ static int EjecutarMotor(int argc, char* argv[])
     // al estudio) ninguna ruta debe escribir bajo un "Nuevo Proyecto" fantasma:
     // el gestor no toca nada con proyecto vacio. Con proyecto, guarda
     // escena + manifiesto + config del proyecto (misma rutina que Ctrl+S).
+    scene->cerrarSimulacionAntesDeGuardar();
     gestor.guardarProyectoCompleto();
 
     // Apagado ordenado de los scripts antes de salir: primero se liberan las
@@ -652,7 +870,24 @@ static int EjecutarMotor(int argc, char* argv[])
     scene->descargarScripts();
     ScriptRuntime::apagarScripts();
 
-    ImGui_ImplOpenGL3_Shutdown();
+    // Apagado del motor web (CefShutdown): despues de descargar las vistas
+    // (las libera GameScene) y antes de romper ImGui/GL. Sin CEF es no-op.
+#ifdef FUNSHI_CEF
+    WebUIRuntime::apagar();
+#endif
+
+    // Apagado de los mods: cada uno recibe su shutdown() y despues se cierra
+    // su binario, en orden inverso al de carga. Va antes de romper ImGui: un
+    // mod puede soltar recursos de GUI en su shutdown.
+    CargadorMods::descargar(modsCargados);
+    // El contexto de ImGui deja de ser valido: se retira de la tabla de
+    // servicios antes de destruirlo.
+    FunshiMods::fijarContextoImGui(nullptr);
+
+    // Shutdown solo con backend vivo: ImGui_ImplOpenGL3_Shutdown() desreferencia
+    // el backend data y en Release no hay assert que lo frene.
+    if (imguiGl3Listo)
+        ImGui_ImplOpenGL3_Shutdown();
     ImGui_ImplGlfw_Shutdown();
     ImGui::DestroyContext();
 

@@ -30,13 +30,59 @@
   reload (`ScriptRuntime` + backends C++/Java) sobre `IScriptBehaviour`.
 - Estructuras de datos genéricas propias y jerarquía de excepciones.
 
-El punto de entrada es `FunshiEngineGL/src/main.cpp`. La configuración de compilación
+El punto de entrada del **editor** es `FunshiEngineGL/src/main.cpp`. El punto de
+entrada de los **juegos exportados** es `FunshiEngineGL/src/Runtime/main_juego.cpp`
+(sin código del editor: GUIManager, MenuGUI, paneles). La configuración de compilación
 está en `FunshiEngineGL/CMakeLists.txt`, que es el único build soportado: CMake
 genera la solución de Visual Studio dentro del directorio de build que elijas
 (por ejemplo `FunshiEngineGL/build-win/FunshiEngineGL.sln`), así que no hay
 proyectos de Visual Studio mantenidos a mano en el repositorio. Las pruebas
 headless viven en `tests/` y el CI en
 `.github/workflows/ci.yml`.
+
+`funshi_diagnostics_core` es una biblioteca compartida dentro del motor; no
+depende de ImGui y puede consumirla cualquier frente que hable su formato.
+
+`RuntimeException` conserva la traza de pila y el tipo de excepción. Los límites
+que deciden que un fallo es reportable lo envían a `RegistroDiagnosticos`; el
+constructor de la excepción no registra automáticamente porque algunas
+excepciones se usan como control interno. El registro mantiene una ventana
+acotada en memoria para Estado y persiste eventos en JSON Lines para que una
+invocación externa al editor pueda consultar el mismo historial. La GUI no
+es propietaria del registro y el módulo de diagnósticos no depende de ImGui.
+Los publicadores aceptan una instancia explícita del registro para pruebas
+aisladas; las llamadas de producción usan la instancia global compartida.
+`SceneSerializer::load` devuelve `false` si la reconstrucción queda parcial o
+falla. Una escena nueva sin índice se crea vacía sin registrar un error; los
+índices corruptos producen advertencias y los objetos que no se pueden leer,
+errores con su identificador y ruta.
+`Modelos3D` publica los errores tipados de `AssetManager` en el mismo registro;
+la clave de ruta evita repetir el evento cuando el cache vuelve a entregar el
+fallo.
+`Script::cargarSiNecesario` publica cada fallo de compilación/carga como
+`SCRIPT_LOAD_FAILED` y conserva el mensaje en el componente para su vista
+contextual. Repetir la consulta de un intento fallido no genera otro evento;
+un nuevo intento sí se registra de nuevo. El registro puede inyectarse en el
+componente para pruebas aisladas.
+Los backends C++ y Java contienen las excepciones de callback dentro de su
+límite de ejecución, conservan el primer fallo en `ComportamientoCargado` y lo
+publican como `SCRIPT_CALLBACK_FAILED`; el comportamiento queda deshabilitado
+hasta la recarga.
+
+La terminal del editor se compone de `GUI/Terminal/TerminalInterface` y
+`Terminal/TerminalSession`. La primera es una ventana persistente registrada en
+`GUIManager`, el menú Ventanas y el dock; la sesión lanza una shell dentro del
+directorio fijo del proyecto y entrega su salida mediante un hilo lector que
+drena hasta el cierre del pseudo-terminal (incluida la salida emitida al
+terminar la shell, que `TerminalInterface` procesa siempre, no solo mientras la
+sesión está activa). El backend Windows usa ConPTY y el POSIX usa `forkpty` con
+el maestro en modo no bloqueante; la sesión no reutiliza `Proceso`, que es
+síncrono y no expone una terminal interactiva.
+`TerminalEmulator` mantiene la cuadrícula VT, cursor, atributos ANSI comunes,
+pantalla alternativa y respuestas a consultas de cursor; `TerminalInterface`
+traduce celdas y teclas a ImGui. La entrada UTF-8 se envía al pseudo-terminal.
+La emulación cubre el conjunto usual de secuencias de control, sin extensiones
+como color true-color/256, ratón o portapapeles.
 
 ---
 
@@ -55,7 +101,7 @@ FunshiEngineGL/                          ← raíz del repo
 ├── ARQUITECTURA_ESTADOS_GUI.md          ← estados/menú/GUI internas (diseño + Fases 1-3)
 ├── MANUAL_DE_USO.md                     ← manual de usuario (editor + scripting C++/Java)
 ├── FLUJO_DE_RAMAS.md                    ← convención de ramas (develop/test/staging/release)
-├── .github/workflows/ci.yml             ← CI: engine en Ubuntu + pruebas en Linux/Win/macOS
+├── .github/workflows/ci.yml             ← CI: engine en Ubuntu y en Windows (MSVC) + pruebas headless
 ├── .github/workflows/release.yml        ← instaladores Qt IFW (.run) e Inno (.exe) por tag
 ├── .github/workflows/windows-release.yml← build+release específico de Windows
 ├── .gitignore / .gitattributes
@@ -75,10 +121,21 @@ FunshiEngineGL/                          ← raíz del repo
 │   └── UserInterfaceTests.cpp           ← modelo del Creador de interfaces (round-trip JSON)
 └── FunshiEngineGL/                      ← proyecto CMake principal
     ├── CMakeLists.txt                   ← GLOB de fuentes, dependencias, sanitizers,
-    │                                      pruebas (CTest) y opción BUILD_ENGINE
+    │                                      pruebas (CTest), opción BUILD_ENGINE y la
+    │                                      versión del producto (FUNSHI_VERSION, variable
+    │                                      de caché: la de project() y la del
+    │                                      VERSIONINFO del .exe salen de ahí; el
+    │                                      workflow la fija con -DFUNSHI_VERSION al
+    │                                      publicar por tag). Backend gráfico (IRenderBackend),
+    │                                      backend audio (IAudioBackend), backend físico
+    │                                      (IPhysicsBackend) y backends de scripts (C++/Java)
+    │                                      siguen patrón Strategy.
     ├── Imagenes/                        ← íconos del explorador (cpp, cubo, file, folder, hpp)
     ├── ImGuizmo/                        ← dependencia integrada (ImGuizmo.cpp/.h, etc.)
     ├── External/nlohmann/json.hpp       ← nlohmann/json vendoriado (EditorConfig)
+    ├── External/miniz/                   ← miniz 3.0.2 vendoriado (módulos separados;
+    │                                       lectura/escritura de ZIP de los .fmod)
+
     └── src/
         ├── main.cpp                     ← composition root: ventanas, callbacks, bucle, config
         ├── EngineTime.h / EngineTime.cpp← delta time y limitador de FPS
@@ -86,11 +143,15 @@ FunshiEngineGL/                          ← raíz del repo
         ├── Assets/                      ← caché Flyweight compartida (meshes e imágenes)
         │   ├── AssetManager.h/.cpp      ← registro de AssetPath→Mesh (loader inyectable)
         │   ├── TextureManager.h/.cpp    ← registro de AssetPath→Image (loader inyectable)
+        │   ├── Tileset.h/.cpp           ← parseo de tilesets estilo Tiled (image, grilla,
+        │   │                                margin/spacing, flag solid) y UV por tile
         │   ├── AssetPath.h / Image.h    ← rutas normalizadas y metadatos de imagen
         │   ├── AssetException.h / TextureException.h ← errores de carga con mensaje y ruta
         │   ├── Mesh.h/.cpp              ← geometría CPU (vértices, normales, índices)
         │   ├── AssimpMeshLoader.*       ← loader Assimp→Mesh
-        │   └── StbImageLoader.*         ← loader stb_image→Image (solo engine)
+        │   └── StbImageLoader.*         ← loader stb_image→Image (solo engine) +
+        │                                   `dimensiones()`: lee la cabecera del
+        │                                   archivo sin decodificar
         ├── Audio/                       ← audio del motor (backend inyectable)
         │   ├── AudioEngine.h/.cpp       ← fachada thread-safe (cola de comandos + hilo)
         │   ├── AudioClipsManager.h/.cpp ← descubre clips en Sonidos/ y registra por nombre
@@ -100,15 +161,19 @@ FunshiEngineGL/                          ← raíz del repo
         │   └── AudioClip.h              ← handle/metadata del clip
         ├── Behaviour/
         │   ├── IScriptBehaviour.h       ← interfaz de scripts (onStart/onUpdate/onStop, campos)
-        │   ├── ScriptGameObject.*       ← tabla de acceso al GameObject inyectada al script
+        │   ├── ScriptGameObject.*       ← tablas versionadas de GameObject y servicios
+        │   │                                (audio, teclado, mouse y movimiento físico)
         │   ├── ScriptRuntime.*          ← registro de backends, compilación y hot reload
         │   ├── ComportamientoCargado.h  ← instancia compilada (módulo + campos)
         │   ├── Backends/
         │   │   ├── BackendScript.h      ← interfaz de backend (C++/Java)
         │   │   ├── BackendCpp.*         ← compila .cpp→.so/.dll y lo carga (dlopen)
+        │   │   ├── RutaCabecerasScript.h ← resuelve include/ junto al ejecutable o la ruta del checkout
+        │   │   ├── ResolucionJdk.h    ← empareja libjvm y javac de una misma raíz de JDK
         │   │   └── BackendJava.*        ← Java vía JNI/JVM dinámico (solo con FUNSHI_JAVA)
         │   └── Reflection/
         │       └── BehaviourReflection.* ← reflexión, macros SerializeField y serialización
+        │                                    de valores de script
         ├── Configuracion/
         │   ├── Apariencia.h             ← perfil de apariencia (tema/acento/fondo/B-N) + utilidades
         │   ├── EditorConfig.h/.cpp      ← fachada de la configuración (datos() + cargar*/guardar*, guardado
@@ -116,8 +181,13 @@ FunshiEngineGL/                          ← raíz del repo
         │   │                              DELEGA en ProjectManager (una sola implementación)
         │   ├── ConfigPersistence.h/.cpp ← JSON puro de la config: general + proyecto (escritura atómica)
         │   ├── ProjectPaths.h/.cpp      ← rutas canónicas del motor (una sola fuente de verdad)
-        │   └── ProjectManager.h/.cpp    ← único dueño del ciclo de vida de proyectos (CRUD, migraciones
-        │                                  de estructura antigua, fallbacks de copia); delega rutas en ProjectPaths
+        │   └── ProjectManager.h/.cpp    ← ciclo de vida de proyectos; creación estricta para CLI separada
+        │                                  del aseguramiento/migración usado por el editor
+        ├── Diagnosticos/
+        │   └── RegistroDiagnosticos.h/.cpp ← historial acotado en memoria y persistencia JSON Lines
+        ├── Terminal/
+        │   ├── TerminalSession.h/.cpp      ← shell interactiva mediante ConPTY o pseudo-terminal POSIX
+        │   └── TerminalEmulator.h/.cpp     ← cuadrícula VT y parser de secuencias ANSI
         ├── Entity/
         │   ├── Entity.h                 ← base: lista de componentes, Transform, serialización
         │   └── Entity.cpp
@@ -142,22 +212,33 @@ FunshiEngineGL/                          ← raíz del repo
         │                                  dueño: GUIManager)
         ├── ExcepcionesCPP/              ← Throwable, RuntimeException, excepciones de
         │                                  contenedores (ExcepcionesEstructuras/)
+        ├── Exportador/
+        │   ├── GameExporter.h/.cpp      ← exporta el juego standalone: proyecto CMake temporal,
+        │   │                              compila el runtime (sin editor), empaqueta ejecutable +
+        │   │                              scenes/scripts/assets en estructura simplificada
+        │   ├── ConfigJuegoExportado.h   ← manifiesto JuegoExportado.json (header-only)
+        │   ├── RaizEngine.h             ← búsqueda de la raíz del engine para add_subdirectory
+        │   └── RutasExportacion.h       ← helpers de rutas del proyecto (header-only)
         ├── Fisicas/
         │   ├── IPhysicsBackend.h        ← contrato Strategy del backend de física
-        │   ├── PhysicsEngine.h/.cpp     ← fachada PIMPL; el header no expone Bullet
+        │   ├── ContactoFisico.h           ← transiciones de contacto entre colliders
+        │   ├── PhysicsEngine.h/.cpp        ← fachada PIMPL; el header no expone Bullet
         │   └── BulletPhysicsAdapter.h/.cpp ← adaptador concreto de Bullet (RAII)
         ├── FileManager/
-        │   ├── FileManager.h/.cpp       ← fachada del explorador: modelo + operaciones de dominio
-        │   │                              Y toda la E/S nativa (diálogos, abrir con la app del
-        │   │                              sistema, listado de directorio, plantillas de scripts)
+        │   ├── FileManager.h/.cpp       ← fachada del explorador (alto nivel): orquesta modelo,
+        │   │                              operaciones de dominio y toda la E/S nativa (diálogos,
+        │   │                              abrir con la app del sistema, listado de directorio,
+        │   │                              plantillas de scripts). Usa GestorDeArchivos internamente.
         │   ├── FileSelection.h          ← estado de navegación compartido entre vistas
-        │   ├── FileSystemWatcher.h/.cpp ← vigilancia de cambios externos (inotify)
+        │   ├── FileSystemWatcher.h/.cpp ← vigilancia de cambios externos (inotify
+        │   │                              en Linux; polling con mtime en el resto)
         │   └── Proceso.h/.cpp           ← runner de procesos SIN shell (argv propio:
         │                                  CreateProcessW / fork+execvp, log por handles/fd,
         │                                  cwd, entorno extra; única vía a `cmd.exe` es la
         │                                  receta cruda del harvest de vcvars)
-        ├── GestorDeArchivos/            ← Binario (streams binarios), File, Carpeta,
-        │                                  GestorDeArchivos (exploración del filesystem)
+        ├── GestorDeArchivos/            ← modelo/infra de bajo nivel: Binario (streams binarios),
+        │                                  File, Carpeta, GestorDeArchivos (exploración del filesystem).
+        │                                  FileManager lo consume como modelo del árbol.
         ├── GUI/
         │   ├── GeneralUserInterface.h/.cpp ← interfaz base de paneles ImGui
         │   ├── WindowNames.h
@@ -165,6 +246,14 @@ FunshiEngineGL/                          ← raíz del repo
         │   ├── Estado/
         │   │   └── StatusBarInterface.h/.cpp ← ventana "Estado": toolchain (Compilador/javac/
         │   │                                  libjvm) y estado de scripts (compilando/cargado/error)
+        │   ├── Terminal/
+        │   │   └── TerminalInterface.h/.cpp ← panel de shell integrado con cwd del proyecto
+        │   ├── ModsGUI/                   ← paneles que aportan los mods cargados
+        │   │   ├── PanelModInterface.h/.cpp  ← ventana de un panel de mod: abre la ventana de
+        │   │   │                              ImGui y llama al callback que entrego el mod
+        │   │   └── PanelesModsInterface.h/.cpp ← colección de esos paneles; se sincroniza con
+        │   │                                  Mods/RegistroPanelesMods cada frame (los mods
+        │   │                                  pueden registrar paneles en caliente)
         │   ├── Tema/
         │   │   └── TemaEditor.h/.cpp      ← aplica el perfil Apariencia al estilo ImGui en vivo
         │   │                                  (tema claro/oscuro, acento RGB en TODOS los roles de ImGui
@@ -192,16 +281,25 @@ FunshiEngineGL/                          ← raíz del repo
         │   │   ├── Camera/SettingsCamera.*       ← FOV, planos, velocidad, vista previa
         │   │   ├── Grid/SettingsGrid.*           ← visible y color de la grilla (infinita,
         │   │   │                                 densidad fija: no hay tamaño/separación)
-        │   │   ├── AudioSource/SettingsAudioSource.* ← dropdown de clip (Sonidos/), volumen, loop
-        │   │   ├── Interface/SettingsInterface.* ← dropdown de asset de interfaz (Interfaces/)
+        │   │   ├── AudioSource/SettingsAudioSource.* ← dropdown de clip (src<proyecto>/Sonidos/),
+        │   │   │                                 volumen, loop
+        │   │   ├── Interface/SettingsInterface.* ← ruta del .html de la interfaz
+        │   │   │                                 (drag & drop) + activa, ancla, tamaño y z
+        │   │   ├── Skybox/SettingsSkybox.*       ← visible + las seis caras del cubemap
+        │   │   │   └── SelectorArchivoCubemap.h ← modal de elección de cara (header-only):
+        │   │   │                                la lógica que decide (extensiones válidas,
+        │   │   │                                caras faltantes, resolución dispares) son
+        │   │   │                                `inline` puras fuera del dibujo, para que
+        │   │   │                                las ejercite un target headless sin ImGui
         │   │   ├── RigidBody/SettingsRigidBody.*
-        │   │   └── Colliders/ (Esfera, Cubo, Malla) ← sync transform/shape con física
-        │   ├── CreadorUI/                        ← Creador de interfaces (editor de HUD;
-        │   │                                      UserInterfaceCustom, JSON en Interfaces/)
+        │   │   └── Colliders/ (Esfera, Cubo, Malla, Tilemap) ← sync transform/shape con física
+        │   ├── Export/
+        │   │   └── ExportDialog.h/.cpp           ← diálogo de exportación del juego standalone
+        │   │                                      (arma `GameExporter::Config` y lo lanza)
         │   └── SceneGUI/
         │       ├── SceneSelectedInterface.h/.cpp  ← jerarquía y selección; usa EditorController
         │       ├── SceneObjectTree.h/.cpp         ← árbol de objetos (con drag & drop)
-        │       └── SceneMenuBarInterface.h/.cpp   ← barra Play/Stop/acciones de escena (flag `start`)
+        │       └── SceneMenuBarInterface.h/.cpp   ← controles Depuración/Juego/Pausa/Reset/Terminar
         ├── GUIManager/
         │   └── GUIManager.h/.cpp         ← fábrica y registro de ventanas; posee FileManager
         ├── Herramientas/
@@ -218,40 +316,66 @@ FunshiEngineGL/                          ← raíz del repo
         ├── ImGui/                        ← Dear ImGui v1.x integrado (+ backends glfw/opengl3)
         ├── Matematicas/
         │   └── StructVec3.h/.cpp         ← vec3 propio
+        ├── Mods/
+        │   ├── ManifiestoMod.h/.cpp      ← parseo y validación de ManifiestoMod.json
+        │   ├── ModVersion.h/.cpp         ← versiones X.Y.Z y rangos (versionMotor/versionMin)
+        │   ├── LectorZip.h/.cpp          ← manifiesto desde el .fmod y extracción anti zip-slip
+        │   ├── GestorMods.h/.cpp         ← descubrimiento en Mods/, orden topológico, ciclos,
+        │   │                                ámbito motor/proyecto y reporte a diagnósticos
+        │   ├── ApiMod.h                  ← API pública del mod (POD, tabla de punteros a
+        │   │                                función; append-only, y en la tabla de servicios
+        │   │                                `version` va primero para que su offset no se mueva)
+        │   ├── CargaDinamica.h           ← macros multiplataforma de carga de bibliotecas
+        │   │                                compartidas (dlopen/LoadLibrary), compartidas con
+        │   │                                Behaviour/Backends/BackendCpp.cpp
+        │   ├── CargadorMods.h/.cpp       ← carga nativa: extrae el .fmod a la caché, abre el
+        │   │                                binario, pide la interfaz por `funshi_mod_api` e
+        │   │                                inicializa; descarga en orden inverso al salir
+        │   ├── RegistroPanelesMods.h/.cpp ← registro de los paneles de GUI que aportan los
+        │   │                                mods (sin ImGui: testeable headless). Atribuye cada
+        │   │                                panel al mod que lo registró y guarda su estado
+        │   │                                abierto/cerrado por clave de ventana
+        │   ├── ServiciosMods.h/.cpp      ← tabla de servicios que el motor entrega al mod
+        │   │                                (POD, punteros a función). Solo inyecta lo que
+        │   │                                recibe: fuente de datos de la escena, nombre del
+        │   │                                proyecto y contexto de ImGui
+        │   └── DatosEscenaMods.h/.cpp    ← fuente de datos real de la escena para los mods
+        │                                    (única unidad que conoce GameObject/GameScene)
         ├── Rendering/
-        │   ├── MeshGPU.h/.cpp            ← malla residente en GPU (buffers VBO/VAO)
-        │   ├── MeshRenderer.h/.cpp       ← dibuja MeshGPU con shader program
-        │   ├── LineBuilder.h/.cpp        ← geometría CPU de líneas (cada segmento
-        │   │                                expandido a un quad; sin OpenGL)
-        │   ├── LineBatch.h/.cpp          ← batch de líneas en GPU (VAO+VBO, RAII)
-        │   ├── LineRenderer.h/.cpp       ← shader de líneas gruesas + batch; fija las
-        │   │                                matrices y el viewport de la pasada actual
-        │   │                                (líneas de la grilla, marcadores y gizmos)
-        │   ├── GrillaRenderer.h/.cpp        ← geometría de la grilla del suelo: plano
-        │   │                                infinito de densidad fija (secundarias cada
-        │   │                                kSeparacionMenor, una principal cada
-        │   │                                kMultiploMayor de ellas), recorte a un
-        │   │                                círculo-horizonte de radio kFadeFin y
-        │   │                                difuminado radial por vértice entre
-        │   │                                kFadeInicio y kFadeFin; un batch de
-        │   │                                líneas por ancho (1/2/3 px)
-        │   ├── GuiaEje.h/.cpp             ← geometría CPU de la guía de eje (X/Y/Z) del
-        │   │                                objeto seleccionado: origen + dirección
-        │   │                                unitaria, recorte analítico al horizonte,
-        │   │                                difuminado por vértice y el color del eje
-        │   │                                (convención X rojo, Y verde, Z azul, la
-        │   │                                misma de la grilla y el gizmo); solo CPU,
-        │   │                                sin OpenGL
-        │   ├── TextureGL.h/.cpp          ← textura OpenGL desde Image
-        │   ├── RenderTarget.h/.cpp       ← render a textura (FBO) para vistas previas de cámara
-        │   ├── GLFuncs.h                ← punteros de función OpenGL 3.3 core (glad-style)
-        │   ├── Backend/                  ← IRenderBackend + OpenGL3Backend (única capa con GL)
-        │   └── Shaders/
-        │       ├── ShaderProgram.h/.cpp  ← compilación/link de shaders + ShaderSources.h
-        │       └── ShaderException.h
+        │   ├── SceneRenderer.h/.cpp       ← renderizador de la escena: skybox, modelos,
+        │   │                                  iluminación, horizonte común de grilla/render,
+        │   │                                  ejes y gizmos (pipeline de líneas)
+        │   ├── MeshRenderer.h/.cpp         ← dibujo de meshes con difuminado radial al horizonte
+        │   ├── TilemapRenderer.h/.cpp      ← sube la malla horneada del Tilemap a GPU (caché
+        │   │                                  por revisión) y la dibuja con el shader de sprites
+        │   ├── LineRenderer.h/.cpp         ← líneas, wireframes y gizmos recortados al mismo horizonte
+        │   ├── MeshGPU.h/.cpp              ← wrapper RAII de VBO/VAO/EBO
+        │   ├── DibujoModelo.h/.cpp         ← helpers de render por modelo
+        │   ├── LineBatch.h/.cpp            ← batch GPU de líneas expandidas
+        │   ├── LineBuilder.h/.cpp          ← expansión de segmentos a quads
+        │   ├── LineRenderer.h/.cpp         ← API de dibujo de líneas (grilla, ejes, gizmos)
+        │   ├── GrillaRenderer.h/.cpp       ← geometría/lógica de grilla infinita
+        │   ├── GuiaEje.h/.cpp              ← guía de eje con contraste
+        │   ├── TextureGL.h/.cpp            ← wrapper de textura 2D + cubemap
+        │   ├── RenderTarget.h/.cpp         ← FBO (viewport/vista previa)
+        │   ├── Cielo.h/.cpp                ← cielo degradado
+        │   ├── Difuminado.h/.cpp           ← cálculo de difuminado radial
+        │   ├── CacheCubemap.h             ← caché de caras del cubemap
+        │   ├── Backend/                    ← abstracción de backend gráfico (Strategy)
+        │   │   ├── IRenderBackend.h        ← contrato (handles opacos, MeshData, Image2D,
+        │   │   │                              DepthFunc, recursos GPU, estados, FBO)
+        │   │   ├── OpenGL3Backend.h/.cpp   ← implementación OpenGL 3.3 core
+        │   │   └── GLFuncs.h                ← carga perezosa de funciones GL
+        │   └── Shaders/                    ← ShaderProgram + fuentes inyectadas
+        │       ├── ShaderProgram.h/.cpp
+        │       └── ShaderSources.h/.cpp
         ├── Objetos/
-        │   ├── GameObject.h/.cpp         ← id, nombre, estado, update, serialización binaria
+        │   ├── GameObject.h/.cpp         ← id, nombre, tag, estado, update y serialización binaria
+        │   ├── TagRegistry.h             ← registro dinámico de tags para el Inspector
         │   ├── GameObjectFactory.h/.cpp
+        │   ├── Prefab.h/.cpp            ← formato .prefab (magic PREB, arbol recursivo con componentes/hijos)
+        │   ├── PrefabLibrary.h/.cpp     ← cache + escaneo Assets/Prefabs/, crear/obtener/listar/borrar/renombrar
+        │   ├── ClonadorObjetos.h/.cpp   ← copia profunda por roundtrip de serializacion (scripts + Ctrl+C/V)
         │   ├── SimpleObject.h            ← GameObject sin geometría (Transform/Grid/Light...)
         │   ├── Modelos3D.h/.cpp          ← carga Assimp y datos de la malla (el dibujado
         │   │                                es de SceneRenderer, vía MeshRenderer)
@@ -265,31 +389,79 @@ FunshiEngineGL/                          ← raíz del repo
         │       ├── Grid.h/.cpp           ← grilla del suelo: pasada independiente, visible/color
         │       │                            (los campos tam/separacion quedan solo para que las
         │       │                            escenas viejas se lean igual; no se dibujan con ellos)
-        │       ├── Color.h / Model.h / Script.h
-        │       ├── RigidBody/RigidBody.h/.cpp ← cuerpo Bullet sincronizado (RAII)
+        │       ├── Skybox.h/.cpp         ← cubemap de 6 caras que reemplaza al cielo degradado
+        │       ├── SpriteRenderer.h/.cpp ← quad texturizado con UV recortable (planilla/frames)
+        │       ├── Animador2D.h/.cpp     ← anima la region UV del SpriteRenderer sobre una grilla
+        │       ├── Tilemap.h/.cpp        ← capas de tiles (visible/colision), pintado, malla
+        │       │                            horneada cacheada por revision y serial binaria FTM1
+        │       ├── Color.h / Model.h / Script.h ← varios scripts por objeto,
+        │       │                                    nombre editable y metadatos reflejados
+        │       │                                    serializados para el inspector
+        │       ├── RigidBody/RigidBody.h/.cpp ← cuerpo Bullet sincronizado, habilitable, con detección de apoyo (RAII); masa, gravedad por cuerpo (uso+escala), friccion y freeze por ejes via setGravity/setFriction/setLinearFactor/setAngularFactor, serial v2 con lectura v1
         │       └── Colliders/
-        │           ├── Collider.h/.cpp   ← base abstracta; radio; gizmo del collider (GizmoTarget)
+        │           ├── Collider.h/.cpp   ← base abstracta; radio; visibilidad persistente y gizmo
         │           │                        con wireframe por el batch de líneas
         │           ├── EsfereCollider.*  ← btSphereShape
         │           ├── CubeCollider.*    ← btBoxShape (half extents = radio)
-        │           └── MallaCollider.*   ← btConvexHullShape a partir de la malla
+        │           ├── MallaCollider.*   ← btConvexHullShape a partir de la malla
+        │           ├── TilemapCollider.*  ← btCompoundShape (una caja por tramo de tiles solidos)
+        │           └── TiposShapeBullet.h ← identifica las shapes por su "shape type",
+        │                                   sin RTTI (Bullet se compila sin ella: vcpkg
+        │                                   instala bullet3 con USE_MSVC_DISABLE_RTTI=ON)
         ├── Proyectos/
         │   └── GestorDeProyectos.h/.cpp  ← ciclo de vida del proyecto activo (entrar,
         │                                  guardar estado y escena Ctrl+S, renombrar, eliminar,
         │                                  exportar, imgui.ini); extraído de main.cpp
+        ├── Runtime/
+        │   └── main_juego.cpp            ← punto de entrada de juegos exportados (sin editor:
+        │                                  GUIManager, MenuGUI, paneles). ImGui básico para runtime,
+        │                                  carga escenas desde estructura simplificada (scenes/)
         ├── Comandos/
         │   ├── IComando.h              ← interfaz Command: ejecutar(), deshacer(), descripcion()
         │   ├── GestorComandos.h/.cpp   ← pilas undo/redo (máx 50), ejecuta/deshace/rehace
         │   ├── CrearObjetoComando.h/.cpp
         │   ├── BorrarObjetoComando.h/.cpp
+        │   ├── DuplicarObjetoComando.h/.cpp ← Ctrl+C/V por la puerta del editor
         │   ├── ReparentarComando.h/.cpp
         │   ├── TransformComando.h/.cpp
         │   ├── AgregarComponenteComando.h/.cpp
         │   ├── QuitarComponenteComando.h/.cpp
         │   └── LimpiarEscenaComando.h/.cpp
+        ├── WebUI/
+        │   ├── VistaWebUI.h             ← una interfaz web ya montada por un backend
+        │   │                               (estado opaco + ruta .html + sello mtime +
+        │   │                               textura/handle + área)
+        │   ├── IWebUIBackend.h          ← contrato del motor web (Strategy): subproceso,
+        │   │                               init/bombeo/apagado globales, cargar,
+        │   │                               redimensionar, actualizar, estado/salida,
+        │   │                               render, input (ratón/tecla/rueda/foco),
+        │   │                               descargar
+        │   ├── BackendNull.h            ← backend sin motor (no-op): corre el ciclo
+        │   │                               completo headless, sin CEF ni GL (tests/CI)
+        │   ├── BackendCef.h             ← backend CEF real (pimpl sin headers CEF,
+        │   │                               el motor en C++17 nunca ve a CEF)
+        │   ├── BackendCef.cpp           ← única unidad con CEF (C++20, target
+        │   │                               funshi_webui_cef): OSR, textura, mapa
+        │   │                               GLFW→VK, sentinela de salida JS
+        │   ├── WebUIRuntime.h/.cpp      ← registro + selección de backend (por config,
+        │   │                               con fallback al nulo) y despacho del ciclo
+        │   │                               global (subproceso/init/pump/apagado) y de
+        │   │                               cada vista
+        │   ├── EstadoInterfaces.h/.cpp  ← estado de runtime por interfaz: dos árboles JSON
+        │   │                               (estado motor→JS y salida JS→motor) por rutas JSON
+        │   │                               Pointer; lógica sin GL/backend (pimpl + nlohmann)
+        │   └── VistasWebUI.h/.cpp       ← vistas vivas de una escena, una por interfaz
+        │                                   activa: carga, recarga por cambio de .html
+        │                                   o por mtime en disco, redimensiona,
+        │                                   entrega el estado y recoge la salida,
+        │                                   y descarga (lógica sin GL)
         └── Scenes/
             ├── GameScene.h/.cpp          ← coordinador del frame: render, GUI, física, gizmo,
             │                                previews y pasada de la grilla
+            ├── InterfacesJuego.h/.cpp    ← recolección de las interfaces de juego (HUD) de la
+            │                                escena: recorre TODOS los objetos y devuelve las
+            │                                InterfaceComponent activas y con ruta, ordenadas por
+            │                                z (lógica pura, sin GL ni GUI, probada headless)
             ├── GizmoController.h/.cpp   ← gizmo ImGuizmo + picking (desde GameScene): estado
             │                                (operación/global/listo), arrastre con
             │                                TransformComando (historial) y congelación de
@@ -306,14 +478,13 @@ FunshiEngineGL/                          ← raíz del repo
             │                                guarda/carga rutas de asset por objeto con
             │                                precedencia sobre el binario (Ctrl+S)
             ├── ManifiestoAssetsCore.h/.cpp ← núcleo puro headless (JSON + relativizar/
-            │                                absolutizar + precedencia); tests propios
+            │                                absolutizar + precedencia, con las 6 caras del
+            │                                Skybox); tests propios
         └── States/
-            ├── ApplicationStateMachine.h/.cpp ← MainMenu/Editing/Playing/Exiting
+            ├── ApplicationStateMachine.h/.cpp ← MainMenu/Editing/Debugging/Playing/Exiting
             └── OrquestadorEstadoGUI.h/.cpp    ← reglas de transición menú↔editor y de
-                                                   simulación: la "función de marco" que fija
-                                                   el comportamiento ante F5(Play)/F6(Pausa)/
-                                                   F7(Stop) y demás teclas (Escape, Iniciar
-                                                   Estudio); headless, con tests propios
+                                                   Depuración/Juego: pausa, reset, término y
+                                                   Escape; headless, con tests propios
                                                    (orquestador-estado-tests)
 ```
 
@@ -335,24 +506,25 @@ main.cpp
   ├── GestorDeProyectos            ← ciclo de vida del proyecto activo (entrar/guardar/
   │                                  renombrar/eliminar/exportar + imgui.ini)
   ├── EditorConfig                 ← carga JSON y aplica a menú/GUI/escena
-  ├── ApplicationStateMachine      ← MainMenu / Editing / Playing / Exiting
+  ├── ApplicationStateMachine      ← MainMenu / Editing / Debugging / Playing / Exiting
   └── bucle principal
       ├── glfwPollEvents
       ├── EngineTime::update (deltaTime)
       ├── ImGui::NewFrame
       ├── refleja el estado del menú en la fachada MenuGUI (guardia de cambio)
-      ├── refleja en la escena lo que pide el orquestador (start + pausa de la simulación)
-      ├── GameScene::update(dt) SIEMPRE: dentro, física y scripts se auto-gatean por start
-      │   y el resto corre en los flancos de transición (editor→play: pose a los cuerpos
-      │   Bullet + audio + servicios de script + cola de compilación; play→editor: vacía la
-      │   cola, desconecta los servicios, corta el audio y avisa onStop), con F6 pausando
-      │   y F7 cortando (Playing → Editing)
+      ├── refleja en la escena el modo (Depuración/Juego), start y pausa
+      ├── GameScene::update(dt) SIEMPRE: al iniciar guarda un estado serializado
+      │   de la escena; Reset lo restaura con la física reconstruida. Al terminar
+      │   ambos modos vuelven al estado previo a la simulación.
+      │   En ambos modos avanzan física/scripts/audio y F6 pausa sin reinicio.
       ├── pasada de la grilla (Grid + batch de líneas + shader de ancho en
-      │   píxeles; color efectivo según el perfil de apariencia y, con la guia
-      │   de eje activa, la guia usa ese mismo color como referencia de contraste)
+      │   píxeles; solo fuera de Juego, color efectivo según el perfil de
+      │   apariencia y referencia de contraste para la guía de eje)
       ├── dibujarGameObjects (MeshRenderer VBO/VAO+shader; único pipeline)
-      ├── gizmo ImGuizmo sobre el objetivo activo (objeto o collider)
-      ├── GUI() de GameScene (paneles) + vistas previas de cámaras (FBO)
+      ├── gizmo ImGuizmo y overlays auxiliares solo fuera de Juego
+      ├── GUI() de GameScene + DockSpace siempre enviados durante edición y
+      │   simulación; E solo oculta paneles, y las ventanas flotantes se
+      │   reanclan a su último dock válido sin reconstruir los splits
       ├── GestorDeProyectos::sincronizar/eliminar (cambios de proyecto desde el menú)
       ├── ImGui::Render + swap buffers
       └── al salir: GestorDeProyectos::guardarProyectoCompleto (escena + config)
@@ -397,23 +569,40 @@ solo como orquestador de arranque y bucle.
   y cualquier ancestro del nuevo padre (no se pueden crear ciclos).
 - `EventBus` implementa suscripción tipada mediante tokens (`size_t`). Soporta
   `ObjectCreated`, `ObjectDeleted`, `ObjectReparented`, `ComponentChanged`,
-  `SceneCleared` y `ObjectSelected`. No es global: vive dentro de `GameScene`.
+  `SceneCleared`, `ObjectSelected` y `ComponentStructureChanged` (alta o baja de
+  componente; el inspector reconcilia solo con este último). No es global: vive
+  dentro de `GameScene`.
 - `LightSystem` es el dueño del estado GL de luces: cada frame escanea los objetos,
   toma los componentes `Light` y parametriza los slots `GL_LIGHT0..7`. No queda
   lógica de luz en el bucle ni en los componentes.
-- `ApplicationStateMachine` modela los estados `MainMenu`, `Editing`, `Playing` y
-  `Exiting`. Las transiciones se deciden en `OrquestadorEstadoGUI` (función de
-  marco: Escape → menú, Iniciar Estudio → editor, F5 → Play, F7 → Stop) y solo
-  se aplican sobre la máquina desde ahí; conviven con flags de UI legados
-  (`menuActivo`, `start`) con roles documentados — `start` lo manejan a la vez el
-  botón Activar/Detener del menú de escena y el reflejo de F5/F7.
+- `ApplicationStateMachine` modela `MainMenu`, `Editing`, `Debugging`, `Playing`
+  (Juego) y `Exiting`. `OrquestadorEstadoGUI` decide Escape, Iniciar Estudio,
+  F5/Depuración, Juego, pausa, Reset y término; `GameScene` conserva un snapshot
+  serializado al iniciar y reconstruye física y referencias al restaurarlo.
+  `menuActivo` solo gobierna paneles GUI; el flag de simulación refleja los dos
+  modos en `GameScene`.
 - `EditorController` posee un `GestorComandos` que envuelve cada mutación
   (crear/borrar/reparentar, cambios de transform, agregar/quitar componentes,
   limpiar escena) en un `IComando`. Las operaciones de la GUI van por el
-  gestor, nunca directamente al `SceneRegistry`, de modo que Ctrl+Z/Ctrl+Y
-  funcionan de forma transversal. La pila mantiene un máximo de 50 comandos;
-  cada nueva acción invalida la pila de redo. La raíz de la escena (id=0)
-  está excluida de delete/clear por diseño.
+   gestor, nunca directamente al `SceneRegistry`, de modo que Ctrl+Z/Ctrl+Y
+   funcionan de forma transversal. La pila mantiene un máximo de 50 comandos;
+   cada nueva acción invalida la pila de redo. La raíz de la escena (id=0)
+   está excluida de delete/clear por diseño.
+- Equivalencia GUI ↔ CLI (contrato): toda operación de la GUI de edición debe
+  pasar por un `IComando` con parámetros explícitos (los que ya existen:
+  crear/borrar/reparentar, transform, agregar/quitar componentes, limpiar
+  escena), de modo que cada acción del editor tenga un equivalente invocable
+  sin GUI. Esto habilita un editor por línea de comandos que manipula la
+  creación del videojuego con los mismos comandos, sin interactuar con la
+  GUI. Regla: ninguna mutación de escena desde la GUI salta el gestor; un
+  comando nuevo se agrega con su clase en `Comandos/` y su caso en
+  `tests/ComandosTests.cpp`.
+- Settings manipulables por código: los datos públicos que muestran los
+  paneles de componentes (`Settings*`) deben tener su contraparte escribible
+  por código: setters del componente y/o entradas en las tablas de scripts
+  (`ApiScriptGameObject`/`ScriptServices`, append-only). Así lo que se ajusta
+  con sliders/checkboxes en el inspector también se genera y manipula desde
+  scripts, y la creación de objetos por código no depende de la GUI.
 
 ### Entidades, objetos y componentes
 
@@ -511,8 +700,8 @@ solo como orquestador de arranque y bucle.
   los paneles `Settings*` específicos de cada componente presente. El checkbox
   **"Gizmo activo"** de `SettingsTransform` enciende/apaga el gizmo de ese
   transform (del objeto o del offset del collider) sin deseleccionar.
-- `SceneMenuBarInterface` gestiona la barra de menú de escena y comunica el
-  estado Play/Stop mediante un `bool*` (`start`) que consume `GameScene`.
+- `SceneMenuBarInterface` ofrece los controles de Depuración/Juego y, durante
+  una simulación, Pausa/Reset/Terminar; las transiciones pasan por el orquestador.
 - `MenuGUI` es la fachada del paquete `MenusGUI` (menú principal): `MenuModel`
   (lógica pura) + `MenuView` (ImGui) + `StartMenuPresenter` (puente motor).
   Ver `src/GUI/MenusGUI/README.md`.
@@ -537,11 +726,13 @@ solo como orquestador de arranque y bucle.
   sobre `Configuracion/ProjectPaths.{h,cpp}` (rutas), con
   `EditorConfig.{h,cpp}` como fachada estable que expone `datos()` y
   `cargar*/guardar*` a main, escenas y tests. El **ciclo de vida de los
-  proyectos** (`asegurarEstructuraProyecto`, `crearProyectoPorDefecto`,
+  proyectos** (`asegurarEstructuraProyecto`, `asegurarEstructuraBase`,
   `renombrarProyecto`, `eliminarProyecto`) no se implementa en EditorConfig:
   son **delegaciones a `ProjectManager`**, único dueño del CRUD, las
   migraciones de estructura antigua y los fallbacks de copia entre
-  dispositivos. La orquestación de todo el flujo de proyectos sobre esta
+  dispositivos. La política de qué proyecto queda abierto al arrancar (menú
+  salvo `--proyecto`, y si es primer arranque) vive aislada y sin
+  disco ni UI en `Configuracion/ProyectoInicial.h`. La orquestación de todo el flujo de proyectos sobre esta
   fachada (qué hará al arrancar, entrar, guardar, renombrar, eliminar,
   exportar y cuál es el `imgui.ini` vigente) vive en
   `Proyectos/GestorDeProyectos` (extraído de `main.cpp`). Guarda dos archivos
@@ -569,6 +760,16 @@ solo como orquestador de arranque y bucle.
     `kIntervaloEscritura` (250 ms); `guardarGeneral()` (Ctrl+S, salida, reset)
     vuelca el pendiente sin esperar.
   - El layout `imgui.ini` también se guarda junto al proyecto (no en el CWD).
+- Carpeta de un proyecto: `Proyects/<proyecto>/` con `Memory/` (escena,
+  configuración del proyecto e `imgui.ini`) y la raíz de
+  assets `src<proyecto>/` (meshes, texturas, materiales, `Sonidos/`,
+  `Scripts/`). Todas esas rutas salen de `ProjectPaths`
+  (`directorioSrc`, `directorioSonidos`, `directorioScripts`), incluido el
+  exportador del juego standalone, que las pide ahí mediante
+  `Exportador/RutasExportacion.h` (lógica pura, header-only) en vez de
+  componerlas desde la carpeta del proyecto: componiéndolas a mano las copias
+  se saltaban en silencio y el juego exportado salía sin sonidos, sin scripts
+  del usuario y sin configuración.
 - Limitación conocida: la serialización binaria no tiene versionado ni validación
   de tamaños; un cambio en la estructura de atributos invalida escenas guardadas.
 
@@ -581,17 +782,57 @@ solo como orquestador de arranque y bucle.
   valores por nombre de campo).
 - `IScriptBehaviour` define la interfaz: `onStart`/`onUpdate`/`onStop` y
   `camposReflejados()`; el motor inyecta la tabla `MotorScript::ApiScriptGameObject`
-  (nombre, transform completo con getters de rotacion/escala, log) y la tabla
-  `MotorScript::ScriptServices` (audio, busqueda de objetos por nombre y
-  consulta de teclado via `InputScripts`, inyectadas por `GameScene` al entrar
-  en Play) para que el script no enlace contra el motor. Ambas tablas siguen
+  (nombre, transform completo con getters de rotacion/escala, log y control
+  horizontal/salto sobre `RigidBody`) y la tabla
+  `MotorScript::ScriptServices` (audio, busqueda de objetos por nombre, id o
+  etiqueta y
+  consulta de teclado via `InputScripts`, inyectadas por `GameScene` al iniciar
+  la simulacion) para que el script no enlace contra el motor. Ambas tablas siguen
   versionado APPEND-ONLY con campo `version` final para guardas en runtime.
-- `BehaviourReflection` implementa la reflexión por macros (`REFLECT_INICIO`,
-  `CAMPO`, `ARRAY`, `GRUPO`, `GRUPOS`, `FIN`), la conversión de valores tipados y la
-  serialización binaria autodescriptiva de los campos.
+  Las posiciones de la API de transform son locales. Durante el cierre, GameScene
+  conserva los servicios hasta completar `onStop`, detiene los handles de audio
+  iniciados por scripts y luego desconecta el contexto, sin afectar la propiedad
+  de audio de los componentes. `InputScripts` expone los edges del teclado y el
+  delta del mouse en pixeles durante el frame actual.
+-   `BehaviourReflection` implementa la reflexión por macros (`REFLECT_INICIO`,
+  `CAMPO`, `ARRAY`, `GRUPO`, `GRUPOS`, `COMPONENTE`, `FIN`), la conversión de
+  valores tipados y la serialización binaria autodescriptiva de los campos.
+  `CAMPO`, `ARRAY`, `GRUPO`, `GRUPOS`, `COMPONENTE`, `FIN`), la conversión de valores
+  tipados y la serialización binaria autodescriptiva de los campos.
+- Una referencia a un componente de otro objeto (`TagTipo::Componente`, macro
+  `REFLECT_COMPONENTE(campo, "Tipo")`) se serializa por el **nombre del objeto
+  dueño**. El motor la resuelve con dos ganchos que inyecta `GameScene`
+  (`fijarResolverComponentes`): nombre+tipo → puntero, y puntero → nombre dueño.
+- La API cubre propiedades fisicas (masa, gravedad por cuerpo, friccion,
+  freeze), gravedad global y gestion de objetos (crear/clonar/destruir,
+  agregar collider y cuerpo) con cola diferida a fin de frame; `ClonadorObjetos`
+  (copia profunda por roundtrip de serializacion) lo comparten los scripts y
+  el Ctrl+C/V del editor (`EditorController::duplicarObjeto`).
 - `BackendCpp` compila el `.cpp` a `.so`/`.dll` con el compilador configurado y lo
   carga con `dlopen`/`LoadLibrary`; `BackendJava` (opcional, `-DFUNSHI_JAVA=ON`)
   compila con `javac` y ejecuta sobre un JVM cargado dinámicamente vía JNI.
+  Java accede a las mismas funciones de objeto y servicios de escena mediante
+  las funciones nativas de `Nativo`, sin enlazarse directamente con los módulos.
+  Los caches C++ y Java incluyen la version del runtime de scripts, por lo que
+  un cambio de API/runtime recompila los fuentes y no ofrece ABI binaria entre
+  versiones del motor.
+  La eleccion del toolchain Java vive en `Behaviour/Backends/ResolucionJdk.h`, que
+  es codigo puro (sin JNI, para poder probarlo en un test headless): recorre las
+  raices candidatas en un orden fijo y **empareja** `libjvm` y `javac` de una misma
+  raiz, para que el `.class` se compile con el mismo JDK que lo ejecuta (con dos
+  toolchains distintos, un `javac` mas nuevo que la JVM produce
+  `UnsupportedClassVersionError`, que el motor|reportaba como "clase no
+  encontrada"). `FUNSHI_LIBJVM` y `JAVAC` siguen mandando por encima de la
+  busqueda; si la raiz elegida no trae `javac` (es un JRE) no se busca otro
+  compilador. La biblioteca que entrega `FindJNI` llega horneada como la ruta
+  del **archivo**, no como una raiz: se resuelve aparte y solo si ese archivo
+  existe en la maquina, porque pasada por la lista de raices se descartaba
+  siempre (buscaba `<archivo>/lib/server/libjvm.so`). El texto que cruza la
+  frontera JNI (`NewStringUTF`) se convierte a
+  UTF-8 con `std::filesystem::path::u8string`, que en Windows convierte la
+  codificacion ANSI nativa a UTF-8; las rutas que van a `JavaVMOption` y a
+  `Proceso::ejecutar` se dejan estrechas a proposito, porque esas APIs usan la
+  codificacion nativa.
   Los flags con los que se compila el script viven en
   `Behaviour/Backends/ComandoCompilacionCpp.h` y cumplen el mismo contrato de
   CRT que el engine (`/MD` o `/MDd` según la configuración, más `/EHsc`): la
@@ -599,7 +840,76 @@ solo como orquestador de arranque y bucle.
   libera el otro, así que un CRT distinto (p. ej. el estático `/MT`) separa los
   heaps y corrompe la memoria.
 - El editor (`SettingsScript`) dibuja los campos reflejados (escalares, arrays,
-  grupos y referencias a `GameObject`) y dispara la recompilación.
+  grupos, referencias a `GameObject` y a componentes como el `InterfaceComponent`,
+  asignables arrastrando desde su inspector) y dispara la recompilación.
+- Qué compilador se invoca lo decide `BackendCpp::compilador()` con el mismo
+  criterio que el resto: `FUNSHI_CXX` del entorno si está (manda siempre), el
+  valor que hornea CMake **solo si existe en disco** —la ruta horneada es la del
+  equipo que compiló, y en el del usuario no existe—, y si no `cl` del PATH
+  cuando hay un toolset MSVC en la máquina o `g++` en el resto de plataformas.
+  El entorno de MSVC sale de `vcvars64EnRaices`, que busca `vcvars64.bat` a dos
+  niveles bajo las raíces de Visual Studio (`<raiz>/<año>/<edición>` y también
+  las Build Tools, que cuelgan igual); con Visual Studio presente se invoca
+  `cl` a secas porque el propio entorno de vcvars lo pone en el PATH, así que el
+  motor no queda atado a la versión instalada. Las dos decisiones viven como
+  funciones puras en `ComandoCompilacionCpp.h` (`elegirCompilador` y
+  `vcvars64EnRaices`, esta con las raíces por parámetro) para poder probarlas
+  con rutas falsas, sin depender de un Windows.
+- Las cabeceras que el script incluye al compilarse (`Behaviour/IScriptBehaviour.h`
+  y las tres que arrastra) se resuelven con `RutaCabecerasScript`: el motor recibe
+  la carpeta de fuentes por `FUNSHI_SRC_DIR`, que el paquete deja como el nombre
+  relativo `include` y el editor resuelve contra la carpeta del ejecutable (el
+  build de desarrollo lo sobreescribe con la ruta absoluta del checkout). Sin esa
+  carpeta el backend avisa antes de invocar al compilador, en vez de dejar que
+  falle con un `-I` inexistente.
+
+### Interfaces de juego web
+
+Las interfaces gráficas de los juegos (HUD) se escriben en HTML/CSS/JS y se
+montan sobre un motor web embebido. El subsistema vive en `src/WebUI/` y sigue
+el patrón Strategy + registro de los backends de audio y de scripts:
+
+- El `InterfaceComponent` guarda solo la ruta del `.html` (con su colocación:
+  ancla, desplazamiento, tamaño y `z`); el motor web resuelve los recursos
+  relativos (CSS, JS, imágenes) por sí mismo.
+- `IWebUIBackend` es el contrato del motor web: `ejecutarSubproceso` (rol de
+  subproceso del motor web, antes de todo en `main`), `inicializar` (arranque
+  una vez por proceso, con GL listo), `bombear` (bucle de mensajes por frame),
+  `cargar`, `redimensionar`, `actualizar`, `establecerEstado` (entrega el
+  estado JSON a la página), `leerSalida` (recoge `FunshiUI.salida`), `render`
+  (que devuelve el handle de textura para ImGui), el input neutral (ratón con
+  `BotonRatonWebUI`, rueda, teclado por código GLFW y foco), `descargar` y
+  `apagar`.
+- `WebUIRuntime` es la fachada de despacho: mantiene un registro de backends y
+  selecciona el activo (por configuración, con fallback al nulo ante un nombre
+  desconocido). Expone el ciclo global (`ejecutarSubproceso`, `inicializar`,
+  `bombear`, `apagar`, que `main.cpp` y `main_juego.cpp` invocan) y reenvía el
+  ciclo de cada vista al backend activo. Es la única puerta que usa el resto
+  del motor.
+- `BackendNullWebUI` corre el ciclo completo sin motor web ni GL, para tests
+  headless y CI.
+- `BackendCefWebUI` es el backend real sobre CEF 154 (Chromium): una ventana
+  off-screen (OSR) por vista, bitmap BGRA a textura vía `updateTexture2D`,
+  salida JS por sentinela en `console.log`, teclado por mapa GLFW→VK. Vive en
+  su propia unidad C++20 (`BackendCef.cpp`, pimpl sin headers CEF en el resto)
+  y solo se compila con `-DFUNSHI_CEF=ON` (requiere `-DFUNSHI_WEBUI=ON`); CMake
+  descarga la distribución pineada bajo el build dir y copia el runtime junto
+  al binario. Sin CEF el runtime cae al nulo.
+- `EstadoInterfaces` guarda, por interfaz viva, dos árboles JSON: el **estado**
+  que el motor entrega a la página y la **salida** que la página devuelve. Se
+  manejan por rutas estilo JSON Pointer. Es lógica pura (pimpl + nlohmann), sin
+  GL ni backend, y los scripts la manipulan por la tabla de servicios.
+- `VistasWebUI` gobierna las vistas vivas de una escena (una por interfaz
+  activa): las da de alta, recarga al cambiar la ruta del `.html` o al cambiar
+  el archivo en disco (sello `mtime`, patrón `cambioElFuente` de scripts),
+  redimensiona, entrega el estado pendiente, recoge la salida, avanza y
+  descarta las que dejan de estar activas.
+- `GameScene` recolecta las interfaces activas (`InterfacesJuego`), sincroniza
+  `VistasWebUI` con el tamaño del área de juego y su `EstadoInterfaces`, y
+  dibuja cada vista con su textura vía el *draw list* de ImGui, respetando el
+  orden por `z`. En el editor además pinta la ventana dockable `Vista de
+  interfaz` con la vista de la interfaz seleccionada (preview + input local
+  con foco por hover).
 
 ---
 
@@ -609,7 +919,7 @@ solo como orquestador de arranque y bucle.
 |---|---|---|
 | GLFW | Ventana, contexto OpenGL y eventos de input | `find_package(glfw3)` |
 | OpenGL 3.3 core | Renderizado (shaders, VBO/VAO, FBO) vía `GLFuncs` | `find_package(OpenGL)` (sin GLU) |
-| Bullet Physics | Física y colisiones (btDiscreteDynamicsWorld) | `find_package(Bullet)` con fallback a targets clásicos |
+| Bullet Physics | Física y colisiones (btDiscreteDynamicsWorld) | `find_package(Bullet)` con fallback a targets clásicos. Se compila **sin RTTI** (vcpkg instala `bullet3` con `USE_MSVC_DISABLE_RTTI=ON`), así que las shapes se identifican por su "shape type" (`TiposShapeBullet`) y nunca con `dynamic_cast`. |
 | Assimp | Carga de modelos 3D (opcional via `USE_ASSIMP`) | `find_package(assimp)` |
 | GLM | Matemáticas de Transform y cámaras (`GLM_ENABLE_EXPERIMENTAL`) | Usa `External/glm` si existe; si no, `find_package(glm)` del sistema |
 | nlohmann/json | `EditorConfig` (persistencia de configuración) | Vendoriado en `External/nlohmann` |
@@ -636,35 +946,53 @@ La convención general es un par `.h`/`.cpp` por clase. Las excepciones son:
 al build sin enumerarlos manualmente. Los archivos de ImGui se recopilan por separado
 desde `src/ImGui/` y los de ImGuizmo desde `ImGuizmo/` (fuera de `src/`).
 
-Además del ejecutable, el proyecto define **veinte targets de prueba headless**
-registrados en CTest (`scripts-java-tests` solo se registra con
-`-DFUNSHI_JAVA=ON`; cinco de ellos enlazan `funshi_engine` y requieren
-`BUILD_ENGINE=ON`, el resto compila también con `BUILD_ENGINE=OFF`):
+Además del ejecutable, el proyecto define **treinta targets de prueba
+headless** registrados en CTest (`scripts-java-tests` solo se registra con
+`-DFUNSHI_JAVA=ON`; once de ellos viven bajo `BUILD_ENGINE=ON`
+—`comandos-tests`, `escena-serializacion-tests`, `catalogo-componentes-tests`,
+`tilemap-tests`, `interfaces-juego-tests`,
+`prefab-tests`, `manifiesto-assets-tests`, `orquestador-estado-tests`,
+`tema-tests`, `interface-component-tests` y `webui-runtime-tests`—; los
+dieciocho restantes compilan también con `BUILD_ENGINE=OFF`):
 
-- `filemanager-tests` (132): ejercita `GestorDeArchivos`/`FileManager`/`FileSystemWatcher`
+- `filemanager-tests` (190 en Linux; 181 en Windows con MinGW, 183 con MSVC): ejercita `GestorDeArchivos`/`FileManager`/`FileSystemWatcher`
   contra un proyecto temporal, sin ventanas ni pila gráfica; incluye el arrastre
-  con invalidación explícita de caché del grid en carpeta origen y destino, y el
-  renombre por click derecho de las vistas del explorador.
-- `proceso-tests` (26): el runner de procesos sin shell `Proceso`: round-trip
+  con invalidación explícita de caché del grid en carpeta origen y destino, el
+  renombre por click derecho de las vistas del explorador y la creación de
+  carpetas (`CrearCarpeta`, compartida por árbol y grid: valida el nombre, avisa
+  del nombre repetido sin cerrar el modal y sube el contador una sola vez).
+  También la lógica
+  pura de `SelectorArchivoCubemap` (filtro de extensiones del cubemap y aviso
+  de caras faltantes o de resolución dispares), que al vivir fuera del dibujo del
+  modal se ejercita aquí sin crear contexto de ImGui.
+- `proceso-tests` (24): el runner de procesos sin shell `Proceso`: round-trip
   de argv byte a byte (el binario se relanza a sí mismo copiado en una carpeta
   con espacios, con argumentos hostiles), exit codes, truncado del log, `cwd`,
   entorno extra, tabla de `citar()` y, en Windows, la receta cruda de `cmd.exe`
   del harvest de vcvars.
-- `configuracion-tests` (128): round-trip del JSON de `EditorConfig` (general y
+- `configuracion-tests` (174): round-trip del JSON de `EditorConfig` (general y
   por proyecto, con `ConfigPersistence`/`ProjectPaths`), carga tolerante ante
   archivos ausentes/corruptos/parciales, prioridad de las claves modernas sobre
-  el `menu/*` legacy, `restablecer`, escritura atómica y guardado diferido, y el
-  cotejo de prefijos `rutaBajo` (en Windows `/` y `\` equivalen).
-- `eventbus-tests` (16): suscripción/publicación/unsubscribe del canal tipado de GUI.
-- `menu-tests` (38): lógica pura del menú (traducción, observer de cambios y reset).
-- `assetmanager-tests` (82): caché Flyweight de meshes (rutas `AssetPath`, geometría
-  `Mesh` con `computeBounds`, `computeNormals` —incluido el modo `soloFaltantes`
-  para assets que mezclan sub-mallas con y sin normales— y `computeTangents`) y el
-  registro compartido con un loader artificial.
+  el `menu/*` legacy, `restablecer`, escritura atómica y guardado diferido, la
+  política de proyecto inicial `ProyectoInicial::resolver`, los colores del cielo
+  (se conservan tal como se guardaron —un cielo claro incluido— y solo se
+  acotan los componentes fuera de `[0, 1]`), el cotejo de prefijos `rutaBajo` (en
+  Windows `/` y `\` equivalen y se ignoran mayúsculas y minúsculas; en Linux se
+  mantiene sensible al caso), y la elección de la raíz de datos
+  (`ProjectPathsDetalle::elegirRaizDeDatos`: junto al ejecutable si ahí se puede
+  escribir; si no, la carpeta de datos del usuario, migrando lo que ya hubiera
+  junto al ejecutable).
+- `eventbus-tests` (17): suscripción/publicación/unsubscribe del canal tipado de GUI.
+- `menu-tests` (40): lógica pura del menú (traducción, observer de cambios —sin
+  notificar al reaplicar una apariencia idéntica— y reset).
+- `assetmanager-tests` (95): caché Flyweight de meshes (rutas `AssetPath`, con los prefijos
+  UNC y `\\?` preservados al normalizar) y geometría de `Mesh` con `computeBounds`,
+  `computeNormals` —incluido el modo `soloFaltantes` para assets que mezclan sub-mallas con
+  y sin normales— y `computeTangents`; registro compartido con un loader artificial.
 - `texturemanager-tests` (15): caché Flyweight de imágenes CPU (sin entrar la pila gráfica).
 - `estructuras-tests` (87): `ListaDE`, `ArbolEnlazado`, `PriorityListaDE`,
   `MinHeap`/`MaxHeap`, `ListMergeSort` y `ArbolBinarioEnlazado`.
-- `rendering-tests` (141): geometría de las líneas del pipeline moderno
+- `rendering-tests` (178): geometría de las líneas del pipeline moderno
   (`LineBuilder`): expansión de cada segmento al quad que ensancha el shader,
   color por extremo (difuminado de la grilla), polilíneas, aristas con índices
   fuera de rango y caja de 12 aristas; más la guía de eje (`GuiaEje`): origen y
@@ -674,18 +1002,42 @@ registrados en CTest (`scripts-java-tests` solo se registra con
   opacidad, recorte de la recta hasta el horizonte con la
   distancia 3D a la cámara, difuminado por vértice y los rechazos defensivos
   (eje inválido, NaN/Inf, eje degenerado, horizonte degenerado, recta fuera del
-  horizonte). Solo CPU, sin OpenGL.
-- `scripts-tests` (100): reflexión `SerializeField` (escalares, arrays, grupos
-  anidados) y su round-trip binario; el contrato de flags con el que
+  horizonte); más el difuminado del piso (`Difuminado`): el inicio derivado en
+  proporción constante del radio elegido, el radio acotado (finito, enorme,
+  negativo y nulo) y la forma de la curva, que no depende del radio; más los
+  colores efectivos del cielo degradado (`Cielo`): los dos extremos con B/N y
+  tema resueltos; y la identidad del cubemap del Skybox (`CacheCubemap`): la
+  clave que decide cada cuanto volver a subirlo a GPU cambia solo si cambia una
+  ruta o su fecha de modificación. Solo CPU, sin OpenGL.
+- `scripts-tests` (173): reflexión `SerializeField` (escalares, arrays, grupos
+  anidados y referencias a componentes por `REFLECT_COMPONENTE`, con su
+  resolución por nombre del objeto dueño) y su round-trip binario; el contrato
+  de flags con el que
   `BackendCpp` compila los scripts (CRT, `/EHsc`, familia de compilador, los
-  ARGV armados sin shell ni redirección); el harvest del entorno de vcvars
+  ARGV armados sin shell ni redirección); la resolución de la carpeta de
+  cabeceras del script (`RutaCabecerasScript`: absoluta del checkout o nombre
+  relativo `include` resuelto contra la carpeta del ejecutable en la app
+  instalada); el descubrimiento del toolset MSVC de la máquina del usuario
+  (`vcvars64EnRaices`, con las raíces por parámetro para poder probarla con un
+  árbol falso: dos niveles, que es donde cuelgan las Build Tools, y primera
+  raíz por preferencia) y la decisión de qué compilador se invoca
+  (`elegirCompilador`: override del entorno, valor horneado solo si existe en
+  disco, `cl` del PATH si hay toolset o `g++`); el harvest del entorno de vcvars
   (receta cruda de `cmd`, parser UTF-16, bloque multi-sz); y el contrato del
   sondeo de toolchain (dispositivo nulo `NUL`/`/dev/null` abierto por el
-  runner, sin `std::system`).
+  runner, sin `std::system`); el emparejamiento de `libjvm` y `javac` de una
+  misma raíz de JDK (`ResolucionJdk`, con sus overrides por entorno y la
+  dedución de la raíz desde la ruta de la biblioteca en los layouts de POSIX y
+  Windows, que el compilador que se pasa al proceso sea ejecutable, y que la
+  biblioteca horneada por CMake —que es la ruta del archivo, no una raíz— solo
+  se use si ese archivo existe en la máquina, como último recurso) y la paridad
+  del requisito de JDK del instalador (que exige
+  `jvm.dll` **y** `javac.exe`).
 - `scripts-runtime-tests`: compila un `.cpp` real con `BackendCpp`, lo carga con
-  `dlopen`/`LoadLibrary` y ejecuta el ciclo + hot reload, y comprueba que un
+  `dlopen`/`LoadLibrary` y ejecuta el ciclo + hot reload, comprueba que un
   segundo componente sobre el **mismo** fuente reutiliza el artefacto ya al
-  día en vez de volver a enlazarlo (SKIP 77 solo si el
+  día en vez de volver a enlazarlo, y que sin las cabeceras del motor el
+  backend avisa con su propio mensaje (SKIP 77 solo si el
   sondeo del compilador del build falla; con MSVC el entorno del toolset lo
   obtiene `BackendCpp` del `vcvars64.bat`).
 - `scripts-java-tests`: end-to-end del backend Java (JNI); solo con `FUNSHI_JAVA=ON`.
@@ -694,31 +1046,104 @@ registrados en CTest (`scripts-java-tests` solo se registra con
   largos).
 - `audio-tests` (16): `AudioEngine`/`AudioClipsManager` con `NullAudioBackend`
   (contrato de la cola de comandos: clips, handles, encolado, detención, volumen).
-- `userinterface-tests` (34): `UserInterfaceCustom` (modelo del Creador de
-  interfaces, `src/GUI/CreadorUI/`): round-trip JSON de los 5 tipos de widget,
-  guardar/cargar y tolerancia a JSON parcial.
+- `interface-component-tests` (16): serialización binaria del `InterfaceComponent`
+  (ruta del `.html` + colocación): round-trip del formato nuevo y lectura del
+  formato viejo (solo el nombre) sin consumir bytes de más, que desalinearía el
+  resto del objeto.
+- `barra-progreso-tests` (8): `BarraProgresoTexto` (formato de la barra de la
+  ventana Estado, acotado ante `hecha > total` y `total == 0`).
+- `webui-runtime-tests` (57): `WebUIRuntime`, `VistasWebUI` y `EstadoInterfaces`
+  sobre el backend nulo: selección de backend con fallback al nulo ante un nombre
+  desconocido, ciclo de vida de una vista sin motor web (`cargar`→`actualizar`→
+  `render`→`descargar`), el gestor de vistas de una escena (alta, recarga al
+  cambiar la ruta del `.html` o al cambiar el archivo en disco por `mtime`,
+  redimensionado y descarte de las que dejan de estar activas), el estado por
+  interfaz por rutas JSON Pointer y el intercambio del estado pendiente/olvido
+  en el ciclo de vistas.
 - `tema-tests` (28): `TemaEditor` (aplicación del perfil `Apariencia`): el acento
   llega a todos los roles de ImGui y el modo B/N deja la paleta monocroma.
 - `comandos-tests` (77): undo/redo del editor (7 comandos, cadena de redo
   múltiple, límite de 50 entradas y descripción del comando aplicado).
-- `manifiesto-assets-tests` (29): manifiesto `SceneAssets.json` (JSON round-trip,
-  tolerancia a manifiestos corruptos y precedencia sobre el `.db`).
-- `orquestador-estado-tests` (54): la "función de marco" F5/F6/F7 y el botón
-  Activar/Detener (reglas por estado de Play/Pausa/Stop), Escape por estado (en
-  play detiene, en editor vuelve al menú), la condición compartida de las teclas
-  del editor (editor o play) y los atajos del editor frente a ImGui.
-- `escena-serializacion-tests` (75): round-trip completo de escena (guardar →
+- `manifiesto-assets-tests` (37): manifiesto `SceneAssets.json` (JSON round-trip de
+  malla, texturas, script y las seis caras del cubemap, tolerancia a manifiestos
+  corruptos y precedencia sobre el `.db`).
+- `mods-tests` (243): sistema de mods `.fmod`: parseo y
+  validación de `ManifiestoMod.json` (campos obligatorios, `esquemaVersion`,
+  `id` con formato `Autor.Nombre`, `tipo` nativo), semver y rangos
+  (`versionMotor`, `versionMin`), lectura del manifiesto desde el ZIP y
+  extracción con rechazo de rutas `../`/absolutas (anti zip-slip), y
+  descubrimiento en `Mods/` con orden topológico, detección de ciclos, rechazo
+  de `id` duplicado, chequeos de dependencia/conflicto/versión de motor, ámbito
+  motor vs proyecto y reporte a `RegistroDiagnosticos`. Los `.fmod` de prueba se
+  generan con el escritor de miniz. La carga nativa se ejercita con binarios
+  reales: los targets `mods-test-plugin-a/b` (bibliotecas compartidas que
+  exportan `funshi_mod_api`) y `mods-test-plugin-sin-simbolo` se empaquetan
+  como `.fmod` y se cargan de verdad, cubriendo la extracción a la caché, la
+  inicialización, el orden inverso de descarga y los rechazos (sin punto de
+  entrada, sin binario en el paquete, sin el símbolo exportado). El registro de
+  paneles y la tabla de servicios se cubren aparte: alta de paneles (con su
+  clave de ventana única por mod y panel), atribución al mod en ejecución,
+  estado abierto/cerrado por ventana, retirada de los paneles al descargar el
+  mod, `version` en offset fijo, y el reparto de las consultas de datos de la
+  escena a la fuente inyectada.
+- `orquestador-estado-tests`: transiciones de Depuración/Juego, pausa, solicitud
+  consumible de Reset, fin/Escape por estado, teclas del editor y atajos frente
+  a ImGui.
+- `escena-serializacion-tests` (151): round-trip completo de escena (guardar →
   recargar → conservar nombre, id y jerarquía), defensas del índice de escena
   (líneas corruptas saltadas con aviso, auto-sanado de hijos con id 0),
   apertura avisada de archivos `Binario` inexistente sin `std::remove()`
   destructivo, la reescritura de referencias al mover/renombrar (script,
-  malla y textura bajo el prefijo reubicado, los demás intactos) y el
+  malla y textura bajo el prefijo reubicado, los demás intactos), el
   sanado de referencias rotas al cargar (una sola coincidencia del nombre bajo
-  la raíz → repara; varias o ninguna → no adivina y avisa).
+  la raíz → repara; varias o ninguna → no adivina y avisa), la resolucion del
+  componente `Model` con la matriz mundial del objeto y la separacion del
+  evento estructural (`ComponentStructureChanged`) del de propiedad en el bus
+  de escena: editar un campo no reconstruye los paneles del Inspector y
+  agregar un componente crea unicamente el que falta. Cubre ademas el
+  reparentado: preserva la pose mundial reescribiendo el local como
+  `inverse(padre) × mundo` (los descendientes no saltan), refresca el cuerpo
+  fisico del objeto y deja el local consistente en disco.
+- `diagnostic-registry-tests` (26): `RegistroDiagnosticos`: registro de eventos
+  de diagnóstico (nivel, módulo, timestamp UTC), historial JSONL con retención y
+  lectura acotada, deduplicación por clave y el volcado de `RuntimeException`.
+- `catalogo-componentes-tests` (52): la tabla única que declara, por componente,
+  su dimensión (2D/3D), requisitos, creador y panel: descriptores completos y sin
+  nombres repetidos, `ComponentFactory` creando desde el catálogo (tolerando el
+  prefijo de MSVC y el alias retrocompatible), tipos desconocidos y requisitos
+  incumplidos devolviendo nullptr, y el filtro por dimensión y los submenús.
+- `tilemap-tests` (57): tileset JSON estilo Tiled (parseo, geometría de la
+  grilla, flag de solidez por tile), capas y pintado por celda, horneado de la
+  malla (una malla por tilemap, un quad por tile), round-trip binario y la shape
+  compuesta del `TilemapCollider`.
+- `interfaces-juego-tests` (9): la recolección de interfaces de juego (HUD):
+  `InterfacesJuego::recolectarDeEscena` sobre la lista de objetos de la escena
+  (lista nula o vacía sin resultados, objetos sin `InterfaceComponent` que no
+  aportan, una escena con varias interfaces que las devuelve TODAS ordenadas por
+  z y las interfaces sin ruta o inactivas omitidas sin cortar el recorrido).
+- `prefab-tests` (82): sistema de Prefabs: round-trip guardar → instanciar
+  conservando nombre, tag, jerarquía, componentes y `Transform`, más la caché de
+  `PrefabLibrary` y la validación de archivos corruptos; la API de scripts
+  `listarPrefabs` con storage estable (válido hasta la llamada siguiente).
+- `terminal-emulator-tests` (24): cuadrícula VT del `TerminalEmulator`: CR/LF,
+  posicionamiento y consulta del cursor (`H`/`DSR`), secuencias SGR (color,
+  negrita, fondo) y borrado; CSI 1K con cursor en wrap pendiente, rejilla
+  recién redimensionada a las dimensiones por defecto, y pantalla alternativa
+  con resize (cursor restaurado acotado).
+- `terminal-session-tests` (14): E/S real del pseudo-terminal (`forkpty` en
+  POSIX, ConPTY en Windows): rechazos deterministas, arranque, eco del comando y
+  su salida por el PTY, y que `detener()` no se cuelga ni pierde la salida
+  emitida durante el cierre (SKIP 77 si ConPTY no está disponible).
 
-Las cinco suites que enlazan el engine (`tema-tests`, `comandos-tests`,
-`manifiesto-assets-tests`, `orquestador-estado-tests` y
-`escena-serializacion-tests`) solo se compilan con `BUILD_ENGINE=ON`.
+Las **once** suites que dependen del engine (`comandos-tests`,
+`escena-serializacion-tests`, `catalogo-componentes-tests`, `tilemap-tests`,
+`interfaces-juego-tests`, `prefab-tests`, `manifiesto-assets-tests`,
+`orquestador-estado-tests` y `tema-tests` enlazan `funshi_engine`;
+`interface-component-tests` y `webui-runtime-tests` compilan sueltas, pero el
+`InterfaceComponent` usa glm) solo se registran con `BUILD_ENGINE=ON`. El resto
+compila sus fuentes directamente (`barra-progreso-tests` entre ellas) y corre
+también con `BUILD_ENGINE=OFF`: con el motor hay 30 suites registradas y sin él
+18.
 
 La opción `BUILD_ENGINE=OFF` compila solo las pruebas (útil en CI y plataformas
 sin las librerías gráficas), y `ENABLE_ASAN` (ON por defecto en Debug) activa
@@ -735,12 +1160,12 @@ main.cpp
   │                                       ──► tecla E: toggleEditorInterfaces()
   │                                       ──► 1/T, 2/R, 3/U: operación del gizmo (y apagan la guía)
   │                                       ──► X/Y/Z: guía de eje del objeto seleccionado
-  │                                       ──► Escape: en play detiene (como F7), en editor
+  │                                       ──► Escape: en simulación termina; en editor
   │                                         vuelve al menú (regla en el orquestador)
   │
   ├─ GameScene::GUI()
-  │     ├─ SceneMenuBarInterface ──► botón Activar/Detener ──► Orquestador::alternarSimulacion
-  │     │                          (misma regla que F5/F7; el bool solo muestra el estado)
+  │     ├─ SceneMenuBarInterface ──► Depuración/Juego o Pausa/Reset/Terminar
+  │     │                          ──► OrquestadorEstadoGUI
   │     ├─ SceneSelectedInterface ──► EditorController (crear/borrar/reparentar GO)
   │     │                         ──► EventBus.publish(ObjectCreated/Deleted/Selected)
   │     ├─ SceneObjectTree ──► selección y reparentado por drag & drop
@@ -750,20 +1175,22 @@ main.cpp
   │
   ├─ GameScene::update(dt)  (siempre, también con start en false: es donde viven los
   │                          flancos de transición; física/scripts se auto-gatean)
-  │     ├─ transición editor→play: empuja la pose visual a los cuerpos Bullet
-  │     ├─ transición play→editor: cola de compilación vacía, servicios de script
+  │     ├─ transición editor→simulación: empuja la pose visual a los cuerpos Bullet
+  │     ├─ transición simulación→edición: cola vacía, servicios de script
   │     │   desconectados, audio cortado y onStop a cada script
+  │     │   (ambos modos restauran el estado previo a la simulación)
   │     ├─ si start y gizmo libre: PhysicsEngine::stepSimulation(dt)
   │     │               └─ btDiscreteDynamicsWorld::stepSimulation
   │     └─ scripts: IScriptBehaviour::onUpdate (si compilados)
   │
   └─ GameScene::gameScene()
         ├─ LightSystem::beginFrame() [solo CPU: datos de luz para el shader]
-        ├─ pasada de la grilla (Grid + batch de líneas, color efectivo según apariencia)
+        ├─ pasada de la grilla (Grid + batch de líneas; solo fuera de Juego)
         ├─ dibujarGameObjects (MeshRenderer shader; único pipeline)
         ├─ marcadores de luz y cámara (wireframes auxiliares, batch de líneas)
         ├─ ImGuizmo::Manipulate sobre el GizmoTarget activo (objeto o collider)
         ├─ dibujarViewportsPrevios (FBO de cámaras) + paneles ImGui
+        ├─ pintarInterfacesJuego (overlay HUD; también corre sin GUI de editor)
         └─ pickObject con el mouse para seleccionar en el viewport
 ```
 
@@ -802,11 +1229,15 @@ calcularla:
 2. Comprueba si puede **escribir** ahí. No basta con que el directorio exista y
    sea legible: se abre y se cierra un archivo de prueba, porque en
    `C:\Program Files` la carpeta es legible y aun así el proceso no puede crear
-   nada dentro (la creó el instalador, que corre como administrador, y heredó
-   los ACL de `Program Files`; el ejecutable no lleva manifiesto de elevación).
+   nada dentro (la creó el instalador con los ACL de `Program Files`; el
+   ejecutable no lleva manifiesto de elevación).
 3. Si no puede, cae a la carpeta de datos del usuario: `%APPDATA%\FunshiEngineGL`
    en Windows, `$XDG_DATA_HOME/FunshiEngineGL` o `~/.local/share/FunshiEngineGL`
-   en Linux y macOS.
+   en Linux y macOS. El instalador de Windows es por usuario
+   (`PrivilegesRequired=lowest`), así que en una instalación normal este punto
+   2 se cumple y la carpeta queda en `%LOCALAPPDATA%\Programs\FunshiEngineGL`:
+   el paso 3 es la red que cubre una copia en `Program Files`, una carpeta en
+   solo lectura o el motor lanzado como administrador.
 4. Si tampoco hay carpeta de usuario utilizable, conserva la ruta histórica: es
    preferible una ruta conocida que falle de forma visible a dejar al motor sin
    rutas válidas.
@@ -846,7 +1277,7 @@ cargar, así que mover la raíz no invalida las escenas existentes.
   publica el evento **antes** de destruir el objeto, para que los observadores
   invaliden sus referencias a tiempo (fix de un use-after-free histórico).
 - La manipulación del gizmo pausa `stepSimulation` mientras el usuario arrastra y
-  la física solo corre en Play; el sync collider↔rigidbody↔objeto usa la matriz
+  la física solo corre en Depuración o Juego; el sync collider↔rigidbody↔objeto usa la matriz
   global compuesta del dueño, de modo que mover un collider no desincroniza el cuerpo.
 - Las rutas de usuario (`<directorioEjecutable>/MotorGrafico`) están
   centralizadas en `EditorConfig` para la configuración y el layout, pero los assets
@@ -903,7 +1334,9 @@ GameScene → coordina todos los subsistemas del frame
 
 - `tests/FileManagerTests.cpp`: construcción y re-resolución del árbol de archivos,
   operaciones de dominio (crear, renombrar, copiar, eliminar archivo y carpeta,
-  búsqueda) y `FileSystemWatcher` (detección de cambios externos, en Linux via inotify).
+  búsqueda) y `FileSystemWatcher` (detección de cambios externos: inotify en
+  Linux; en el resto, el polling de mtime con su semilla en el ctor y el
+  intervalo inyectable para probarlo).
 - `tests/EditorConfigTests.cpp`: round-trip del JSON (general, por proyecto y
   legacy `menu/*`), tolerancia a archivos ausentes/corruptos/parciales,
   escritura atómica (sin temporales colgados) y guardado diferido
@@ -926,9 +1359,10 @@ GameScene → coordina todos los subsistemas del frame
   en el árbol), el guardado con el árbol vacío (archivo vacío **con aviso en el
   log**, nunca un trunc silencioso) y el reporte de fallos de apertura en
   `Binario` (sin `std::remove` destructivo previo, con valor de retorno `bool` y
-  propagación en `saveEntity`/`loadEntity`). Es la suite que faltaba: hasta
-  ahora solo existía `ModelSerializationTests`, que cubre el componente `Model`
-  aislado.
+  propagación en `saveEntity`/`loadEntity`). También verifica que el puntero a
+  una cámara eliminada durante la UI se invalide antes de usarlo en el gizmo.
+  Es la suite que faltaba: hasta ahora solo existía `ModelSerializationTests`,
+  que cubre el componente `Model` aislado.
 - `tests/TemaEditorTests.cpp`: aplicación del perfil `Apariencia` al estilo de ImGui
   (`TemaEditor::aplicarEstilo`, solo contexto de ImGui, sin pila gráfica). Cubre la
   regresión "el color de acento no llega a toda la interfaz": con un acento no azul
@@ -939,17 +1373,48 @@ GameScene → coordina todos los subsistemas del frame
   los roles de primer plano (el alpha del perfil no participa del tema), que
   aplicar el mismo perfil dos veces sea idempotente y que el modo blanco y negro
   deje la paleta monocroma.
-- `tests/ComandosTests.cpp`: los 7 comandos del editor (`CrearObjetoComando`,
+- `tests/ComandosTests.cpp`: los 8 comandos del editor (`CrearObjetoComando`,
   `BorrarObjetoComando`, `ReparentarComando`, `TransformComando`,
-  `AgregarComponenteComando`, `QuitarComponenteComando`, `LimpiarEscenaComando`)
-  con deshacer/rehacer, la cadena de redo múltiple, el límite del historial y la
-  descripción que el historial devuelve para avisar en la barra de estado.
-- Los diecinueve targets compilan en cualquier plataforma y se ejecutan con `ctest`.
+  `AgregarComponenteComando`, `QuitarComponenteComando`, `LimpiarEscenaComando`,
+  `DuplicarObjetoComando`)
+  con deshacer/rehacer, la cadena de redo múltiple, el límite del historial, la
+  descripción que el historial devuelve para avisar en la barra de estado y el
+  registro de cuerpos en fisica al borrar/duplicar/agregar/quitar.
+- Los treinta targets compilan en cualquier plataforma y se ejecutan con `ctest`.
 - `.github/workflows/ci.yml` compila el engine completo en Ubuntu (Release, sin
   ASan) y ejecuta las pruebas; además ejecuta las headless en
-  Linux/Windows con `BUILD_ENGINE=OFF` y el backend Java en Ubuntu con JDK.
+  Linux/Windows con `BUILD_ENGINE=OFF`, el backend Java en Ubuntu con JDK y
+  las headless en Windows con el **generador multi-config** (Visual Studio),
+  donde cada configuración compila en su propia carpeta: lo que el proyecto
+  genera en tiempo de configuración tiene que ser por configuración.
+- La CI compila y **enlaza** el engine también en Windows con MSVC (generador
+  por defecto y dependencias de vcpkg), que es lo que hace el job que publica
+  el instalador: sin ese enlace, un fallo que solo aparece con Visual Studio
+  (por ejemplo, un símbolo cuyo nombre depende del *class-key* del tipo) se
+  descubre al publicar, cuando corregirlo obliga a rehacer el tag.
+- El *class-key* (`class` o `struct`) con el que se declara un tipo forma parte
+  del nombre del símbolo en MSVC: una declaración adelantada con un key y la
+  definición con el otro generan dos símbolos distintos y el enlazado falla
+  con `LNK2019` aunque el código sea idéntico (GCC y Clang lo ignoran). Por
+  eso el build avisa y el aviso es error: C4099 en MSVC (`/we4099`) y
+  `-Werror=mismatched-tags` en GCC y Clang.
+- `typeid(x).name()` no es el nombre del tipo: MSVC escribe `"class Transform"`
+  y GCC/Clang escriben el *mangling* (`"9Transform"`). Por eso el nombre con el
+  que se **persiste** un componente (prefabs, escenas, catálogo) lo produce un
+  único helper, `nombreSimpleTipo()` de `Herramientas/TypeUtils`, que quita el
+  prefijo de class-key y se queda con el último componente del namespace. Es el
+  mismo helper al escribir, al leer y al comparar, de modo que un artefacto
+  escrito en una plataforma se lee en la otra.
 - `.github/workflows/release.yml` y `windows-release.yml` también ejecutan la
-  suite (y `estructuras-tests`) al generar los instaladores por tag.
+  suite (y `estructuras-tests`) al generar los instaladores por tag. El job de
+  Windows usa el generador por defecto (multi-config), que es el mismo que
+  comprueba el job multi-config de la CI.
+- La lista de targets que compila cada job tiene que cubrir todas las suites
+  registradas en ese modo de build (30 con `BUILD_ENGINE=ON`, 18 con
+  `BUILD_ENGINE=OFF`): `ctest` ejecuta todos los tests registrados en el build,
+  no solo los compilados, y los que faltan quedan como `Not Run`, lo que hace
+  fallar el job. Las suites con `DISABLED TRUE` se pueden omitir porque `ctest`
+  las salta.
 
 Los bugs de la Fase 2 (cámaras/vistas previas) y sus fixes están documentados en
 [CAMARAS_VISTAS_PREVIAS.md](CAMARAS_VISTAS_PREVIAS.md).
@@ -960,11 +1425,10 @@ Los bugs de la Fase 2 (cámaras/vistas previas) y sus fixes están documentados 
 
 - [ ] Sistema de animaciones.
 - [ ] `CommandManager` para undo/redo.
-- [ ] Cuadro de log de errores en el editor.
+- [ ] Filtros y navegación avanzada del historial de diagnósticos en el editor.
 - [ ] Resolver IDs duplicados al crear objetos; limpiar binarios huérfanos al eliminar.
-- [ ] Clase `Input` de gameplay (el input del editor ya está modularizado en `src/Input/EditorInput`; falta exponer teclado/mouse a los scripts vía la tabla `api`).
 - [ ] Terminar los popups del inspector.
-- [ ] Prefabs y duplicación de objetos.
+- [x] Prefabs y duplicación de objetos.
 - [ ] Portabilidad de rutas de assets (centralizar `HOME` / rutas de Windows).
 - [ ] Versionado y validación de la serialización binaria.
 - [ ] Extraer `SceneRenderer`, `PhysicsSystem` y `ScriptSystem` de `GameScene`.

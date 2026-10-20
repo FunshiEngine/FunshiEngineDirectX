@@ -26,6 +26,7 @@ class EditorController;
 class SceneRegistry;
 class GameObject;
 class AssetManager;
+class RegistroDiagnosticos;
 
 template <typename T>
 class Position;
@@ -38,6 +39,7 @@ private:
     // deserializar su path, para que la geometria se cachee en el
     // AssetManager en lugar de re-parsear Assimp por objeto.
     AssetManager* assets;
+    RegistroDiagnosticos* diagnosticos;
 
     void savePreOrder(Position<GameObject*>* root,
                        std::ofstream& archive,
@@ -45,16 +47,18 @@ private:
 
     void loadPreOrder(std::ifstream& file,
                       GameObject* parent,
-                      const std::string& semiPath);
+                      const std::string& semiPath,
+                      bool& cargaCompleta);
 
 public:
     SceneSerializer(SceneRegistry* value,
                     EditorController* controller,
-                    AssetManager* assetsManager = nullptr);
+                    AssetManager* assetsManager = nullptr,
+                    RegistroDiagnosticos* registro = nullptr);
 
     void save(const std::string& filename);
 
-    void load(const std::string& pathTxt,
+    bool load(const std::string& pathTxt,
               const std::string& semiPath);
 };
 

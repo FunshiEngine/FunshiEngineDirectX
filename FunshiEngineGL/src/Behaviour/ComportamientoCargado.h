@@ -39,6 +39,9 @@ struct ComportamientoCargado {
     std::vector<ReflejoScripts::DefCampo> campos; // reflexion del comportamiento
     std::string mtimeFuente;                  // para hot reload (idempotente)
     bool cargado = false;
+    bool falloRuntime = false;
+    std::string callbackFallido;
+    std::string errorRuntime;
 
     bool valido() const { return cargado && instancia != nullptr; }
 };

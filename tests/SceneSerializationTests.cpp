@@ -35,29 +35,66 @@
 // salida final "OK/FALLOS: N comprobaciones" saliendo con 0 o 1.
 
 #include <cstdio>
+#include <algorithm>
+#include <cmath>
+#include <cstdint>
 #include <filesystem>
 #include <fstream>
 #include <iostream>
 #include <iterator>
+#include <limits>
 #include <memory>
 #include <sstream>
 #include <string>
+#include <vector>
+
+#include <imgui.h>
+
+#include <btBulletDynamicsCommon.h>
+
+#include <glm/glm.hpp>
+#include <glm/gtc/matrix_transform.hpp>
+#include <glm/gtc/type_ptr.hpp>
 
 #include "TempPruebas.h"
+#include "../FunshiEngineGL/src/Assets/AssetException.h"
 #include "../FunshiEngineGL/src/Assets/AssetManager.h"
+#include "../FunshiEngineGL/src/Assets/Mesh.h"
+#include "../FunshiEngineGL/src/Behaviour/ScriptGameObject.h"
 #include "../FunshiEngineGL/src/Configuracion/EditorConfig.h"
+#include "../FunshiEngineGL/src/Diagnosticos/RegistroDiagnosticos.h"
 #include "../FunshiEngineGL/src/Events/EventBus.h"
+#include "../FunshiEngineGL/src/Fisicas/BulletPhysicsAdapter.h"
+#include "../FunshiEngineGL/src/Fisicas/IPhysicsBackend.h"
+#include "../FunshiEngineGL/src/Fisicas/PhysicsEngine.h"
 #include "../FunshiEngineGL/src/GUI/ObjetosGUI/SettingsObjectInterface.h"
+#include "../FunshiEngineGL/src/GUI/SceneGUI/JerarquiaArbol.h"
 #include "../FunshiEngineGL/src/Herramientas/PathUtils.h"
 #include "../FunshiEngineGL/src/Objetos/GameObject.h"
 #include "../FunshiEngineGL/src/Objetos/GameObjectFactory.h"
+#include "../FunshiEngineGL/src/Objetos/Modelos3D.h"
+#include "../FunshiEngineGL/src/Objetos/TagRegistry.h"
+#include "../FunshiEngineGL/src/Objetos/Componentes/Color.h"
 #include "../FunshiEngineGL/src/Objetos/Componentes/Material.h"
+#include "../FunshiEngineGL/src/Objetos/Componentes/Model.h"
+#include "../FunshiEngineGL/src/Objetos/Componentes/Colliders/EsfereCollider.h"
+#include "../FunshiEngineGL/src/Objetos/Componentes/Colliders/CubeCollider.h"
+#include "../FunshiEngineGL/src/Objetos/Componentes/CameraComponent.h"
+#include "../FunshiEngineGL/src/Objetos/Componentes/RigidBody/RigidBody.h"
+#include "../FunshiEngineGL/src/Objetos/Componentes/Script.h"
+#include "../FunshiEngineGL/src/Objetos/Componentes/Skybox.h"
+#include "../FunshiEngineGL/src/Objetos/Componentes/SpriteRenderer.h"
+#include "../FunshiEngineGL/src/Scenes/SceneRegistry.h"
 #include "../FunshiEngineGL/src/Objetos/Componentes/Transform.h"
 #include "../FunshiEngineGL/src/Objetos/SimpleObject.h"
+#include "../FunshiEngineGL/src/Rendering/DibujoModelo.h"
+#include "../FunshiEngineGL/src/Rendering/ProyeccionCamara.h"
 #include "../FunshiEngineGL/src/Scenes/EditorController.h"
+#include "../FunshiEngineGL/src/Scenes/CameraFrameSafety.h"
 #include "../FunshiEngineGL/src/Scenes/RutasReescritura.h"
 #include "../FunshiEngineGL/src/Scenes/SceneRegistry.h"
 #include "../FunshiEngineGL/src/Scenes/SceneSerializer.h"
+#include "../FunshiEngineGL/src/Scenes/SiembraEscena.h"
 
 namespace fs = std::filesystem;
 
@@ -115,6 +152,66 @@ void nombresPorDefecto() {
         CHECK(std::string(colgado->inputName) != nombre1,
               "el nombre por defecto no repite el del padre");
     }
+}
+
+void restaurarBaselineDeEscena() {
+    TempPruebas::CarpetaPrueba carpetaDir("funshi_escena_baseline");
+    const fs::path base = carpetaDir.ruta();
+    std::error_code ec;
+    fs::create_directories(base / "Scene", ec);
+
+    const std::string prefijo = (base / "Scene").string();
+    const std::string pathTxt = (base / "SceneBBDDObjetos.txt").string();
+    const std::string semiPath = (base / "Scene").string() + "/";
+
+    SceneRegistry registry;
+    EventBus events;
+    AssetManager assets;
+    EditorController editor(&registry, nullptr, &events, &assets);
+    SceneSerializer serializer(&registry, &editor, &assets);
+
+    GameObject* raiz = registry.getRoot();
+    auto objeto = GameObjectFactory::createSimpleObject(raiz);
+    std::snprintf(objeto->inputName, sizeof(objeto->inputName), "Baseline");
+    Transform* transformOriginal = objeto->getComponent<Transform>();
+    CHECK(transformOriginal != nullptr, "el objeto baseline tiene Transform");
+    if (transformOriginal) transformOriginal->setTranslatef(3.f, 4.f, 5.f);
+    GameObject* original = editor.createGameObject(std::move(objeto), raiz);
+    CHECK(original != nullptr, "se crea el objeto baseline");
+    const int idOriginal = original ? original->getId() : -1;
+    serializer.save(prefijo);
+
+    if (original) {
+        original->getComponent<Transform>()->setTranslatef(90.f, 80.f, 70.f);
+        editor.deleteGameObject(original);
+    }
+    auto agregado = GameObjectFactory::createSimpleObject(raiz);
+    std::snprintf(agregado->inputName, sizeof(agregado->inputName), "Temporal");
+    CHECK(editor.createGameObject(std::move(agregado), raiz) != nullptr,
+          "se agrega un objeto durante la simulacion");
+
+    serializer.load(pathTxt, semiPath);
+
+    GameObject* restaurado = nullptr;
+    for (auto* entidad : registry.getRoot()->getChildEntities()) {
+        auto* objetoEscena = dynamic_cast<GameObject*>(entidad);
+        if (objetoEscena && std::string(objetoEscena->inputName) == "Baseline")
+            restaurado = objetoEscena;
+        CHECK(!objetoEscena ||
+                  std::string(objetoEscena->inputName) != "Temporal",
+              "la restauracion elimina objetos agregados durante la simulacion");
+    }
+    CHECK(restaurado != nullptr,
+          "la restauracion recupera un objeto eliminado durante la simulacion");
+    CHECK(restaurado && restaurado->getId() == idOriginal,
+          "la restauracion conserva el id del objeto baseline");
+    Transform* transformRestaurado =
+        restaurado ? restaurado->getComponent<Transform>() : nullptr;
+    CHECK(transformRestaurado &&
+              std::abs(transformRestaurado->getTranslatef()[0] - 3.f) < 0.001f &&
+              std::abs(transformRestaurado->getTranslatef()[1] - 4.f) < 0.001f &&
+              std::abs(transformRestaurado->getTranslatef()[2] - 5.f) < 0.001f,
+          "la restauracion recupera la pose inicial completa");
 }
 
 // --- Guardar con el arbol vacio -----------------------------------------------
@@ -201,6 +298,19 @@ void roundTripDeEscena() {
         if (creado) {
             nombreGuardado = creado->inputName;
             idGuardado = creado->getId();
+            creado->setTag("suelo");
+
+            auto collider = std::make_unique<EsfereCollider>(
+                1.0f, creado->getComponent<Transform>(), creado);
+            EsfereCollider* colliderPtr = collider.get();
+            colliderPtr->setVisibleEnEscena(true);
+            CHECK(editor.addComponent(creado, std::move(collider)),
+                  "se agrega un collider visible a la escena");
+            auto rigidBody = std::make_unique<RigidBody>(colliderPtr, 1.0f);
+            RigidBody* rigidBodyPtr = rigidBody.get();
+            rigidBodyPtr->setActivo(false);
+            CHECK(editor.addComponent(creado, std::move(rigidBody)),
+                  "se agrega un RigidBody desactivado a la escena");
 
             auto hijo = GameObjectFactory::createSimpleObject(creado);
             std::snprintf(hijo->inputName, sizeof(hijo->inputName),
@@ -244,6 +354,14 @@ void roundTripDeEscena() {
                 encontroPrimero = true;
                 CHECK(go->getId() == idGuardado,
                       "el id del objeto sobrevive el guardado");
+                CHECK(go->getTag() == "suelo",
+                      "el tag del objeto sobrevive el guardado de escena");
+                Collider* collider = go->getComponent<Collider>();
+                CHECK(collider && collider->estaVisibleEnEscena(),
+                      "la visibilidad del collider sobrevive la escena completa");
+                RigidBody* rigidBody = go->getComponent<RigidBody>();
+                CHECK(rigidBody && !rigidBody->estaActivo(),
+                      "el estado del RigidBody sobrevive la escena completa");
                 for (auto* posibleHijo : go->getChildEntities()) {
                     auto* h2 = dynamic_cast<GameObject*>(posibleHijo);
                     if (h2 && std::string(h2->inputName) == nombreHijo) {
@@ -257,6 +375,43 @@ void roundTripDeEscena() {
         CHECK(encontroPrimero, "el nombre del objeto sobrevive el guardado");
         CHECK(encontroHijo, "la jerarquia (hijo dentro del padre) se conserva");
     }
+}
+
+void tagsCompatiblesConEscenasAnteriores() {
+    TempPruebas::CarpetaPrueba carpetaDir("funshi_tags_legacy");
+    std::error_code ec;
+    GameObject original;
+    original.setId(841);
+    original.setTag("suelo");
+    CHECK(original.saveEntity(carpetaDir.ruta().string()),
+          "el objeto etiquetado se guarda");
+
+    const fs::path archivo =
+        carpetaDir.ruta() / "ObjectN841.db";
+    const auto tamano = fs::file_size(archivo, ec);
+    CHECK(!ec && tamano > 12 + std::string("suelo").size(),
+          "el archivo contiene el bloque de tag al final");
+    if (ec || tamano <= 12 + std::string("suelo").size()) return;
+
+    GameObject recuperado;
+    recuperado.setId(841);
+    CHECK(recuperado.loadEntity(carpetaDir.ruta().string()),
+          "el tag se lee desde el formato actual");
+    CHECK(recuperado.getTag() == "suelo",
+          "la lectura actual conserva el tag");
+    const std::vector<std::string> tags = TagRegistry::registrados();
+    CHECK(std::find(tags.begin(), tags.end(), "suelo") != tags.end(),
+          "el tag cargado queda disponible en el registro del inspector");
+
+    fs::resize_file(archivo, tamano - 12 - std::string("suelo").size(), ec);
+    CHECK(!ec, "se prepara un objeto con formato anterior sin bloque de tag");
+    if (ec) return;
+    GameObject legacy;
+    legacy.setId(841);
+    CHECK(legacy.loadEntity(carpetaDir.ruta().string()),
+          "el formato anterior se carga sin bloque de tag");
+    CHECK(legacy.getTag() == "Untagged",
+          "una escena anterior asigna el tag predeterminado");
 }
 
 // --- Reporte de fallos en Binario ---------------------------------------------
@@ -390,6 +545,30 @@ std::string leerTodo(const std::string& ruta) {
                        std::istreambuf_iterator<char>());
 }
 
+std::string rutaConSeparadorFinal(const fs::path& ruta) {
+    std::string resultado = ruta.string();
+    if (!resultado.empty() && resultado.back() != fs::path::preferred_separator)
+        resultado.push_back(fs::path::preferred_separator);
+    return resultado;
+}
+
+class LoaderDiagnostico : public IMeshLoader {
+public:
+    int cargas = 0;
+    bool falla = true;
+
+    std::shared_ptr<Mesh> load(const std::string& path) override {
+        ++cargas;
+        if (falla) throw AssetLoadException(path, "fallo controlado del loader");
+        auto malla = std::make_shared<Mesh>();
+        malla->vertices.emplace_back(0.0f, 0.0f, 0.0f);
+        malla->vertices.emplace_back(1.0f, 0.0f, 0.0f);
+        malla->vertices.emplace_back(0.0f, 1.0f, 0.0f);
+        malla->indices = {0, 1, 2};
+        return malla;
+    }
+};
+
 } // namespace
 
 void indiceCorruptoSinFantasmas() {
@@ -452,6 +631,180 @@ void indiceCorruptoSinFantasmas() {
               std::string(c.descripcion) +
                   ": el ciclo guardar-cargar es estable");
     }
+}
+
+void diagnosticosCargaEscena() {
+    TempPruebas::CarpetaPrueba carpetaDir("funshi_diagnosticos_escena");
+    const fs::path base = carpetaDir.ruta();
+
+    // Una escena nueva se crea vacía sin presentarla como error.
+    {
+        const fs::path nueva = base / "nueva";
+        fs::create_directories(nueva);
+        const fs::path indice = nueva / "SceneBBDDObjetos.txt";
+        RegistroDiagnosticos diagnosticos(nueva / "diagnosticos.jsonl");
+        SceneRegistry registry;
+        EventBus events;
+        AssetManager assets;
+        EditorController editor(&registry, nullptr, &events, &assets);
+        SceneSerializer serializer(&registry, &editor, &assets, &diagnosticos);
+
+        CHECK(serializer.load(indice.string(), (nueva / "Scene").string()),
+              "una escena ausente se inicializa como escena nueva");
+        CHECK(fs::is_regular_file(indice),
+              "la inicialización crea el índice vacío de la escena");
+        CHECK(diagnosticos.ultimos().empty(),
+              "crear una escena nueva no genera un diagnóstico de error");
+    }
+
+    // Un archivo de índice válido reconstruye la escena sin publicar errores.
+    {
+        const fs::path proyecto = base / "valida";
+        fs::create_directories(proyecto);
+        const std::string indice = guardarEscenaVictima(proyecto);
+        RegistroDiagnosticos diagnosticos(proyecto / "diagnosticos.jsonl");
+        SceneRegistry registry;
+        EventBus events;
+        AssetManager assets;
+        EditorController editor(&registry, nullptr, &events, &assets);
+        SceneSerializer serializer(&registry, &editor, &assets, &diagnosticos);
+
+        CHECK(serializer.load(indice,
+                              rutaConSeparadorFinal(proyecto / "Scene")),
+              "una escena válida se carga completamente");
+        CHECK(diagnosticos.ultimos().empty(),
+              "una carga válida no publica diagnósticos");
+    }
+
+    // Una línea malformada se omite y queda registrada como recuperación parcial.
+    {
+        const fs::path proyecto = base / "corrupta";
+        fs::create_directories(proyecto);
+        const std::string indice = guardarEscenaVictima(proyecto);
+        {
+            std::ofstream salida(indice, std::ios::trunc);
+            salida << "ObjectN0.db\n=>\nObjectN1.db\nbasura\n<=\n";
+        }
+        RegistroDiagnosticos diagnosticos(proyecto / "diagnosticos.jsonl");
+        SceneRegistry registry;
+        EventBus events;
+        AssetManager assets;
+        EditorController editor(&registry, nullptr, &events, &assets);
+        SceneSerializer serializer(&registry, &editor, &assets, &diagnosticos);
+
+        CHECK(!serializer.load(indice,
+                               rutaConSeparadorFinal(proyecto / "Scene")),
+              "una línea corrupta indica que la carga fue parcial");
+        const auto eventos = diagnosticos.ultimos(10);
+        CHECK(eventos.size() == 1,
+              "una línea corrupta genera un único diagnóstico");
+        CHECK(eventos.size() == 1 &&
+                  eventos[0].modulo == "Scenes/SceneSerializer" &&
+                  eventos[0].tipoExcepcion == "SCENE_INDEX_INVALID" &&
+                  eventos[0].nivel == NivelDiagnostico::Advertencia &&
+                  eventos[0].mensaje.find("basura") != std::string::npos,
+              "el diagnóstico identifica el índice, línea y nivel de advertencia");
+    }
+
+    // El índice referencia un binario que desapareció: se conserva la carga
+    // parcial y se publica el fallo del objeto que no pudo reconstruirse.
+    {
+        const fs::path proyecto = base / "objeto_ausente";
+        fs::create_directories(proyecto);
+        const std::string indice = guardarEscenaVictima(proyecto);
+        std::error_code error;
+        fs::remove(proyecto / "Scene" / "ObjectN1.db", error);
+        CHECK(!error, "se elimina el binario del objeto para simular el fallo");
+
+        RegistroDiagnosticos diagnosticos(proyecto / "diagnosticos.jsonl");
+        SceneRegistry registry;
+        EventBus events;
+        AssetManager assets;
+        EditorController editor(&registry, nullptr, &events, &assets);
+        SceneSerializer serializer(&registry, &editor, &assets, &diagnosticos);
+
+        CHECK(!serializer.load(indice,
+                               rutaConSeparadorFinal(proyecto / "Scene")),
+              "un binario de objeto ausente hace que la carga sea parcial");
+        const auto eventos = diagnosticos.ultimos(10);
+        CHECK(eventos.size() == 1 &&
+                  eventos[0].tipoExcepcion == "SCENE_OBJECT_LOAD_FAILED" &&
+                  eventos[0].nivel == NivelDiagnostico::Error &&
+                  eventos[0].mensaje.find("id=1") != std::string::npos,
+              "el binario ausente publica un error único asociado al objeto");
+    }
+}
+
+void diagnosticosCargaMalla() {
+    TempPruebas::CarpetaPrueba carpetaDir("funshi_diagnosticos_malla");
+    RegistroDiagnosticos diagnosticos(carpetaDir.ruta() / "diagnosticos.jsonl");
+    auto loader = std::make_unique<LoaderDiagnostico>();
+    LoaderDiagnostico* loaderRaw = loader.get();
+    AssetManager assets(std::move(loader));
+    Modelos3D modelo;
+    modelo.setAssetManager(&assets);
+    modelo.setRegistroDiagnosticos(&diagnosticos);
+
+    loaderRaw->falla = false;
+    modelo.setPath("Assets/valido.obj");
+    CHECK(modelo.getMesh() != nullptr && diagnosticos.ultimos().empty(),
+          "cargar una malla válida no publica un diagnóstico");
+    CHECK(loaderRaw->cargas == 1, "el loader recibe la carga válida");
+
+    loaderRaw->falla = true;
+    modelo.setPath("Assets/modelo.obj");
+    CHECK(modelo.getMesh() == nullptr && assets.hasFailedMesh("Assets/modelo.obj"),
+          "el fallo del loader deja el modelo vacío y cacheado");
+    CHECK(loaderRaw->cargas == 2, "el loader intenta cargar el modelo fallido");
+
+    modelo.setPath("Assets/modelo.obj");
+    CHECK(loaderRaw->cargas == 2,
+          "la repetición del fallo usa el error cacheado");
+    auto eventos = diagnosticos.ultimos(10);
+    CHECK(eventos.size() == 1 &&
+              eventos[0].tipoExcepcion == "AssetLoadException" &&
+              eventos[0].modulo == "Objetos/Modelos3D" &&
+              eventos[0].nivel == NivelDiagnostico::Error,
+          "RuntimeException de assets llega una sola vez al registro común");
+
+    loaderRaw->falla = false;
+    assets.clearFailedMeshes();
+    modelo.setPath("Assets/modelo.obj");
+    CHECK(modelo.getMesh() != nullptr && loaderRaw->cargas == 3,
+          "limpiar el fallo permite que el modelo se recupere");
+    CHECK(diagnosticos.ultimos(10).size() == 1,
+          "la recuperación exitosa no duplica el diagnóstico histórico");
+}
+
+void diagnosticosCargaScript() {
+    TempPruebas::CarpetaPrueba carpetaDir("funshi_diagnosticos_script");
+    RegistroDiagnosticos diagnosticos(carpetaDir.ruta() / "diagnosticos.jsonl");
+    Script script;
+    script.setRegistroDiagnosticos(&diagnosticos);
+    const fs::path fuente = carpetaDir.ruta() / "Scripts con espacios" /
+                            "Controlador Ausente.cpp";
+    script.setDllPath(fuente.string());
+
+    CHECK(!script.aplicarCarga(nullptr),
+          "un fuente de script ausente no se carga");
+    CHECK(!script.ultimoError().empty(),
+          "el componente conserva el error devuelto por el backend");
+    auto eventos = diagnosticos.ultimos(10);
+    CHECK(eventos.size() == 1 &&
+              eventos[0].tipoExcepcion == "SCRIPT_LOAD_FAILED" &&
+              eventos[0].mensaje.find(fuente.string()) != std::string::npos,
+          "el fallo de carga se publica una vez con la ruta del fuente");
+
+    CHECK(!script.aplicarCarga(nullptr),
+          "una carga ya intentada conserva el estado de fallo");
+    CHECK(diagnosticos.ultimos(10).size() == 1,
+          "consultar de nuevo el fallo no duplica el diagnóstico");
+
+    script.setDllPath(fuente.string());
+    CHECK(!script.aplicarCarga(nullptr),
+          "reasignar el fuente permite un nuevo intento de carga");
+    CHECK(diagnosticos.ultimos(10).size() == 2,
+          "un nuevo intento fallido genera un evento nuevo");
 }
 
 // --- Variante de guardado: hijo con id=0 --------------------------------------
@@ -591,6 +944,133 @@ void hermanosConsecutivosSinPerdida() {
           "cada hermano conserva su id (ninguno se releyo truncado)");
     CHECK(aviso.str().find("linea invalida") == std::string::npos,
           "sin lineas invalidas: la releertura del look-ahead es exacta");
+}
+
+// --- Rutas de las caras del Skybox -------------------------------------------
+// Las seis caras del cubemap son assets del proyecto, asi que se guardan
+// relativas a la raiz de assets y se resuelven a absolutas al cargar, igual que
+// la malla, las texturas y el script. Sin eso la ruta decia una cosa (relativa
+// al proyecto) y hacia otra: se buscaba contra el directorio de trabajo del
+// proceso, la fecha de modificacion daba 0 y el cache de la textura no se
+// invalidaba nunca.
+
+// Lectura de una ruta tal cual quedo escrita, sin pasar por absolutizar: es la
+// forma de comprobar QUE se persisto, no de reconstruirla.
+static std::string leerRutaPersistida(std::istream& in) {
+    uint32_t len = 0;
+    in.read(reinterpret_cast<char*>(&len), sizeof(len));
+    std::string s;
+    if (len > 0) {
+        s.resize(len);
+        in.read(&s[0], len);
+    }
+    return s;
+}
+
+// Escritura cruda de una ruta, para armar a mano un archivo con el formato
+// viejo (rutas absolutas tal cual, sin pasar por relativizar).
+static void escribirRutaPersistida(std::ostream& out, const std::string& s) {
+    const uint32_t len = static_cast<uint32_t>(s.size());
+    out.write(reinterpret_cast<const char*>(&len), sizeof(len));
+    if (len > 0) out.write(s.data(), len);
+}
+
+void rutasDeCarasDeSkybox() {
+    EditorConfig::limpiarRaizAssets();
+    const std::string raiz = "/motor/MotorGrafico/Juego/srcJuego";
+    EditorConfig::fijarRaizAssets(raiz);
+
+    const std::string relativaPX = "Cielo/cielo_px.png";
+    const std::string absolutaPX = raiz + "/" + relativaPX;
+    const std::string relativaNY = "Cielo/cielo_ny.png";
+    const std::string absolutaNY = raiz + "/" + relativaNY;
+
+    // 1. Lo que queda EN DISCO son las rutas relativas, no las absolutas con las
+    //    que se compuso el componente.
+    {
+        TempPruebas::CarpetaPrueba carpeta("funshi_skybox_rutas");
+        const fs::path archivo = carpeta.ruta() / "skybox.bin";
+        {
+            Skybox sky;
+            sky.setCaraMasX(absolutaPX);
+            sky.setCaraMenosY(absolutaNY);
+            std::ofstream out(archivo, std::ios::binary);
+            sky.saveComponent(&out);
+        }
+        std::ifstream in(archivo, std::ios::binary);
+        CHECK(leerRutaPersistida(in) == relativaPX,
+              "la cara +X se persiste relativa a la raiz de assets");
+        CHECK(leerRutaPersistida(in) == "",
+              "una cara sin asignar se persiste vacia");
+        CHECK(leerRutaPersistida(in) == "",
+              "otra cara sin asignar se persiste vacia");
+        CHECK(leerRutaPersistida(in) == relativaNY,
+              "la cara -Y se persiste relativa a la raiz de assets");
+    }
+
+    // 2. Un archivo con rutas RELATIVAS al cargar queda con rutas ABSOLUTAS en
+    //    memoria, que es como las usa la pasada que dibuja el cubemap. Se arma
+    //    el archivo a mano para comprobar la resolucion, no el viaje de ida.
+    {
+        TempPruebas::CarpetaPrueba carpeta("funshi_skybox_carga");
+        const fs::path archivo = carpeta.ruta() / "skybox.bin";
+        const bool visible = true;
+        {
+            std::ofstream out(archivo, std::ios::binary);
+            escribirRutaPersistida(out, relativaPX);
+            for (int i = 0; i < 5; ++i) escribirRutaPersistida(out, "");
+            out.write(reinterpret_cast<const char*>(&visible), sizeof(visible));
+        }
+        Skybox sky;
+        std::ifstream in(archivo, std::ios::binary);
+        sky.loadComponent(&in);
+        CHECK(sky.getCaraMasX() == absolutaPX,
+              "una ruta relativa se resuelve a absoluta al cargar");
+        CHECK(sky.getCaraMenosY().empty(),
+              "una cara sin asignar sigue vacia al cargar");
+    }
+
+    // 3. Ida y vuelta completa: componer con absolutas, guardar y recargar deja
+    //    las mismas absolutas.
+    {
+        TempPruebas::CarpetaPrueba carpeta("funshi_skybox_ida_vuelta");
+        const fs::path archivo = carpeta.ruta() / "skybox.bin";
+        {
+            Skybox sky;
+            sky.setCaraMasX(absolutaPX);
+            sky.setCaraMenosY(absolutaNY);
+            std::ofstream out(archivo, std::ios::binary);
+            sky.saveComponent(&out);
+        }
+        Skybox sky;
+        std::ifstream in(archivo, std::ios::binary);
+        sky.loadComponent(&in);
+        CHECK(sky.getCaraMasX() == absolutaPX,
+              "ida y vuelta: la cara +X conserva su ruta");
+        CHECK(sky.getCaraMenosY() == absolutaNY,
+              "ida y vuelta: la cara -Y conserva su ruta");
+    }
+
+    // 3. Escena legacy: una cara ABSOLUTA guardada por el formato viejo se carga
+    //    intacta, sin volver a anteponerle la raiz.
+    {
+        TempPruebas::CarpetaPrueba carpeta("funshi_skybox_legacy");
+        const fs::path archivo = carpeta.ruta() / "skybox_legacy.bin";
+        const std::string absoluta = "/legacy/Cielo/absoluta.png";
+        const bool visible = true;
+        {
+            std::ofstream out(archivo, std::ios::binary);
+            for (int i = 0; i < 6; ++i) escribirRutaPersistida(out, absoluta);
+            out.write(reinterpret_cast<const char*>(&visible), sizeof(visible));
+        }
+        Skybox sky;
+        std::ifstream in(archivo, std::ios::binary);
+        sky.loadComponent(&in);
+        CHECK(sky.getCaraMasX() == absoluta,
+              "una ruta absoluta legacy se deja intacta al cargar");
+    }
+
+    EditorConfig::limpiarRaizAssets();
 }
 
 // --- Reescritura de referencias al mover/renombrar ----------------------------
@@ -772,6 +1252,85 @@ void sanadoDeRutasRotas() {
           "sin raiz la referencia queda como estaba");
 }
 
+void variosScriptsPorObjeto() {
+    GameObject objeto;
+    auto primero = std::make_unique<Script>();
+    primero->setDllPath("Scripts/UserController.cpp");
+    Script* refPrimero = primero.get();
+    objeto.addComponent(std::move(primero));
+
+    auto segundo = std::make_unique<Script>();
+    segundo->setDllPath("Scripts/CameraController.cpp");
+    Script* refSegundo = segundo.get();
+    objeto.addComponent(std::move(segundo));
+
+    int cantidadScripts = 0;
+    ListaDE<Component*>* componentes = objeto.getComponents();
+    Position<Component*>* posicion = componentes->first();
+    while (posicion) {
+        if (dynamic_cast<Script*>(posicion->getElement()))
+            ++cantidadScripts;
+        posicion = posicion != componentes->last()
+                       ? componentes->next(posicion)
+                       : nullptr;
+    }
+
+    CHECK(cantidadScripts == 2,
+          "un GameObject conserva mas de un componente Script");
+    CHECK(refPrimero->getPath() == "Scripts/UserController.cpp",
+          "el primer componente Script mantiene su fuente");
+    CHECK(refSegundo->getPath() == "Scripts/CameraController.cpp",
+          "el segundo componente Script mantiene su fuente");
+}
+
+void nombreDeComponenteScriptSeSerializa() {
+    TempPruebas::CarpetaPrueba carpeta("funshi_nombre_script");
+    const fs::path archivo = carpeta.ruta() / "script.bin";
+
+    Script original;
+    original.setDllPath("Scripts/CameraController.cpp");
+    original.setNombreComponente("Camara secundaria");
+    ReflejoScripts::ValorCampo campoVelocidad;
+    campoVelocidad.nombre = "velocidad";
+    campoVelocidad.tag = ReflejoScripts::TagTipo::Flotante;
+    campoVelocidad.contenido = 3.5f;
+    original.obtenerValores().push_back(campoVelocidad);
+    {
+        std::ofstream salida(archivo, std::ios::binary);
+        original.saveComponent(&salida);
+    }
+
+    Script recuperado;
+    {
+        std::ifstream entrada(archivo, std::ios::binary);
+        recuperado.loadComponent(&entrada);
+    }
+    CHECK(recuperado.getNombreComponente() == "Camara secundaria",
+          "el nombre personalizado del componente Script sobrevive al guardado");
+    CHECK(recuperado.nombreParaMostrar() == "Camara secundaria",
+          "el nombre personalizado identifica el panel Script");
+    CHECK(recuperado.getNameClass() == "CameraController",
+          "la identidad del script sigue siendo el nombre de la clase");
+    CHECK(recuperado.obtenerCampos().size() == 1 &&
+              recuperado.obtenerCampos()[0].nombre == "velocidad" &&
+              recuperado.obtenerCampos()[0].tag ==
+                  ReflejoScripts::TagTipo::Flotante,
+          "los campos SerializeField siguen visibles tras recargar la escena");
+}
+
+void rotacionApiUsaRadianes() {
+    GameObject objeto;
+    const MotorScript::ApiScriptGameObject* api = MotorScript::tablaApi();
+    api->fijarRotacionEjes(&objeto, 1.57079632679f, 0.0f, 1.0f, 0.0f);
+    CHECK(std::fabs(objeto.getComponent<Transform>()->getRotatef()[0] -
+                    90.0f) < 0.001f,
+          "la API convierte radianes a grados al escribir el Transform");
+    CHECK(std::fabs(api->rotacionAngulo(&objeto) - 1.57079632679f) < 0.001f,
+          "la API devuelve el angulo de rotacion en radianes");
+    CHECK(std::fabs(api->rotacionEjeY(&objeto) - 1.0f) < 0.001f,
+          "el eje de rotacion conserva su valor");
+}
+
 // --- El Inspector se desvincula cuando se borra el objeto que muestra ---------
 // El Inspector (Settings) guarda el GameObject que muestra y un Settings por
 // cada componente, y solo se recarga cuando cambia el PUNTERO. Al borrar, el
@@ -843,6 +1402,49 @@ void elInspectorSeDesvinculaAlBorrar() {
     editor.clearScene();
     CHECK(inspector.getObjectInInspector() == nullptr,
           "limpiar la escena desvincula el inspector");
+}
+
+// La ventana Camaras puede borrar el objeto activo durante GUI(). El puntero
+// capturado al inicio del frame debe rechazarse antes de pasarlo al gizmo.
+void laCamaraBorradaNoSeUsaEnElRestoDelFrame() {
+    SceneRegistry registry;
+    EventBus events;
+    AssetManager assets;
+    EditorController editor(&registry, nullptr, &events, &assets);
+    GameObject* raiz = registry.getRoot();
+    CHECK(raiz != nullptr, "la escena tiene raiz para la prueba de camara");
+    if (!raiz) return;
+
+    auto objeto = GameObjectFactory::createSimpleObject(raiz);
+    auto componente = std::make_unique<CameraComponent>();
+    CameraComponent* capturada = componente.get();
+    objeto->addComponent(std::move(componente));
+    GameObject* camara = editor.createGameObject(std::move(objeto), raiz);
+    CHECK(camara != nullptr, "la camara entra en la escena");
+    if (!camara) return;
+
+    CHECK(CameraFrameSafety::validarCamara(&registry, camara, capturada) ==
+              capturada,
+          "la camara activa viva puede continuar en el frame");
+    CHECK(editor.deleteGameObject(camara),
+          "la camara activa se elimina desde la interfaz");
+    CHECK(CameraFrameSafety::validarCamara(&registry, camara, capturada) ==
+              nullptr,
+          "el puntero capturado se invalida antes de usarlo tras GUI");
+
+    auto reemplazoObjeto = GameObjectFactory::createSimpleObject(raiz);
+    auto reemplazoComponente = std::make_unique<CameraComponent>();
+    CameraComponent* reemplazoCapturado = reemplazoComponente.get();
+    reemplazoObjeto->addComponent(std::move(reemplazoComponente));
+    GameObject* reemplazo =
+        editor.createGameObject(std::move(reemplazoObjeto), raiz);
+    CHECK(reemplazo != nullptr, "la camara de reemplazo entra en la escena");
+    if (reemplazo) {
+        CHECK(CameraFrameSafety::validarCamara(
+                  &registry, reemplazo, reemplazoCapturado) ==
+                  reemplazoCapturado,
+              "la camara de reemplazo queda validada para el gizmo");
+    }
 }
 
 // --- Renombrar -> borrar -> crear -> borrar: el binario no se desalinea -------
@@ -943,18 +1545,1264 @@ void borrarCrearBorrarNoDesalineaElBinario() {
           "ninguna linea invalida en el indice");
 }
 
+// --- El componente Model se resuelve con la matriz MUNDIAL del objeto ---------
+// El camino de render de un GameObject con componente Model armaba un
+// Modelos3D temporal y le copiaba el Transform LOCAL. El temporal nacia sin
+// padre y con un Transform identidad propio, asi que el modelo se dibujaba en
+// el origen y, con jerarquia, en el sitio equivocado. resolverDibujoModelo()
+// resuelve la malla y la matriz desde el Transform GLOBAL del propio objeto;
+// esta prueba fija esa decision sin pila grafica.
+void elModeloSeResuelveConLaMatrizMundial() {
+    SceneRegistry registry;
+    EventBus events;
+    AssetManager assets;
+    EditorController editor(&registry, nullptr, &events, &assets);
+    GameObject* raiz = registry.getRoot();
+    CHECK(raiz != nullptr, "la escena tiene raiz para el caso de Model");
+    if (!raiz) return;
+
+    // Malla registrada sin loader: putMesh la deja en la cache compartida.
+    auto malla = std::make_shared<Mesh>();
+    malla->vertices = {vec3(0.f, 0.f, 0.f), vec3(1.f, 0.f, 0.f),
+                       vec3(0.f, 1.f, 0.f)};
+    malla->indices = {0, 1, 2};
+    assets.putMesh("Modelos/cubo.obj", malla);
+
+    // Padre desplazado a (2,0,0).
+    auto padre = GameObjectFactory::createSimpleObject(raiz);
+    padre->getComponent<Transform>()->setTranslatef(2.f, 0.f, 0.f);
+    GameObject* nPadre = editor.createGameObject(std::move(padre), raiz);
+    CHECK(nPadre != nullptr, "el objeto padre entra en la escena");
+    if (!nPadre) return;
+
+    CHECK(!resolverDibujoModelo(nPadre, assets).valido,
+          "sin componente Model no hay dibujo");
+
+    auto modeloPadre = std::make_unique<Model>();
+    modeloPadre->setPath("Modelos/cubo.obj");
+    nPadre->addComponent(std::move(modeloPadre));
+
+    const DibujoModelo dibujoPadre = resolverDibujoModelo(nPadre, assets);
+    CHECK(dibujoPadre.valido, "con Model y malla registrada el dibujo es valido");
+    CHECK(dibujoPadre.malla == malla.get(),
+          "se dibuja la malla resuelta por el AssetManager");
+    CHECK(dibujoPadre.modelo[12] == 2.f && dibujoPadre.modelo[13] == 0.f &&
+              dibujoPadre.modelo[14] == 0.f,
+          "la matriz del objeto raiz lleva su traslacion (2,0,0)");
+
+    // Hijo local en (10,0,10): el mundo tiene que combinar padre + local.
+    auto hijo = GameObjectFactory::createSimpleObject(nPadre);
+    hijo->getComponent<Transform>()->setTranslatef(10.f, 0.f, 10.f);
+    GameObject* nHijo = editor.createGameObject(std::move(hijo), nPadre);
+    CHECK(nHijo != nullptr, "el objeto hijo entra en la escena");
+    if (!nHijo) return;
+
+    auto modeloHijo = std::make_unique<Model>();
+    modeloHijo->setPath("Modelos/cubo.obj");
+    nHijo->addComponent(std::move(modeloHijo));
+
+    const DibujoModelo dibujoHijo = resolverDibujoModelo(nHijo, assets);
+    CHECK(dibujoHijo.valido, "el hijo con Model tambien resuelve dibujo");
+    CHECK(dibujoHijo.modelo[12] == 12.f && dibujoHijo.modelo[13] == 0.f &&
+              dibujoHijo.modelo[14] == 10.f,
+          "la matriz del hijo combina el padre (2,0,0) con el local (10,0,10)");
+
+    // Ruta que no carga: no propaga y deja el dibujo invalido, con aviso.
+    auto malo = GameObjectFactory::createSimpleObject(raiz);
+    auto modeloMalo = std::make_unique<Model>();
+    modeloMalo->setPath("Modelos/no_existe.obj");
+    malo->addComponent(std::move(modeloMalo));
+    GameObject* nMalo = editor.createGameObject(std::move(malo), raiz);
+    CHECK(nMalo != nullptr, "el objeto con ruta invalida entra en la escena");
+    if (!nMalo) return;
+
+    std::ostringstream aviso;
+    std::streambuf* buferAnterior = std::cerr.rdbuf(aviso.rdbuf());
+    DibujoModelo dibujoMalo;
+    try {
+        dibujoMalo = resolverDibujoModelo(nMalo, assets);
+    } catch (...) {
+        std::cerr.rdbuf(buferAnterior);
+        CHECK(false, "una ruta que no carga no debe propagar excepcion");
+    }
+    std::cerr.rdbuf(buferAnterior);
+    CHECK(!dibujoMalo.valido, "una ruta que no carga deja el dibujo invalido");
+    CHECK(aviso.str().find("no se pudo cargar") != std::string::npos,
+          "la ruta que no carga queda registrada en el log");
+}
+
+// --- Un cambio de propiedad no reconstruye el inspector -----------------------
+// El bus publicaba el mismo evento para "cambio de propiedad" (renombrar,
+// editar un campo) y para "alta/baja de componente". El inspector reaccionaba a
+// ambos borrando y recreando todos los Settings, con lo que se perdia el estado
+// local de cada panel (radio sin confirmar, preset de material, header abierto)
+// y el puntero de identidad cambiaba en cada edicion. Ahora solo el cambio
+// estructural reconcilia, y ademas reutiliza los paneles vigentes.
+void elEventoDePropiedadNoReconstruyeElInspector() {
+    SceneRegistry registry;
+    EventBus events;
+    AssetManager assets;
+    EditorController editor(&registry, nullptr, &events, &assets);
+    GameObject* raiz = registry.getRoot();
+
+    auto objeto = GameObjectFactory::createSimpleObject(raiz);
+    GameObject* a = editor.createGameObject(std::move(objeto), raiz);
+    CHECK(a != nullptr, "el objeto para el inspector entra en la escena");
+    if (!a) return;
+
+    SettingsObjectInterface inspector(a, true);
+    inspector.setEditor(&editor);
+    inspector.setEventBus(&events);
+
+    CHECK(inspector.reconstruccionesSettings() == 0,
+          "la carga inicial no cuenta como reconciliacion");
+    SettingsComponent* transformAntes = inspector.settingsEnIndice(0);
+    CHECK(transformAntes != nullptr,
+          "el inspector lista el Transform del objeto");
+
+    // Cambio de PROPIEDAD: no debe reconstruir ni crear paneles nuevos.
+    const size_t antes = inspector.reconstruccionesSettings();
+    const size_t creadosAntes = inspector.settingsCreados();
+    events.publish({SceneEventType::ComponentChanged, a, nullptr});
+    CHECK(inspector.reconstruccionesSettings() == antes,
+          "un cambio de propiedad no reconcilia el inspector");
+    CHECK(inspector.settingsCreados() == creadosAntes,
+          "un cambio de propiedad no crea paneles nuevos");
+    CHECK(inspector.settingsEnIndice(0) == transformAntes,
+          "el panel del Transform sobrevive a un cambio de propiedad");
+
+    // Cambio ESTRUCTURAL: si reconcilia y conserva el panel vigente.
+    CHECK(editor.addComponent(a, std::make_unique<Color>()),
+          "se agrega un Color al objeto");
+    CHECK(inspector.reconstruccionesSettings() == antes + 1,
+          "agregar un componente dispara exactamente una reconciliacion");
+    CHECK(inspector.settingsCreados() == creadosAntes + 1,
+          "agregar un componente crea exactamente un panel");
+    CHECK(inspector.settingsEnIndice(0) == transformAntes,
+          "el panel del Transform sobrevive a agregar otro componente");
+    CHECK(inspector.settingsEnIndice(1) != nullptr,
+          "el componente nuevo tiene su panel en la lista");
+}
+
+// --- El inspector dibuja un frame completo sin arrastre activo ---------------
+// contentGUI() recorre los paneles con un PushID por panel y cierra el recorrido
+// con el PopID y el avance de la lista. Si ese cierre quedara dentro de un
+// `if (ImGui::BeginDragDropTarget())` (que solo es verdadero mientras hay un
+// arrastre encima del encabezado), entonces en el caso normal -sin arrastre-
+// el recorrido no avanza nunca: el inspector gira al 100% de CPU con la ventana
+// congelada al seleccionar un objeto, y el ID de ImGui crece un nivel por
+// iteracion.
+//
+// La prueba arma un frame headless (contexto ImGui sin backend, sin ventana) y
+// exige que printGUI() vuelva. Si el bucle no termina, la prueba se cuelga y
+// CTest la da por fallida por timeout.
+void elInspectorDibujaUnFrameSinArrastre() {
+    SceneRegistry registry;
+    EventBus events;
+    AssetManager assets;
+    EditorController editor(&registry, nullptr, &events, &assets);
+    GameObject* raiz = registry.getRoot();
+
+    auto objeto = GameObjectFactory::createSimpleObject(raiz);
+    GameObject* a = editor.createGameObject(std::move(objeto), raiz);
+    CHECK(a != nullptr, "el objeto del frame del inspector entra en la escena");
+    if (!a) return;
+
+    SettingsObjectInterface inspector(a, true);
+    inspector.setEditor(&editor);
+    inspector.setEventBus(&events);
+
+    ImGui::CreateContext();
+    ImGuiIO& io = ImGui::GetIO();
+    // Mismo contrato que el backend OpenGL del motor: el atlas de fuentes lo
+    // construye ImGui en NewFrame() (sin backend, TexIsBuilt arranca en falso y
+    // ImFontAtlasUpdateNewFrame() desreferencia un Builder nulo).
+    io.BackendFlags |= ImGuiBackendFlags_RendererHasTextures;
+    io.DisplaySize = ImVec2(1280.0f, 720.0f);
+    io.DeltaTime = 1.0f / 60.0f;
+    // No dejar imgui.ini en el directorio de trabajo de la prueba.
+    io.IniFilename = nullptr;
+
+    ImGui::NewFrame();
+    inspector.printGUI();
+    ImGui::EndFrame();
+
+    CHECK(inspector.settingsEnIndice(0) != nullptr,
+          "el frame termina y el panel del Transform sigue en el inspector");
+
+    ImGui::DestroyContext();
+}
+
+// --- Reparentar preserva la pose y refresca el cuerpo fisico ------------------
+// SceneRegistry::reparent movia el nodo en el arbol y cambiaba parentEntity,
+// pero no tocaba el transform local: como el local se interpreta contra el
+// padre nuevo, el objeto "saltaba" a otra pose mundial. Ademas el btRigidBody
+// seguia en la pose vieja y se teletransportaba de vuelta en el siguiente paso
+// de simulacion. Ahora el local se reescribe como inverse(mundoPadre) *
+// mundoHijo y el cuerpo se reconstruye.
+class BackendFisicoFalso : public IPhysicsBackend {
+public:
+    int agregados = 0;
+    int quitados = 0;
+    RigidBody* ultimo = nullptr;
+
+    void stepSimulation(float) override {}
+    void addRigidBody(RigidBody* body) override {
+        ++agregados;
+        ultimo = body;
+    }
+    void removeRigidBody(RigidBody*) override { ++quitados; }
+};
+
+void reparentarPreservaLaPoseYRefrescaElCuerpo() {
+    SceneRegistry registry;
+    EventBus events;
+    AssetManager assets;
+    auto backend = std::make_unique<BackendFisicoFalso>();
+    BackendFisicoFalso* espia = backend.get();
+    PhysicsEngine physics(std::move(backend));
+    EditorController editor(&registry, &physics, &events, &assets);
+    GameObject* raiz = registry.getRoot();
+
+    auto padreObj = GameObjectFactory::createSimpleObject(raiz);
+    GameObject* padre = editor.createGameObject(std::move(padreObj), raiz);
+    auto hijoObj = GameObjectFactory::createSimpleObject(padre);
+    GameObject* hijo = editor.createGameObject(std::move(hijoObj), padre);
+    auto nietoObj = GameObjectFactory::createSimpleObject(hijo);
+    GameObject* nieto = editor.createGameObject(std::move(nietoObj), hijo);
+    CHECK(padre && hijo && nieto, "se arma la jerarquia padre/hijo/nieto");
+    if (!padre || !hijo || !nieto) return;
+
+    padre->getComponent<Transform>()->setTranslatef(5, 0, 5);
+    hijo->getComponent<Transform>()->setTranslatef(5, 0, 5);
+    nieto->getComponent<Transform>()->setTranslatef(1, 0, 0);
+
+    auto aprox = [](float a, float b) { return std::abs(a - b) < 1e-4f; };
+    float* mundoHijoAntes = hijo->getGlobalTransform()->getTranslatef();
+    CHECK(aprox(mundoHijoAntes[0], 10) && aprox(mundoHijoAntes[2], 10),
+          "el hijo parte en (10,0,10)");
+
+    EsfereCollider* col =
+        new EsfereCollider(1.0f, hijo->getComponent<Transform>(), hijo);
+    CHECK(editor.addComponent(hijo, std::unique_ptr<Component>(col)),
+          "se agrega el collider del hijo");
+    CHECK(editor.addComponent(hijo, std::make_unique<RigidBody>(col, 1.0f)),
+          "se agrega el RigidBody del hijo");
+    CHECK(espia->agregados == 1, "el cuerpo entra una vez al mundo");
+
+    const int agregadosAntes = espia->agregados;
+    const int quitadosAntes = espia->quitados;
+
+    // Predicado del menu: un objeto anidado si es candidato a desanidar; un
+    // hijo directo de la raiz ya esta al nivel superior.
+    CHECK(esCandidatoADesanidar(hijo, raiz),
+          "el hijo anidado es candidato a desanidar");
+    CHECK(!esCandidatoADesanidar(padre, raiz),
+          "un hijo directo de la raiz no es candidato");
+    CHECK(!esCandidatoADesanidar(raiz, raiz), "la raiz no es candidata");
+
+    CHECK(editor.reparentGameObject(hijo, raiz),
+          "se reparenta el hijo a la raiz");
+    CHECK(hijo->getParentEntity() == raiz, "el hijo cuelga de la raiz");
+
+    float* mundoHijoDespues = hijo->getGlobalTransform()->getTranslatef();
+    CHECK(aprox(mundoHijoDespues[0], 10) && aprox(mundoHijoDespues[2], 10),
+          "la pose mundial del hijo se conserva al reparentar");
+    float* localHijo = hijo->getComponent<Transform>()->getTranslatef();
+    CHECK(aprox(localHijo[0], 10) && aprox(localHijo[2], 10),
+          "el local del hijo pasa a inverse(padre)*mundo");
+
+    float* mundoNieto = nieto->getGlobalTransform()->getTranslatef();
+    CHECK(aprox(mundoNieto[0], 11) && aprox(mundoNieto[2], 10),
+          "el descendiente conserva su pose mundial");
+
+    CHECK(espia->quitados == quitadosAntes + 1,
+          "reparentar saca el cuerpo viejo del mundo");
+    CHECK(espia->agregados == agregadosAntes + 1,
+          "reparentar reconstruye y reinserta el cuerpo");
+    CHECK(espia->ultimo && espia->ultimo->getRigidBody() != nullptr,
+          "el cuerpo reconstruido esta vivo");
+
+    CHECK(!esCandidatoADesanidar(hijo, raiz),
+          "tras desanidar, el hijo ya no es candidato");
+}
+
+// --- La pose reparentada sobrevive el guardado -------------------------------
+// El local reescrito al reparentar debe quedar consistente en disco: al recargar,
+// el objeto vuelve a su misma pose mundial y cuelga de la raiz.
+void reparentarSobreviveElGuardado() {
+    TempPruebas::CarpetaPrueba carpetaDir("funshi_escena_reparent");
+    const fs::path base = carpetaDir.ruta();
+    std::error_code ec;
+    fs::create_directories(base / "Scene", ec);
+    const std::string prefijo = (base / "Scene").string();
+    const std::string pathTxt = (base / "SceneBBDDObjetos.txt").string();
+    const std::string semiPath = (base / "Scene").string() + "/";
+
+    {
+        SceneRegistry registry;
+        EventBus events;
+        AssetManager assets;
+        EditorController editor(&registry, nullptr, &events, &assets);
+        SceneSerializer serializer(&registry, &editor, &assets);
+        GameObject* raiz = registry.getRoot();
+
+        auto padreObj = GameObjectFactory::createSimpleObject(raiz);
+        GameObject* padre = editor.createGameObject(std::move(padreObj), raiz);
+        auto hijoObj = GameObjectFactory::createSimpleObject(padre);
+        std::snprintf(hijoObj->inputName, sizeof(hijoObj->inputName),
+                      "Reubicado");
+        GameObject* hijo = editor.createGameObject(std::move(hijoObj), padre);
+        CHECK(padre && hijo, "se arma la escena a guardar");
+        if (!padre || !hijo) return;
+
+        padre->getComponent<Transform>()->setTranslatef(5, 0, 5);
+        hijo->getComponent<Transform>()->setTranslatef(5, 0, 5);
+        CHECK(editor.reparentGameObject(hijo, raiz),
+              "el hijo se reparenta antes de guardar");
+        serializer.save(prefijo);
+    }
+
+    {
+        SceneRegistry registry;
+        EventBus events;
+        AssetManager assets;
+        EditorController editor(&registry, nullptr, &events, &assets);
+        SceneSerializer serializer(&registry, &editor, &assets);
+        serializer.load(pathTxt, semiPath);
+
+        GameObject* raiz = registry.getRoot();
+        GameObject* reubicado = nullptr;
+        if (raiz) {
+            for (auto* e : raiz->getChildEntities()) {
+                auto* go = dynamic_cast<GameObject*>(e);
+                if (go && std::string(go->inputName) == "Reubicado") {
+                    reubicado = go;
+                    break;
+                }
+            }
+        }
+        CHECK(reubicado != nullptr,
+              "el objeto reparentado se recarga bajo la raiz");
+        if (reubicado) {
+            float* t = reubicado->getGlobalTransform()->getTranslatef();
+            CHECK(std::abs(t[0] - 10) < 1e-3f && std::abs(t[2] - 10) < 1e-3f,
+                  "la pose reparentada sobrevive el guardado");
+        }
+    }
+}
+
+void opcionesDeRenderYFisicaSePersisten() {
+    TempPruebas::CarpetaPrueba carpetaDir("funshi_opciones_componentes");
+    const fs::path archivoCollider = carpetaDir.ruta() / "collider.bin";
+    const fs::path archivoRigidBody = carpetaDir.ruta() / "rigidbody.bin";
+
+    Transform transformCollider;
+    EsfereCollider collider(2.0f, &transformCollider);
+    collider.setVisibleEnEscena(true);
+    {
+        std::ofstream salida(archivoCollider, std::ios::binary);
+        collider.saveComponent(&salida);
+    }
+    Transform transformColliderRecuperado;
+    EsfereCollider colliderRecuperado(1.0f, &transformColliderRecuperado);
+    {
+        std::ifstream entrada(archivoCollider, std::ios::binary);
+        colliderRecuperado.loadComponent(&entrada);
+    }
+    CHECK(colliderRecuperado.estaVisibleEnEscena(),
+          "la visibilidad del collider se conserva al serializar");
+    CHECK(std::abs(colliderRecuperado.getRadio() - 2.0f) < 0.001f,
+          "el formato nuevo conserva tambien el radio del collider");
+
+    const fs::path archivoColliderLegacy =
+        carpetaDir.ruta() / "collider-legacy.bin";
+    Transform transformLegacy;
+    EsfereCollider colliderLegacy(3.0f, &transformLegacy);
+    {
+        std::ofstream salida(archivoColliderLegacy, std::ios::binary);
+        const float radio = colliderLegacy.getRadio();
+        salida.write(reinterpret_cast<const char*>(&radio), sizeof(radio));
+        transformLegacy.saveComponent(&salida);
+        colliderLegacy.getTransform()->saveComponent(&salida);
+    }
+    Transform transformLegacyRecuperado;
+    EsfereCollider colliderLegacyRecuperado(1.0f,
+                                             &transformLegacyRecuperado);
+    {
+        std::ifstream entrada(archivoColliderLegacy, std::ios::binary);
+        colliderLegacyRecuperado.loadComponent(&entrada);
+    }
+    CHECK(!colliderLegacyRecuperado.estaVisibleEnEscena(),
+          "un collider de escena anterior carga oculto");
+    CHECK(std::abs(colliderLegacyRecuperado.getRadio() - 3.0f) < 0.001f,
+          "un collider de escena anterior conserva el radio");
+
+    Transform transformFisica;
+    EsfereCollider colliderFisico(1.0f, &transformFisica);
+    RigidBody rigidBody(&colliderFisico, 1.0f);
+    rigidBody.setActivo(false);
+    {
+        std::ofstream salida(archivoRigidBody, std::ios::binary);
+        rigidBody.saveComponent(&salida);
+    }
+    Transform transformFisicaRecuperada;
+    EsfereCollider colliderFisicoRecuperado(1.0f,
+                                             &transformFisicaRecuperada);
+    RigidBody rigidBodyRecuperado(&colliderFisicoRecuperado, 1.0f);
+    {
+        std::ifstream entrada(archivoRigidBody, std::ios::binary);
+        rigidBodyRecuperado.loadComponent(&entrada);
+    }
+    CHECK(!rigidBodyRecuperado.estaActivo(),
+          "el estado inactivo del RigidBody se conserva al serializar");
+    CHECK(rigidBodyRecuperado.getRigidBody() &&
+              rigidBodyRecuperado.getRigidBody()->getActivationState() ==
+                  DISABLE_SIMULATION,
+          "un RigidBody inactivo no participa en la simulacion de Bullet");
+    BulletPhysicsAdapter fisica;
+    fisica.addRigidBody(&rigidBodyRecuperado);
+    CHECK(rigidBodyRecuperado.getRigidBody()->getActivationState() ==
+              DISABLE_SIMULATION,
+          "el registro en Bullet conserva el estado inactivo");
+    rigidBodyRecuperado.setActivo(true);
+    CHECK(rigidBodyRecuperado.getRigidBody()->getActivationState() !=
+              DISABLE_SIMULATION,
+          "activar el RigidBody lo incorpora a la simulacion");
+    rigidBodyRecuperado.setActivo(false);
+    CHECK(rigidBodyRecuperado.getRigidBody()->getActivationState() ==
+              DISABLE_SIMULATION,
+          "desactivar el RigidBody registrado pausa la simulacion");
+    fisica.removeRigidBody(&rigidBodyRecuperado);
+
+    const fs::path archivoRigidBodyLegacy =
+        carpetaDir.ruta() / "rigidbody-legacy.bin";
+    {
+        std::ofstream salida(archivoRigidBodyLegacy, std::ios::binary);
+        const float masa = 1.0f;
+        const float posicion[3] = {0.0f, 0.0f, 0.0f};
+        const float rotacion[4] = {0.0f, 0.0f, 0.0f, 1.0f};
+        salida.write(reinterpret_cast<const char*>(&masa), sizeof(masa));
+        salida.write(reinterpret_cast<const char*>(posicion),
+                     sizeof(posicion));
+        salida.write(reinterpret_cast<const char*>(rotacion),
+                     sizeof(rotacion));
+    }
+    Transform transformRigidBodyLegacy;
+    EsfereCollider colliderRigidBodyLegacy(1.0f, &transformRigidBodyLegacy);
+    RigidBody rigidBodyLegacy(&colliderRigidBodyLegacy, 1.0f);
+    {
+        std::ifstream entrada(archivoRigidBodyLegacy, std::ios::binary);
+        rigidBodyLegacy.loadComponent(&entrada);
+    }
+    CHECK(rigidBodyLegacy.estaActivo(),
+          "un RigidBody de escena anterior carga activo");
+
+    CameraComponent camara;
+    camara.setNearPlane(0.1f);
+    camara.setFarPlane(1000.0f);
+    float proyeccion[16];
+    camara.getProjectionMatrix(proyeccion, 1.0f, 150.0f);
+    const float m10Para150 = -(150.0f + 0.1f) / (150.0f - 0.1f);
+    const float m14Para150 = -(2.0f * 150.0f * 0.1f) / (150.0f - 0.1f);
+    CHECK(std::abs(proyeccion[10] - m10Para150) < 1e-6f &&
+              std::abs(proyeccion[14] - m14Para150) < 1e-6f,
+          "la proyeccion limita el plano lejano al horizonte solicitado");
+    camara.getProjectionMatrix(proyeccion, 1.0f);
+    const float m10Para1000 = -(1000.0f + 0.1f) / (1000.0f - 0.1f);
+    const float m14Para1000 =
+        -(2.0f * 1000.0f * 0.1f) / (1000.0f - 0.1f);
+    CHECK(std::abs(proyeccion[10] - m10Para1000) < 1e-6f &&
+              std::abs(proyeccion[14] - m14Para1000) < 1e-6f,
+          "la proyeccion ordinaria conserva el far plane configurable");
+}
+
+void movimientoFisicoYSaltoDesdeScripts() {
+    GameObject jugador;
+    Transform* transform = jugador.getComponent<Transform>();
+    CHECK(transform != nullptr, "el jugador tiene Transform");
+    if (!transform) return;
+
+    auto collider = std::make_unique<EsfereCollider>(
+        1.0f, transform, &jugador);
+    EsfereCollider* colliderPtr = collider.get();
+    jugador.addComponent(std::move(collider));
+    auto rigidBody = std::make_unique<RigidBody>(colliderPtr, 1.0f);
+    RigidBody* rigidBodyPtr = rigidBody.get();
+    jugador.addComponent(std::move(rigidBody));
+
+    BulletPhysicsAdapter fisica;
+    fisica.addRigidBody(rigidBodyPtr);
+    for (int i = 0; i < 20; ++i) fisica.stepSimulation(1.0f / 60.0f);
+
+    const MotorScript::ApiScriptGameObject* api = MotorScript::tablaApi();
+    CHECK(api->version >= 3,
+          "la API de scripts publica movimiento y salto con fisica");
+    CHECK(api->fijarVelocidadHorizontal(&jugador, 2.0f, -3.0f),
+          "la API detecta y mueve el RigidBody del GameObject");
+    CHECK(api->saltar(&jugador, 5.0f),
+          "un RigidBody apoyado acepta el salto");
+    btVector3 velocidad = rigidBodyPtr->getRigidBody()->getLinearVelocity();
+    CHECK(std::abs(velocidad.x() - 2.0f) < 0.001f &&
+              std::abs(velocidad.y() - 5.0f) < 0.001f &&
+              std::abs(velocidad.z() + 3.0f) < 0.001f,
+          "el movimiento horizontal conserva la velocidad vertical del salto");
+    CHECK(!api->saltar(&jugador, 5.0f),
+          "el cuerpo no acepta un segundo salto en el aire");
+    fisica.removeRigidBody(rigidBodyPtr);
+}
+
+void eventosDeContactoExponenColliderYPropietario() {
+    GameObject jugador;
+    jugador.setTag("jugador");
+    GameObject suelo;
+    suelo.setTag("suelo");
+    Transform* transformJugador = jugador.getComponent<Transform>();
+    Transform* transformSuelo = suelo.getComponent<Transform>();
+    CHECK(transformJugador && transformSuelo,
+          "los objetos de contacto tienen transform");
+    if (!transformJugador || !transformSuelo) return;
+    transformSuelo->setTranslatef(0.0f, -1.0f, 0.0f);
+
+    auto colliderJugador = std::make_unique<EsfereCollider>(
+        1.0f, transformJugador, &jugador);
+    Collider* colliderJugadorPtr = colliderJugador.get();
+    jugador.addComponent(std::move(colliderJugador));
+    auto cuerpoJugador =
+        std::make_unique<RigidBody>(colliderJugadorPtr, 1.0f);
+    RigidBody* cuerpoJugadorPtr = cuerpoJugador.get();
+    jugador.addComponent(std::move(cuerpoJugador));
+
+    auto colliderSuelo = std::make_unique<EsfereCollider>(
+        1.0f, transformSuelo, &suelo);
+    Collider* colliderSueloPtr = colliderSuelo.get();
+    suelo.addComponent(std::move(colliderSuelo));
+    auto cuerpoSuelo = std::make_unique<RigidBody>(colliderSueloPtr, 0.0f);
+    RigidBody* cuerpoSueloPtr = cuerpoSuelo.get();
+    suelo.addComponent(std::move(cuerpoSuelo));
+
+    BulletPhysicsAdapter fisica;
+    fisica.addRigidBody(cuerpoJugadorPtr);
+    fisica.addRigidBody(cuerpoSueloPtr);
+    const auto* api = MotorScript::tablaApi();
+    CHECK(api->version >= 4,
+          "la API de scripts publica consultas de tags y colliders");
+    CHECK(api->tieneEtiqueta(&suelo, "suelo") &&
+              std::string(api->etiqueta(&suelo)) == "suelo",
+          "la API consulta el tag registrado en el propietario");
+    CHECK(api->objetoDeCollider(colliderSueloPtr) == &suelo,
+          "la API resuelve el objeto propietario desde su collider");
+
+    fisica.stepSimulation(1.0f / 60.0f);
+    std::vector<EventoContacto> eventos = fisica.tomarEventosContacto();
+    auto contieneTipo = [](const std::vector<EventoContacto>& lista,
+                           TipoContacto tipo, Collider* a, Collider* b) {
+        for (const EventoContacto& evento : lista) {
+            if (evento.tipo == tipo &&
+                ((evento.colliderA == a && evento.colliderB == b) ||
+                 (evento.colliderA == b && evento.colliderB == a)))
+                return true;
+        }
+        return false;
+    };
+    CHECK(contieneTipo(eventos, TipoContacto::Inicio, colliderJugadorPtr,
+                       colliderSueloPtr),
+          "el primer contacto produce un evento de inicio");
+
+    fisica.stepSimulation(1.0f / 60.0f);
+    eventos = fisica.tomarEventosContacto();
+    CHECK(contieneTipo(eventos, TipoContacto::Persistencia,
+                       colliderJugadorPtr, colliderSueloPtr),
+          "el contacto continuo produce un evento de persistencia");
+    CHECK(colliderJugadorPtr->cantidadContactos() > 0 &&
+              colliderJugadorPtr->contactoEnIndice(0) == colliderSueloPtr,
+          "el collider expone los colliders en contacto");
+
+    btTransform separado;
+    separado.setIdentity();
+    separado.setOrigin(btVector3(100.0f, 10.0f, 0.0f));
+    cuerpoJugadorPtr->getRigidBody()->setWorldTransform(separado);
+    cuerpoJugadorPtr->getRigidBody()->getMotionState()->setWorldTransform(
+        separado);
+    cuerpoJugadorPtr->getRigidBody()->activate();
+    fisica.stepSimulation(1.0f / 60.0f);
+    eventos = fisica.tomarEventosContacto();
+    CHECK(contieneTipo(eventos, TipoContacto::Fin, colliderJugadorPtr,
+                       colliderSueloPtr),
+          "al separarse los colliders se produce un evento de fin");
+
+    fisica.removeRigidBody(cuerpoJugadorPtr);
+    fisica.removeRigidBody(cuerpoSueloPtr);
+}
+
+void busquedaDeObjetosPorNombreIdYEtiqueta() {
+    SceneRegistry registro;
+    auto camara = std::make_unique<GameObject>();
+    std::snprintf(camara->inputName, sizeof(camara->inputName), "%s",
+                  "Camara");
+    camara->setId(7);
+    camara->setTag("principal");
+    auto jugador = std::make_unique<GameObject>();
+    std::snprintf(jugador->inputName, sizeof(jugador->inputName), "%s",
+                  "Jugador");
+    jugador->setTag("jugador");
+    GameObject* camaraPtr = registro.createObject(std::move(camara));
+    GameObject* jugadorPtr = registro.createObject(std::move(jugador));
+    CHECK(camaraPtr && jugadorPtr,
+          "el registro crea los objetos de busqueda");
+    if (!camaraPtr || !jugadorPtr) return;
+
+    MotorScript::inyectarServiciosScript(nullptr, &registro, nullptr);
+    const MotorScript::ScriptServices* servicios =
+        MotorScript::tablaServicios();
+    CHECK(servicios->version >= 3,
+          "los servicios publican busqueda por nombre, id y etiqueta");
+    CHECK(servicios->objetoPorNombre("Camara") == camaraPtr,
+          "la busqueda por nombre devuelve la camara");
+    CHECK(servicios->objetoPorId(7) == camaraPtr,
+          "la busqueda por id devuelve la camara");
+    CHECK(servicios->objetoPorId(jugadorPtr->getId()) == jugadorPtr,
+          "la busqueda por id asignado devuelve al jugador");
+    CHECK(servicios->objetoPorEtiqueta("principal") == camaraPtr,
+          "la busqueda por etiqueta devuelve la camara");
+    CHECK(servicios->objetoPorEtiqueta("jugador") == jugadorPtr,
+          "la busqueda por etiqueta devuelve al jugador");
+    CHECK(servicios->objetoPorNombre("Inexistente") == nullptr,
+          "el nombre desconocido no resuelve objeto");
+    CHECK(servicios->objetoPorId(9999) == nullptr,
+          "el id desconocido no resuelve objeto");
+    CHECK(servicios->objetoPorEtiqueta("inexistente") == nullptr,
+          "la etiqueta desconocida no resuelve objeto");
+    MotorScript::inyectarServiciosScript(nullptr, nullptr, nullptr);
+    CHECK(servicios->objetoPorNombre("Camara") == nullptr &&
+              servicios->objetoPorId(7) == nullptr &&
+              servicios->objetoPorEtiqueta("principal") == nullptr,
+          "sin escena inyectada no hay busqueda");
+}
+
+void propiedadesFisicasDesdeScripts() {
+    GameObject jugador;
+    Transform* transform = jugador.getComponent<Transform>();
+    CHECK(transform != nullptr, "el objeto fisico tiene Transform");
+    if (!transform) return;
+    auto collider = std::make_unique<EsfereCollider>(1.0f, transform, &jugador);
+    EsfereCollider* colliderPtr = collider.get();
+    jugador.addComponent(std::move(collider));
+    auto cuerpo = std::make_unique<RigidBody>(colliderPtr, 1.0f);
+    RigidBody* cuerpoPtr = cuerpo.get();
+    jugador.addComponent(std::move(cuerpo));
+
+    BulletPhysicsAdapter fisica;
+    fisica.addRigidBody(cuerpoPtr);
+
+    const MotorScript::ApiScriptGameObject* api = MotorScript::tablaApi();
+    CHECK(api->version >= 5,
+          "la API de scripts publica masa, gravedad, friccion y freeze");
+    CHECK(api->masa(&jugador) == 1.0f, "la API lee la masa inicial");
+    CHECK(api->fijarMasa(&jugador, 5.0f) && api->masa(&jugador) == 5.0f,
+          "la API fija la masa del cuerpo");
+    CHECK(std::abs(cuerpoPtr->getRigidBody()->getMass() - 5.0f) < 0.001f,
+          "la masa llega a la inercia de Bullet");
+    CHECK(api->fijarMasa(&jugador, 0.0f) && api->masa(&jugador) == 0.0f,
+          "la masa cero deja el cuerpo estatico");
+    api->fijarMasa(&jugador, 1.0f);
+
+    CHECK(api->usaGravedad(&jugador),
+          "el cuerpo usa la gravedad del mundo por defecto");
+    CHECK(api->fijarEscalaGravedad(&jugador, 2.0f) &&
+              api->escalaGravedad(&jugador) == 2.0f,
+          "la API fija la escala de gravedad por cuerpo");
+    CHECK(!api->fijarEscalaGravedad(&jugador,
+                                    std::numeric_limits<float>::quiet_NaN()),
+          "la escala no finita se rechaza");
+    fisica.fijarGravedad(0.0f, -10.0f, 0.0f);
+    const btVector3 gravedad =
+        cuerpoPtr->getRigidBody()->getGravity();
+    CHECK(std::abs(gravedad.y() + 20.0f) < 0.001f,
+          "la gravedad del mundo por la escala llega al cuerpo");
+    CHECK(api->fijarUsoGravedad(&jugador, false) &&
+              !api->usaGravedad(&jugador),
+          "la API desactiva la gravedad por cuerpo");
+    const btVector3 sinGravedad =
+        cuerpoPtr->getRigidBody()->getGravity();
+    CHECK(sinGravedad.length() < 0.001f,
+          "sin gravedad el cuerpo no acelera");
+    api->fijarUsoGravedad(&jugador, true);
+
+    CHECK(std::abs(api->friccion(&jugador) - 0.5f) < 0.001f,
+          "la friccion por defecto es la historica de Bullet");
+    CHECK(api->fijarFriccion(&jugador, 0.1f) &&
+              std::abs(api->friccion(&jugador) - 0.1f) < 0.001f,
+          "la API fija la friccion del cuerpo");
+    CHECK(std::abs(cuerpoPtr->getRigidBody()->getFriction() - 0.1f) < 0.001f,
+          "la friccion llega al contacto de Bullet");
+    CHECK(!api->fijarFriccion(&jugador, -1.0f) ||
+              api->friccion(&jugador) >= 0.0f,
+          "la friccion negativa no entra al cuerpo");
+
+    CHECK(api->fijarFreezePosicion(&jugador, true, false, true) &&
+              api->posicionCongelada(&jugador, 0) &&
+              !api->posicionCongelada(&jugador, 1) &&
+              api->posicionCongelada(&jugador, 2),
+          "la API congela la posicion por ejes");
+    const btVector3 factorLineal =
+        cuerpoPtr->getRigidBody()->getLinearFactor();
+    CHECK(factorLineal.x() == 0.0f && factorLineal.y() == 1.0f &&
+              factorLineal.z() == 0.0f,
+          "el freeze de posicion llega al linearFactor de Bullet");
+    CHECK(api->fijarFreezeRotacion(&jugador, false, true, false) &&
+              !api->rotacionCongelada(&jugador, 0) &&
+              api->rotacionCongelada(&jugador, 1) &&
+              !api->rotacionCongelada(&jugador, 2),
+          "la API congela la rotacion por ejes");
+    const btVector3 factorAngular =
+        cuerpoPtr->getRigidBody()->getAngularFactor();
+    CHECK(factorAngular.x() == 1.0f && factorAngular.y() == 0.0f &&
+              factorAngular.z() == 1.0f,
+          "el freeze de rotacion llega al angularFactor de Bullet");
+
+    GameObject vacio;
+    CHECK(api->masa(&vacio) == 0.0f && !api->usaGravedad(&vacio) &&
+              api->escalaGravedad(&vacio) == 0.0f &&
+              api->friccion(&vacio) == 0.0f &&
+              !api->posicionCongelada(&vacio, 0) &&
+              !api->rotacionCongelada(&vacio, 0),
+          "sin RigidBody los getters devuelven neutro");
+    CHECK(!api->fijarMasa(&vacio, 1.0f) &&
+              !api->fijarUsoGravedad(&vacio, true) &&
+              !api->fijarEscalaGravedad(&vacio, 1.0f) &&
+              !api->fijarFriccion(&vacio, 1.0f) &&
+              !api->fijarFreezePosicion(&vacio, true, true, true) &&
+              !api->fijarFreezeRotacion(&vacio, true, true, true),
+          "sin RigidBody los setters informan que no aplican");
+    fisica.removeRigidBody(cuerpoPtr);
+}
+
+void rigidBodySerializaPropiedadesNuevas() {
+    TempPruebas::CarpetaPrueba carpetaDir("funshi_rigidbody_v2");
+    const fs::path archivo = carpetaDir.ruta() / "rigidbody-v2.bin";
+
+    Transform transform;
+    EsfereCollider collider(1.0f, &transform);
+    RigidBody cuerpo(&collider, 2.0f);
+    cuerpo.fijarUsoGravedad(false);
+    cuerpo.fijarEscalaGravedad(0.5f);
+    cuerpo.fijarFriccion(0.9f);
+    cuerpo.fijarFreezePosicion(true, false, false);
+    cuerpo.fijarFreezeRotacion(false, false, true);
+    cuerpo.fijarSensor(true);
+    {
+        std::ofstream salida(archivo, std::ios::binary);
+        cuerpo.saveComponent(&salida);
+    }
+    Transform transformRecuperado;
+    EsfereCollider colliderRecuperado(1.0f, &transformRecuperado);
+    RigidBody recuperado(&colliderRecuperado, 1.0f);
+    {
+        std::ifstream entrada(archivo, std::ios::binary);
+        recuperado.loadComponent(&entrada);
+        CHECK(static_cast<bool>(entrada),
+              "el formato v3 carga sin error");
+    }
+    CHECK(recuperado.masa() == 2.0f, "la masa se conserva al serializar");
+    CHECK(!recuperado.usaGravedad(), "el uso de gravedad se conserva");
+    CHECK(recuperado.escalaGravedad() == 0.5f,
+          "la escala de gravedad se conserva");
+    CHECK(std::abs(recuperado.friccion() - 0.9f) < 0.001f,
+          "la friccion se conserva al serializar");
+    CHECK(recuperado.posicionCongelada(0) &&
+              !recuperado.posicionCongelada(1) &&
+              !recuperado.posicionCongelada(2),
+          "el freeze de posicion se conserva");
+    CHECK(!recuperado.rotacionCongelada(0) &&
+              !recuperado.rotacionCongelada(1) &&
+              recuperado.rotacionCongelada(2),
+          "el freeze de rotacion se conserva");
+    CHECK(recuperado.esSensor(), "el flag de sensor se conserva al serializar");
+
+    // Compatibilidad hacia atras: blob v2 escrito a mano (magia + version 2
+    // + activo + masa + pos + rot + gravedad + friccion + freeze) carga con
+    // el sensor en falso.
+    const fs::path archivoV2 = carpetaDir.ruta() / "rigidbody-v2.bin";
+    {
+        std::ofstream salida(archivoV2, std::ios::binary);
+        const std::uint32_t magia = 0x32444252;
+        const std::uint32_t version = 2;
+        const bool activo = true;
+        const float masa = 4.0f;
+        const float pos[3] = {0.0f, 0.0f, 0.0f};
+        const float rot[4] = {0.0f, 0.0f, 0.0f, 1.0f};
+        const bool usarGravedad = true;
+        const float escala = 1.0f;
+        const float friccion = 0.5f;
+        const bool freezePos[3] = {false, false, false};
+        const bool freezeRot[3] = {false, false, false};
+        salida.write(reinterpret_cast<const char*>(&magia), sizeof(magia));
+        salida.write(reinterpret_cast<const char*>(&version), sizeof(version));
+        salida.write(reinterpret_cast<const char*>(&activo), sizeof(activo));
+        salida.write(reinterpret_cast<const char*>(&masa), sizeof(masa));
+        salida.write(reinterpret_cast<const char*>(pos), sizeof(pos));
+        salida.write(reinterpret_cast<const char*>(&rot), sizeof(rot));
+        salida.write(reinterpret_cast<const char*>(&usarGravedad),
+                     sizeof(usarGravedad));
+        salida.write(reinterpret_cast<const char*>(&escala), sizeof(escala));
+        salida.write(reinterpret_cast<const char*>(&friccion), sizeof(friccion));
+        salida.write(reinterpret_cast<const char*>(freezePos), sizeof(freezePos));
+        salida.write(reinterpret_cast<const char*>(freezeRot), sizeof(freezeRot));
+    }
+    Transform transformV2;
+    EsfereCollider colliderV2(1.0f, &transformV2);
+    RigidBody cuerpoV2(&colliderV2, 1.0f);
+    {
+        std::ifstream entrada(archivoV2, std::ios::binary);
+        cuerpoV2.loadComponent(&entrada);
+        CHECK(static_cast<bool>(entrada), "el formato v2 sigue cargando");
+    }
+    CHECK(!cuerpoV2.esSensor(), "una escena v2 no trae sensores");
+
+    // Compatibilidad hacia atras: blob v1 escrito a mano (magia + version 1
+    // + activo + masa + pos + rot) carga con los valores por defecto.
+    const fs::path archivoV1 = carpetaDir.ruta() / "rigidbody-v1.bin";
+    {
+        std::ofstream salida(archivoV1, std::ios::binary);
+        const std::uint32_t magia = 0x32444252;
+        const std::uint32_t version = 1;
+        const bool activo = true;
+        const float masa = 3.0f;
+        const float pos[3] = {0.0f, 0.0f, 0.0f};
+        const float rot[4] = {0.0f, 0.0f, 0.0f, 1.0f};
+        salida.write(reinterpret_cast<const char*>(&magia), sizeof(magia));
+        salida.write(reinterpret_cast<const char*>(&version), sizeof(version));
+        salida.write(reinterpret_cast<const char*>(&activo), sizeof(activo));
+        salida.write(reinterpret_cast<const char*>(&masa), sizeof(masa));
+        salida.write(reinterpret_cast<const char*>(pos), sizeof(pos));
+        salida.write(reinterpret_cast<const char*>(rot), sizeof(rot));
+    }
+    Transform transformV1;
+    EsfereCollider colliderV1(1.0f, &transformV1);
+    RigidBody cuerpoV1(&colliderV1, 1.0f);
+    {
+        std::ifstream entrada(archivoV1, std::ios::binary);
+        cuerpoV1.loadComponent(&entrada);
+        CHECK(static_cast<bool>(entrada), "el formato v1 sigue cargando");
+    }
+    CHECK(cuerpoV1.masa() == 3.0f, "v1 conserva la masa");
+    CHECK(cuerpoV1.usaGravedad() && cuerpoV1.escalaGravedad() == 1.0f &&
+              std::abs(cuerpoV1.friccion() - 0.5f) < 0.001f &&
+              !cuerpoV1.posicionCongelada(0) &&
+              !cuerpoV1.rotacionCongelada(0),
+          "v1 toma gravedad, friccion y freeze por defecto");
+}
+
+// Un cuerpo sensor detecta el contacto (evento de inicio) pero no genera
+// respuesta fisica: el otro cuerpo lo atraviesa. Se compara contra un
+// colisionador solido como bloque de control (una sola variable: el flag).
+void sensorDetectaSinRespuestaYPlano2D() {
+    auto ensayar = [](bool comoSensor, float& posXFinal, int& eventosInicio) {
+        GameObject sensor;
+        GameObject movil;
+        Transform* tSensor = sensor.getComponent<Transform>();
+        Transform* tMovil = movil.getComponent<Transform>();
+        tSensor->setTranslatef(0.0f, 10.0f, 0.0f);
+        tMovil->setTranslatef(0.1f, 10.0f, 0.0f);
+
+        auto colSensor = std::make_unique<EsfereCollider>(1.0f, tSensor, &sensor);
+        Collider* colSensorPtr = colSensor.get();
+        sensor.addComponent(std::move(colSensor));
+        auto bodySensor = std::make_unique<RigidBody>(colSensorPtr, 0.0f);
+        RigidBody* bodySensorPtr = bodySensor.get();
+        if (comoSensor) bodySensorPtr->fijarSensor(true);
+        sensor.addComponent(std::move(bodySensor));
+
+        auto colMovil = std::make_unique<EsfereCollider>(1.0f, tMovil, &movil);
+        Collider* colMovilPtr = colMovil.get();
+        movil.addComponent(std::move(colMovil));
+        auto bodyMovil = std::make_unique<RigidBody>(colMovilPtr, 1.0f);
+        RigidBody* bodyMovilPtr = bodyMovil.get();
+        bodyMovilPtr->fijarUsoGravedad(false);
+        movil.addComponent(std::move(bodyMovil));
+
+        BulletPhysicsAdapter fisica;
+        fisica.addRigidBody(bodySensorPtr);
+        fisica.addRigidBody(bodyMovilPtr);
+
+        eventosInicio = 0;
+        for (int i = 0; i < 30; ++i) {
+            fisica.stepSimulation(1.0f / 60.0f);
+            for (const EventoContacto& evento :
+                 fisica.tomarEventosContacto()) {
+                if (evento.tipo != TipoContacto::Inicio) continue;
+                if ((evento.colliderA == colSensorPtr &&
+                     evento.colliderB == colMovilPtr) ||
+                    (evento.colliderA == colMovilPtr &&
+                     evento.colliderB == colSensorPtr))
+                    ++eventosInicio;
+            }
+        }
+        posXFinal =
+            bodyMovilPtr->getRigidBody()->getWorldTransform().getOrigin().x();
+
+        fisica.removeRigidBody(bodySensorPtr);
+        fisica.removeRigidBody(bodyMovilPtr);
+    };
+
+    float xSensor = 0.0f;
+    float xSolido = 0.0f;
+    int eventosSensor = 0;
+    int eventosSolido = 0;
+    ensayar(true, xSensor, eventosSensor);
+    ensayar(false, xSolido, eventosSolido);
+
+    CHECK(eventosSensor > 0, "el sensor detecta el contacto que atraviesa");
+    CHECK(eventosSolido > 0, "el colisionador solido tambien detecta el contacto");
+    CHECK(xSensor < xSolido,
+          "el sensor no empuja: el movil lo atraviesa; el solido lo frena");
+
+    // El flag del sensor y las restricciones 2D son propiedades del RigidBody
+    // que deben llegar a la instancia de Bullet.
+    GameObject objeto;
+    Transform* t = objeto.getComponent<Transform>();
+    auto col = std::make_unique<EsfereCollider>(1.0f, t, &objeto);
+    Collider* colPtr = col.get();
+    objeto.addComponent(std::move(col));
+    auto cuerpo = std::make_unique<RigidBody>(colPtr, 1.0f);
+    RigidBody* cuerpoPtr = cuerpo.get();
+    objeto.addComponent(std::move(cuerpo));
+
+    CHECK(!cuerpoPtr->esSensor() &&
+              cuerpoPtr->getRigidBody()->hasContactResponse(),
+          "un cuerpo normal responde al contacto");
+    cuerpoPtr->fijarSensor(true);
+    CHECK(!cuerpoPtr->getRigidBody()->hasContactResponse(),
+          "el flag de sensor llega a Bullet (sin respuesta de contacto)");
+
+    cuerpoPtr->fijarRestricciones2D();
+    const btVector3 factorLineal =
+        cuerpoPtr->getRigidBody()->getLinearFactor();
+    const btVector3 factorAngular =
+        cuerpoPtr->getRigidBody()->getAngularFactor();
+    CHECK(factorLineal.z() == 0.0f && factorAngular.x() == 0.0f &&
+              factorAngular.y() == 0.0f,
+          "el modo 2D llega al linear/angular factor de Bullet");
+}
+
+void gestionDeObjetosDesdeScripts() {
+    SceneRegistry registro;
+    PhysicsEngine fisica;
+    EventBus bus;
+    EditorController editor(&registro, &fisica, &bus, nullptr);
+    MotorScript::inyectarServiciosScript(nullptr, &registro, nullptr, &fisica,
+                                         &editor);
+    const MotorScript::ScriptServices* servicios =
+        MotorScript::tablaServicios();
+    CHECK(servicios->version >= 4,
+          "los servicios publican gravedad global y gestion de objetos");
+
+    float gx = 9.0f;
+    float gy = 9.0f;
+    float gz = 9.0f;
+    fisica.gravedad(gx, gy, gz);
+    CHECK(gx == 0.0f && gy == -1.0f && gz == 0.0f,
+          "la gravedad global por defecto es la historica");
+    servicios->fijarGravedadGlobal(0.0f, -3.0f, 0.0f);
+    CHECK(servicios->gravedadGlobalX() == 0.0f &&
+              servicios->gravedadGlobalY() == -3.0f &&
+              servicios->gravedadGlobalZ() == 0.0f,
+          "los servicios fijan y leen la gravedad global");
+
+    GameObject* creado = static_cast<GameObject*>(
+        servicios->crearObjeto("Enemigo", nullptr));
+    CHECK(creado != nullptr, "crearObjeto devuelve el objeto de inmediato");
+    if (!creado) {
+        MotorScript::inyectarServiciosScript(nullptr, nullptr, nullptr);
+        return;
+    }
+    CHECK(!registro.contains(creado),
+          "el objeto entra a la escena al final del frame, no adentro");
+    CHECK(std::string(creado->inputName) == "Enemigo",
+          "el objeto conserva el nombre pedido");
+    CHECK(creado->getComponent<Transform>() != nullptr,
+          "el objeto nuevo trae Transform para configurarlo ya");
+    MotorScript::procesarPeticionesObjetos();
+    CHECK(registro.contains(creado),
+          "tras procesar, el objeto pertenece a la escena");
+
+    GameObject* duplicado = static_cast<GameObject*>(
+        servicios->crearObjeto("Enemigo", nullptr));
+    MotorScript::procesarPeticionesObjetos();
+    CHECK(duplicado != nullptr && duplicado != creado &&
+              std::string(duplicado->inputName) != "Enemigo" &&
+              registro.contains(duplicado),
+          "el nombre repetido se uniciza al crear");
+
+    CHECK(servicios->agregarColliderEsfera(creado, 1.0f),
+          "el servicio agrega collider esfera");
+    CHECK(!servicios->agregarColliderCubo(creado, 1.0f),
+          "un segundo collider en el mismo frame no se encola");
+    MotorScript::procesarPeticionesObjetos();
+    CHECK(creado->getComponent<Collider>() != nullptr,
+          "el collider entra al final del frame");
+    CHECK(servicios->agregarRigidBody(creado, 2.0f),
+          "el servicio agrega cuerpo con masa");
+    MotorScript::procesarPeticionesObjetos();
+    RigidBody* cuerpoCreado = creado->getComponent<RigidBody>();
+    CHECK(cuerpoCreado != nullptr && cuerpoCreado->masa() == 2.0f &&
+              cuerpoCreado->getRigidBody() &&
+              cuerpoCreado->getRigidBody()->isInWorld(),
+          "el cuerpo agregado queda registrado en el mundo fisico");
+    CHECK(!servicios->agregarRigidBody(creado, 1.0f),
+          "un segundo cuerpo no se agrega");
+
+    GameObject* clon = static_cast<GameObject*>(
+        servicios->clonarObjeto(creado, nullptr));
+    CHECK(clon != nullptr && clon != creado,
+          "clonar devuelve la copia de inmediato");
+    MotorScript::procesarPeticionesObjetos();
+    CHECK(registro.contains(clon), "el clon entra a la escena al procesar");
+    CHECK(clon->getId() != creado->getId(),
+          "el clon recibe id propio");
+    CHECK(clon->getComponent<Collider>() != nullptr &&
+              clon->getComponent<RigidBody>() != nullptr,
+          "el clon conserva collider y cuerpo");
+    RigidBody* cuerpoClon = clon->getComponent<RigidBody>();
+    CHECK(cuerpoClon && cuerpoClon->masa() == 2.0f &&
+              cuerpoClon->getRigidBody()->isInWorld(),
+          "el cuerpo clonado queda registrado en el mundo fisico");
+
+    CHECK(servicios->destruirObjeto(creado),
+          "destruir marca el objeto");
+    CHECK(registro.contains(creado),
+          "el borrado tambien espera al final del frame");
+    MotorScript::procesarPeticionesObjetos();
+    CHECK(!registro.contains(creado),
+          "tras procesar, el objeto ya no esta en la escena");
+    CHECK(!servicios->destruirObjeto(creado),
+          "destruir dos veces informa que ya no existe");
+
+    MotorScript::inyectarServiciosScript(nullptr, nullptr, nullptr);
+    CHECK(servicios->crearObjeto("Tarde", nullptr) == nullptr &&
+              !servicios->destruirObjeto(clon) &&
+              servicios->clonarObjeto(clon, nullptr) == nullptr &&
+              !servicios->agregarColliderEsfera(clon, 1.0f) &&
+              !servicios->agregarRigidBody(clon, 1.0f),
+          "sin escena inyectada no hay gestion de objetos");
+}
+
+// --- Siembra de escena por dimension -----------------------------------------
+// La grilla de rejilla es un auxiliar del mundo 3D y la camara inicial se
+// coloca segun el plano de juego: en 2D mira el plano XY de frente desde +Z;
+// en 3D se eleva para ver la grilla. Es politica pura (sin disco ni UI), por
+// eso se prueba sobre las funciones de SiembraEscena.
+void siembraPorDimension() {
+    CHECK(SiembraEscena::sembrarGrilla(DimensionProyecto::TresD),
+          "la grilla de rejilla se siembra en los proyectos 3D");
+    CHECK(!SiembraEscena::sembrarGrilla(DimensionProyecto::DosD),
+          "la grilla de rejilla no se siembra en los proyectos 2D");
+
+    const SiembraEscena::PosicionInicial camara2d =
+        SiembraEscena::posicionCamaraInicial(DimensionProyecto::DosD);
+    CHECK(camara2d.x == 0.f && camara2d.y == 0.f && camara2d.z == 40.f,
+          "en 2D la camara inicial mira el plano de frente desde +Z");
+
+    const SiembraEscena::PosicionInicial camara3d =
+        SiembraEscena::posicionCamaraInicial(DimensionProyecto::TresD);
+    CHECK(camara3d.x == 0.f && camara3d.y == 8.f && camara3d.z == 40.f,
+          "en 3D la camara inicial se eleva para ver la grilla");
+}
+
+// --- Proyeccion de camara (perspectiva / ortografica) ------------------------
+// El renderer de lineas clasifica la proyeccion leyendo la matriz (no el estado
+// de la camara) y la vista ortografica es la base del modo 2D. Se cubre la
+// politica pura (ProyeccionCamara) y la persistencia del tipo de proyeccion y
+// del tamano ortografico, incluida la lectura del bloque historico sin cabecera.
+void proyeccionDeCamara() {
+    const float aspecto = 16.f / 9.f;
+
+    // 1. Proyeccion en perspectiva: se reconoce como no ortografica y la
+    //    distancia al plano cercano coincide con la usada para construirla.
+    const glm::mat4 perspectivaGlm =
+        glm::perspective(glm::radians(60.f), aspecto, 0.5f, 500.f);
+    const float* persp = glm::value_ptr(perspectivaGlm);
+    CHECK(!ProyeccionCamara::esOrtografica(persp),
+          "una proyeccion en perspectiva no se clasifica como ortografica");
+    CHECK(std::fabs(ProyeccionCamara::nearDesdeProyeccion(persp) - 0.5f) < 1e-3f,
+          "el plano cercano se recupera de la matriz en perspectiva");
+
+    // 2. Proyeccion ortografica: se reconoce y no reporta plano cercano (sin
+    //    recorte de lineas por convergencia).
+    const glm::mat4 ortograficaGlm =
+        glm::ortho(-8.f, 8.f, -4.5f, 4.5f, 0.5f, 500.f);
+    const float* ortho = glm::value_ptr(ortograficaGlm);
+    CHECK(ProyeccionCamara::esOrtografica(ortho),
+          "una proyeccion ortografica se clasifica como ortografica");
+    CHECK(ProyeccionCamara::nearDesdeProyeccion(ortho) == 0.f,
+          "en ortografica no hay recorte por plano cercano");
+
+    // 3. La camara construye la matriz del tipo que declara: en ortografica la
+    //    media altura es orthoSize y la media anchura orthoSize*aspect.
+    {
+        CameraComponent camara;
+        float p[16];
+        camara.getProjectionMatrix(p, aspecto);
+        CHECK(!ProyeccionCamara::esOrtografica(p),
+              "por defecto la camara proyecta en perspectiva");
+
+        camara.setProjection(CameraComponent::Projection::Orthographic);
+        camara.setOrthoSize(12.f);
+        camara.getProjectionMatrix(p, aspecto);
+        CHECK(ProyeccionCamara::esOrtografica(p),
+              "una camara ortografica produce una matriz ortografica");
+        CHECK(std::fabs(p[0] - 1.f / (12.f * aspecto)) < 1e-4f &&
+                  std::fabs(p[5] - 1.f / 12.f) < 1e-4f,
+              "la media altura/ancho de la ortografica salen de orthoSize");
+    }
+
+    // 4. Ida y vuelta del bloque binario: tipo de proyeccion y orthoSize se
+    //    conservan.
+    {
+        TempPruebas::CarpetaPrueba carpeta("funshi_camara_proyeccion");
+        const fs::path archivo = carpeta.ruta() / "camara.bin";
+        {
+            CameraComponent camara;
+            camara.setFov(72.f);
+            camara.setNearPlane(0.25f);
+            camara.setFarPlane(800.f);
+            camara.setSpeed(9.f);
+            camara.setPintar(true);
+            camara.setProjection(CameraComponent::Projection::Orthographic);
+            camara.setOrthoSize(20.f);
+            std::ofstream out(archivo, std::ios::binary);
+            camara.saveComponent(&out);
+        }
+        CameraComponent camara;
+        std::ifstream in(archivo, std::ios::binary);
+        camara.loadComponent(&in);
+        CHECK(camara.getProjection() ==
+                  CameraComponent::Projection::Orthographic,
+              "el tipo de proyeccion sobrevive el guardado");
+        CHECK(camara.getOrthoSize() == 20.f,
+              "el tamano ortografico sobrevive el guardado");
+        CHECK(camara.getFov() == 72.f && camara.getNearPlane() == 0.25f &&
+                  camara.getFarPlane() == 800.f && camara.getSpeed() == 9.f &&
+                  camara.getPintar(),
+              "los campos historicos de la camara se conservan");
+    }
+
+    // 5. Compatibilidad: un bloque historico (sin cabecera) se lee como
+    //    perspectiva con el orthoSize por defecto.
+    {
+        TempPruebas::CarpetaPrueba carpeta("funshi_camara_legacy");
+        const fs::path archivo = carpeta.ruta() / "camara_legacy.bin";
+        {
+            const float fov = 55.f, nearPlane = 0.1f, farPlane = 400.f,
+                        speed = 6.f;
+            const bool pintar = false;
+            std::ofstream out(archivo, std::ios::binary);
+            out.write(reinterpret_cast<const char*>(&fov), sizeof(fov));
+            out.write(reinterpret_cast<const char*>(&nearPlane), sizeof(nearPlane));
+            out.write(reinterpret_cast<const char*>(&farPlane), sizeof(farPlane));
+            out.write(reinterpret_cast<const char*>(&speed), sizeof(speed));
+            out.write(reinterpret_cast<const char*>(&pintar), sizeof(pintar));
+        }
+        CameraComponent camara;
+        std::ifstream in(archivo, std::ios::binary);
+        camara.loadComponent(&in);
+        CHECK(camara.getFov() == 55.f && camara.getFarPlane() == 400.f,
+              "el bloque historico de la camara se lee completo");
+        CHECK(camara.getProjection() ==
+                  CameraComponent::Projection::Perspective,
+              "una camara historica se interpreta en perspectiva");
+        CHECK(camara.getOrthoSize() == 5.f,
+              "una camara historica toma el orthoSize por defecto");
+    }
+}
+
+// SpriteRenderer: round-trip binario aislado del componente. El path de textura
+// se persiste relativizado y se relee absolutizado (como Material), asi que se
+// compara el nombre de archivo; el resto de campos (tinte, tamano, region UV) se
+// comparan exactos.
+void spriteRendererSerializaRoundTrip() {
+    TempPruebas::CarpetaPrueba carpeta("funshi_escena_sprite");
+    const fs::path archivo = carpeta.ruta() / "sprite.bin";
+
+    SpriteRenderer original;
+    original.setRutaTextura("assets/heroe.png");
+    original.setTint(0.25f, 0.5f, 0.75f, 0.5f);
+    original.setTamano(2.0f, 3.5f);
+    original.setUvRect(0.1f, 0.2f, 0.6f, 0.9f);
+    {
+        std::ofstream out(archivo, std::ios::binary | std::ios::trunc);
+        CHECK(out.is_open(), "abre el archivo para guardar el sprite");
+        original.saveComponent(&out);
+    }
+
+    SpriteRenderer cargado;
+    {
+        std::ifstream in(archivo, std::ios::binary);
+        CHECK(in.is_open(), "abre el archivo para cargar el sprite");
+        cargado.loadComponent(&in);
+    }
+
+    CHECK(fs::path(cargado.getRutaTextura()).filename() == "heroe.png",
+          "la ruta de textura sobrevive el round-trip");
+    CHECK(cargado.getTint()[0] == 0.25f && cargado.getTint()[1] == 0.5f &&
+              cargado.getTint()[2] == 0.75f && cargado.getTint()[3] == 0.5f,
+          "el tinte sobrevive el round-trip");
+    CHECK(cargado.getTamano()[0] == 2.0f && cargado.getTamano()[1] == 3.5f,
+          "el tamano sobrevive el round-trip");
+    CHECK(cargado.getUvRect()[0] == 0.1f && cargado.getUvRect()[1] == 0.2f &&
+              cargado.getUvRect()[2] == 0.6f && cargado.getUvRect()[3] == 0.9f,
+          "la region UV sobrevive el round-trip");
+
+    // Un componente nuevo arranca con los defaults: quad 1x1, textura completa y
+    // sin textura asignada.
+    SpriteRenderer nuevo;
+    CHECK(nuevo.getRutaTextura().empty(), "un sprite nuevo no tiene textura");
+    CHECK(nuevo.getTamano()[0] == 1.0f && nuevo.getTamano()[1] == 1.0f,
+          "un sprite nuevo mide 1x1");
+    CHECK(nuevo.getUvRect()[0] == 0.0f && nuevo.getUvRect()[2] == 1.0f &&
+              nuevo.getUvRect()[3] == 1.0f,
+          "un sprite nuevo cubre la textura completa");
+}
+
 int main() {
     nombresPorDefecto();
     roundTripDeEscena();
+    tagsCompatiblesConEscenasAnteriores();
+    restaurarBaselineDeEscena();
     guardadoConArbolVacio();
     reporteFalloBinario();
     indiceCorruptoSinFantasmas();
+    diagnosticosCargaEscena();
+    diagnosticosCargaMalla();
+    diagnosticosCargaScript();
     hijoConIdCeroSeReasignaAlGuardar();
     hermanosConsecutivosSinPerdida();
+    rutasDeCarasDeSkybox();
     reescrituraDeReferencias();
     sanadoDeRutasRotas();
+    variosScriptsPorObjeto();
+    nombreDeComponenteScriptSeSerializa();
+    rotacionApiUsaRadianes();
     elInspectorSeDesvinculaAlBorrar();
+    laCamaraBorradaNoSeUsaEnElRestoDelFrame();
     borrarCrearBorrarNoDesalineaElBinario();
+    elModeloSeResuelveConLaMatrizMundial();
+    elEventoDePropiedadNoReconstruyeElInspector();
+    elInspectorDibujaUnFrameSinArrastre();
+    reparentarPreservaLaPoseYRefrescaElCuerpo();
+    reparentarSobreviveElGuardado();
+    opcionesDeRenderYFisicaSePersisten();
+    movimientoFisicoYSaltoDesdeScripts();
+    eventosDeContactoExponenColliderYPropietario();
+    busquedaDeObjetosPorNombreIdYEtiqueta();
+    propiedadesFisicasDesdeScripts();
+    rigidBodySerializaPropiedadesNuevas();
+    sensorDetectaSinRespuestaYPlano2D();
+    gestionDeObjetosDesdeScripts();
+    siembraPorDimension();
+    proyeccionDeCamara();
+    spriteRendererSerializaRoundTrip();
 
     std::cout << (fallos == 0 ? "OK" : "FALLOS") << ": " << total
               << " comprobaciones" << std::endl;

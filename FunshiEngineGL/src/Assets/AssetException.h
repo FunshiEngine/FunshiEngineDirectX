@@ -28,7 +28,8 @@
 class AssetNotFoundException : public RuntimeException {
 public:
     explicit AssetNotFoundException(const std::string& assetPath)
-        : RuntimeException("Asset no encontrado: " + assetPath) {}
+        : RuntimeException("Asset no encontrado: " + assetPath,
+                           "AssetNotFoundException") {}
 };
 
 // El recurso pudo localizarse pero fallo su carga (archivo corrupto, formato
@@ -38,7 +39,8 @@ public:
     explicit AssetLoadException(const std::string& assetPath,
                                 const std::string& detail = "")
         : RuntimeException("No se pudo cargar el asset '" + assetPath + "'" +
-                           (detail.empty() ? std::string() : ": " + detail)) {}
+                           (detail.empty() ? std::string() : ": " + detail),
+                           "AssetLoadException") {}
 };
 
 #endif

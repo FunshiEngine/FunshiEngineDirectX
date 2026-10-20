@@ -20,21 +20,19 @@
 #define SETTINGSINTERFACE_H
 
 #include "../SettingsComponent.h"
+#include "../../../Objetos/GameObject.h"
+#include "../../../Objetos/Componentes/InterfaceComponent.h"
 
-class GameObject;
-class InterfaceComponent;
-
-// Inspector del InterfaceComponent: nombre del asset de interfaz
-// (Memory/Interfaces/<nombre>.json) que se muestra delante de la camara
-// principal al entrar en modo play.
+// Inspector del InterfaceComponent: ruta del .html de la interfaz (HUD) que se
+// muestra delante de la camara principal al entrar en modo play, mas su
+// colocacion (activo, ancla, desplazamiento, tamano y z).
 class SettingsInterface : public SettingsComponent {
     GameObject* gameObject;
 
 public:
     explicit SettingsInterface(GameObject* gameObject);
-
     void showDataComponent() override;
-    Component* getComponent() override;
+    Component* getComponent() override { return gameObject ? gameObject->getComponent<InterfaceComponent>() : nullptr; }
 };
 
 #endif // SETTINGSINTERFACE_H

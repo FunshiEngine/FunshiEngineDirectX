@@ -17,6 +17,7 @@
     SPDX-License-Identifier: Apache-2.0
 */
 #include "AgregarComponenteComando.h"
+#include "Scenes/EditorController.h"
 #include "Scenes/SceneRegistry.h"
 #include "Objetos/GameObject.h"
 #include "Objetos/Componentes/Component.h"
@@ -34,24 +35,28 @@ AgregarComponenteComando::AgregarComponenteComando(EditorController* ec,
         nombreObjeto = obj->inputName;
     }
     if (componente) {
-        nombreComponente = demangle(typeid(*componente).name());
+        nombreComponente = nombreSimpleTipo(typeid(*componente));
     }
 }
 
 void AgregarComponenteComando::ejecutar() {
-    if (!sceneRegistry || objectId <= 0 || !componente) return;
+    if (!sceneRegistry || !editorController || objectId <= 0 || !componente)
+        return;
     GameObject* obj = sceneRegistry->getObjectByID(objectId);
     if (!obj) return;
-    obj->addComponent(std::move(componente));
+    // Por la puerta del editor: registra el cuerpo en fisica si es RigidBody.
+    editorController->addComponent(obj, std::move(componente));
 }
 
 void AgregarComponenteComando::deshacer() {
-    if (!sceneRegistry || objectId <= 0 || nombreComponente.empty()) return;
+    if (!sceneRegistry || !editorController || objectId <= 0 ||
+        nombreComponente.empty())
+        return;
     GameObject* obj = sceneRegistry->getObjectByID(objectId);
     if (!obj) return;
     Component* comp = obj->getComponentByName(nombreComponente);
     if (comp) {
-        componente = obj->extractComponent(comp);
+        componente = editorController->extraerComponente(obj, comp);
     }
 }
 

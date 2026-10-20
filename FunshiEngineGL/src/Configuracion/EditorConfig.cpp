@@ -106,8 +106,8 @@ std::string EditorConfig::directorioSonidos(const std::string& nombreProyecto) {
     return ProjectPaths::directorioSonidos(nombreProyecto);
 }
 
-std::string EditorConfig::directorioInterfaces(const std::string& nombreProyecto) {
-    return ProjectPaths::directorioInterfaces(nombreProyecto);
+std::string EditorConfig::directorioScripts(const std::string& nombreProyecto) {
+    return ProjectPaths::directorioScripts(nombreProyecto);
 }
 
 std::string EditorConfig::directorioExportaciones() {
@@ -135,6 +135,12 @@ std::string EditorConfig::rutaPorDefecto() {
     return rutaConfiguracionGeneral();
 }
 
+void EditorConfig::asegurarEstructuraBase() {
+    // Solo la base y las migraciones legacy; NO crea proyecto (eso es una
+    // decision del usuario). Toda la logica vive en ProjectManager.
+    ProjectManager::asegurarEstructuraBase();
+}
+
 bool EditorConfig::renombrarProyecto(const std::string& viejo,
                                      const std::string& nuevo) {
     return ProjectManager::renombrarProyecto(viejo, nuevo);
@@ -142,10 +148,6 @@ bool EditorConfig::renombrarProyecto(const std::string& viejo,
 
 bool EditorConfig::eliminarProyecto(const std::string& nombre) {
     return ProjectManager::eliminarProyecto(nombre);
-}
-
-bool EditorConfig::crearProyectoPorDefecto() {
-    return ProjectManager::crearProyectoPorDefecto();
 }
 
 std::string EditorConfig::directorioProyectoPorDefecto() {
@@ -249,6 +251,7 @@ void EditorConfig::cargarGeneral(const std::string& ruta) {
     datos_.sensibilidadCamara = g.sensibilidadCamara;
     datos_.sensibilidadMovimientoCamara = g.sensibilidadMovimientoCamara;
     datos_.apariencia = g.apariencia;
+    datos_.modsMotor = g.mods;
 }
 
 void EditorConfig::cargarProyecto(const std::string& nombreProyecto,
@@ -261,9 +264,11 @@ void EditorConfig::cargarProyecto(const std::string& nombreProyecto,
     datos_.gizmoOperacion = p.gizmoOperacion;
     datos_.gizmoGlobal = p.gizmoGlobal;
     datos_.camaraActivaId = p.camaraActivaId;
+    datos_.dimension = p.dimension;
     // Se asigna entero (y no se fusiona) para que entrar a un proyecto sin
     // configuracion arranque en defaults en lugar de heredar los del anterior.
     datos_.estadoVentanas = p.estadoVentanas;
+    datos_.modsProyecto = p.mods;
 }
 
 // ============================================================================
@@ -289,6 +294,7 @@ void EditorConfig::guardarGeneral(const std::string& ruta) {
     g.sensibilidadCamara = datos_.sensibilidadCamara;
     g.sensibilidadMovimientoCamara = datos_.sensibilidadMovimientoCamara;
     g.apariencia = datos_.apariencia;
+    g.mods = datos_.modsMotor;
 
     ConfigPersistence::guardarGeneral(g, ruta);
 
@@ -305,7 +311,9 @@ void EditorConfig::guardarProyecto(const std::string& nombreProyecto,
     p.gizmoOperacion = datos_.gizmoOperacion;
     p.gizmoGlobal = datos_.gizmoGlobal;
     p.camaraActivaId = datos_.camaraActivaId;
+    p.dimension = datos_.dimension;
     p.estadoVentanas = datos_.estadoVentanas;
+    p.mods = datos_.modsProyecto;
 
     ConfigPersistence::guardarProyecto(p, nombreProyecto, ruta);
 }

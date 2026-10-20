@@ -25,6 +25,7 @@
 #include <string>
 #include <vector>
 #include <cstdlib>
+#include <functional>
 #include "../GUI/MenusGUI/MenuGUI.h"
 #include "../GUI/SceneGUI/SceneSelectedInterface.h"
 #include "../GUI/FileManagerGUI/TreeFilesInterface.h"
@@ -33,8 +34,8 @@
 #include "../GUI/SceneGUI/SceneMenuBarInterface.h"
 #include "../GUI/DockSpaceGUI/DockSpaceInterface.h"
 #include "../GUI/Estado/StatusBarInterface.h"
-#include "../GUI/CreadorUI/CreadorDeInterfaces.h"
-#include "../GUI/CreadorUI/CanvasInterface.h"
+#include "../GUI/Terminal/TerminalInterface.h"
+#include "../GUI/ModsGUI/PanelesModsInterface.h"
 #include "../Herramientas/IconosGUI/IconosGUI.h"
 #include "../FileManager/FileManager.h"
 #include "../Estructuras/ListasEnlazadas/ListasConPrioridad/PriorityListaDE.h"
@@ -54,7 +55,7 @@ private:
 	// Use unique_ptr for owned resources
 	// menuGUI es la fachada del paquete MenuGUI (GUI de inicio del motor):
 	// GUIManager y main solo conversan con ella, no con las clases internas.
-	// fileManager es la fachada del explorador de archivos (R1): posee el
+	// fileManager es la fachada del explorador de archivos: posee el
 	// modelo y la seleccion compartida que ambos paneles leen cada frame.
 	std::unique_ptr<FileManager> fileManager;
 	std::unique_ptr<MenuGUI> menuGUI;
@@ -70,11 +71,10 @@ private:
 	EditorController* editor = nullptr;
 	std::unique_ptr<ContentFolderInterface> contentOfThisFolder;
 	std::unique_ptr<StatusBarInterface> statusBarGUI;
-	// Creador de interfaces de usuario (assets JSON) y canvas que las pinta
-	// con su sonido. Ventanas persistentes mas: anclables, alternables desde
-	// el menu "Ventanas" y con estado guardado por proyecto.
-	std::unique_ptr<CreadorDeInterfaces> creadorInterfacesGUI;
-	std::unique_ptr<CanvasInterface> canvasGUI;
+	std::unique_ptr<TerminalInterface> terminalGUI;
+	// Paneles que aportan los mods cargados. Cada uno es una ventana propia
+	// que dibuja el motor alrededor del callback que entrego el mod.
+	std::unique_ptr<PanelesModsInterface> panelesModsGUI;
 	// Motor de audio inyectado por la escena para el inspector de AudioSource.
 	AudioEngine* audioMotor = nullptr;
 
@@ -91,7 +91,9 @@ public:
 	GUIManager(GLFWwindow* window);
 	~GUIManager();
 
-	void bindScene(SceneRegistry* scene, EditorController* editor, EventBus* events);
+	void bindScene(SceneRegistry* scene, EditorController* editor,
+	               EventBus* events,
+	               std::function<DimensionProyecto()> dimensionProvider = {});
 
 	EditorEventBus* getEditorEventBus() noexcept { return &eventosEditor; }
 
@@ -105,11 +107,13 @@ public:
 	SceneSelectedInterface* getSelecteableGUI();
 	ContentFolderInterface* getContentFolderGUI();
 	DockSpaceInterface* getDockSpaceGUI();
+	IconosGUI* getIconosGUI() noexcept { return iconosGUI.get(); }
 	StatusBarInterface* getStatusBarGUI();
+	TerminalInterface* getTerminalGUI() noexcept { return terminalGUI.get(); }
+	PanelesModsInterface* getPanelesModsGUI() noexcept {
+		return panelesModsGUI.get();
+	}
 
-	// Acceso a las ventanas del sistema de audio + creador de interfaces.
-	CreadorDeInterfaces* getCreadorInterfacesGUI() { return creadorInterfacesGUI.get(); }
-	CanvasInterface* getCanvasGUI() { return canvasGUI.get(); }
 	// La escena inyecta su AudioEngine (para el inspector de AudioSource).
 	void setAudioEngine(AudioEngine* motor);
 

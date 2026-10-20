@@ -60,6 +60,14 @@ struct Image2D {
     bool generateMipmaps = false;
 };
 
+// Funcion de comparacion de profundidad, en los terminos de la interfaz (no los
+// de GL). Solo se exponen las dos que el engine usa: la base del pipeline
+// (GL_LESS, la que deja applyBaseState) y la que acepta un fragmento en el
+// plano lejano (GL_LEQUAL), que es como se dibuja el fondo del Skybox.
+enum class DepthFunc { Less, LessEqual };
+constexpr DepthFunc kDepthFuncLess = DepthFunc::Less;
+constexpr DepthFunc kDepthFuncLessEqual = DepthFunc::LessEqual;
+
 // Contrato de backend grafico. Los recursos se crean/destruyen por handle y
 // las operaciones de dibujado son el pipeline moderno completo: no queda
 // superficie fixed-function (ni glBegin/glEnd, ni stack de matrices, ni
@@ -97,6 +105,27 @@ public:
     virtual void destroyTexture2D(Handle texture) = 0;
     // Bindeo del sampleo en la unidad indicada (GL_TEXTURE0 + unit).
     virtual void bindTexture2D(Handle texture, int unit) = 0;
+    // Reescribe el contenido de una textura 2D ya creada. Si las dimensiones de
+    // la imagen coinciden con las de la textura, sube por region
+    // (glTexSubImage2D) sin reasignar el almacenamiento; si cambian, el backend
+    // reasigna. Pensado para fuentes que entregan un bitmap nuevo por frame
+    // (p. ej. la vista web offscreen), evitando crear/destruir la textura cada
+    // frame.
+    virtual void updateTexture2D(Handle texture, const Image2D& image) = 0;
+
+    // --- Textura Cubemap -----------------------------------------------------
+    // 6 imagenes, una por cara (+X, -X, +Y, -Y, +Z, -Z). Todas deben tener
+    // las mismas dimensiones y formato RGBA8.
+    struct ImageCube {
+        int width = 0;
+        int height = 0;
+        // En orden: +X, -X, +Y, -Y, +Z, -Z
+        const unsigned char* faces[6] = {nullptr, nullptr, nullptr, nullptr, nullptr, nullptr};
+        bool generateMipmaps = false;
+    };
+    virtual Handle createTextureCube(const ImageCube& image) = 0;
+    virtual void destroyTextureCube(Handle texture) = 0;
+    virtual void bindTextureCube(Handle texture, int unit) = 0;
 
     // --- Programa de shaders (pipeline moderno) ------------------------------
     // createProgram puede lanzar (falla de compilacion/limite): la excepcion
@@ -146,6 +175,26 @@ public:
     // fondo). No se confunde con el suavizado de lineas: glLineSmooth no existe
     // en un perfil core y el ancho ya no se toma de glLineWidth.
     virtual void setBlendEnabled(bool enabled) = 0;
+
+    // --- Estado de profundidad (para el cielo: depth test on + depth mask off)
+    virtual void setDepthTestEnabled(bool enabled) = 0;
+    virtual void setDepthMask(bool enabled) = 0;
+    // Funcion de comparacion de profundidad (glDepthFunc). Vive en el backend
+    // porque es estado GL puro, igual que el test y la mascara. La necesita la
+    // pasada del cubemap del Skybox, que dibuja en el plano lejano (NDC z = 1.0,
+    // el mismo valor con el que se limpia el z-buffer): con la comparacion por
+    // defecto (GL_LESS) ese empate se descarta y el fondo no se dibuja. Se usan
+    // las constantes de abajo para no filtrar valores de GL a la capa de
+    // escena.
+    virtual void setDepthFunc(DepthFunc func) = 0;
+
+    // --- Pasada a pantalla completa (sin atributos) ---------------------------
+    // Dibuja un triangulo que cubre el viewport con el programa YA en uso. El
+    // vertex shader lo arma con gl_VertexID y no lee atributos, asi que no lleva
+    // geometria ni VBO. Va por el backend y no por un glDrawArrays suelto porque
+    // en un contexto core todo dibujo necesita un VAO ligado (el VAO 0 no
+    // existe): el backend posee ese VAO y lo liga por dentro.
+    virtual void drawFullscreenTriangle() = 0;
 };
 
 // Backend activo del engine (un solo contexto GL; el singleton se cambia en la
