@@ -91,6 +91,52 @@ jobs:
       - name: Ejecutar pruebas
         run: ctest --test-dir build -C Release --output-on-failure
 
+  # Motor completo con MSVC. El job de Windows de release.yml (el que publica
+  # el instalador) es el unico que compila y ENLAZA el motor con Visual
+  # Studio, y solo corre cuando hay tag: un fallo que solo aparece con MSVC
+  # (por ejemplo un simbolo cuyo nombre depende del class-key del tipo) se
+  # descubre al publicar, cuando corregirlo obliga a rehacer el tag. Este job
+  # hace lo mismo en cada push: mismo generador (el por defecto, multi-config)
+  # y mismas dependencias (vcpkg), y ademas corre las pruebas.
+  engine-windows:
+    name: Engine + tests (Windows + MSVC)
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Cache dependencias vcpkg
+        uses: actions/cache@v4
+        with:
+          path: C:\vcpkg\installed
+          key: vcpkg-x64-windows-v1
+
+      - name: Instalar dependencias (vcpkg)
+        shell: pwsh
+        run: vcpkg install glfw3 assimp bullet3 glm --triplet x64-windows
+
+      - name: Configurar
+        run: >
+          cmake -B build -S FunshiEngineGL
+          -DCMAKE_TOOLCHAIN_FILE=C:\vcpkg\scripts\buildsystems\vcpkg.cmake
+          -DVCPKG_TARGET_TRIPLET=x64-windows
+          -DCMAKE_BUILD_TYPE=Release
+          -DENABLE_ASAN=OFF
+          -DFUNSHI_JAVA=ON
+
+      - name: Compilar engine
+        run: cmake --build build --config Release --target FunshiEngineGL
+
+      - name: Compilar pruebas
+        run: cmake --build build --config Release --target terminal-emulator-tests terminal-session-tests diagnostic-registry-tests filemanager-tests configuracion-tests eventbus-tests menu-tests assetmanager-tests texturemanager-tests estructuras-tests rendering-tests scripts-tests scripts-runtime-tests audio-tests interface-component-tests barra-progreso-tests scripts-java-tests model-serialization-tests manifiesto-assets-tests orquestador-estado-tests tema-tests comandos-tests escena-serializacion-tests proceso-tests prefab-tests catalogo-componentes-tests tilemap-tests interfaces-juego-tests webui-runtime-tests mods-tests
+
+      - name: Ejecutar pruebas
+        uses: nick-fields/retry@v3
+        with:
+          timeout_minutes: 5
+          max_attempts: 3
+          retry_on: any
+          command: ctest --test-dir build -C Release --output-on-failure
+
   # Backend de scripts Java (JNI). Requiere JDK en el runner; solo Linux.
   tests-java:
     name: Scripts Java (Ubuntu + JDK)

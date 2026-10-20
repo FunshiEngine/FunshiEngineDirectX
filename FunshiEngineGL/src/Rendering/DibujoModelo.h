@@ -21,7 +21,7 @@
 
 class GameObject;
 class AssetManager;
-class Mesh;
+struct Mesh;
 
 // Resuelve, para un GameObject con componente Model, que malla se dibuja y con
 // que matriz mundo. Vive fuera de SceneRenderer y no toca la pila grafica, para
