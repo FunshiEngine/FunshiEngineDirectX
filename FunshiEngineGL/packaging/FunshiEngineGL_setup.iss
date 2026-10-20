@@ -17,7 +17,7 @@
 ; ============================================================================
 
 #define MiNombre "FunshiEngineGL"
-#define MiVersion "0.5.0"
+#define MiVersion "0.5.6"
 #define MiCanal "alpha"          ; demo | alpha | beta | rc
 #define MiExe "FunshiEngineGL.exe"
 ; MiEdicion se construye con + (expresion evaluada por ISPP): un literal de

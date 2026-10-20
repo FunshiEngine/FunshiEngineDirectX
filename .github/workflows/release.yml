@@ -173,6 +173,19 @@ jobs:
           pip install --quiet aqtinstall
           aqt install-tool linux desktop tools_ifw -O /tmp/qtifw
 
+      - name: Versionar instalador IFW con el tag
+        run: |
+          VERSION="${{ steps.ver.outputs.version }}"
+          FECHA=$(git log -1 --format=%cs)
+          sed -i "s|<Version>[^<]*</Version>|<Version>${VERSION}</Version>|" \
+            FunshiEngineGL/packaging/ifw/config/config.xml
+          sed -i -e "s|<Version>[^<]*</Version>|<Version>${VERSION}</Version>|" \
+                 -e "s|<ReleaseDate>[^<]*</ReleaseDate>|<ReleaseDate>${FECHA}</ReleaseDate>|" \
+            FunshiEngineGL/packaging/ifw/packages/com.funshi.engine/meta/package.xml
+          grep -n "Version\|ReleaseDate" \
+            FunshiEngineGL/packaging/ifw/config/config.xml \
+            FunshiEngineGL/packaging/ifw/packages/com.funshi.engine/meta/package.xml
+
       - name: Generar instalador .run
         run: |
           QIFW_BIN=$(find /tmp/qtifw -name binarycreator -type f | sort | tail -1)

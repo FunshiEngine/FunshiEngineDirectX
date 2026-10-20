@@ -6,7 +6,7 @@ cmake_minimum_required(VERSION 3.15)
 # que es lo que hace el workflow al publicar: así el número del .exe y el del
 # instalador salen del mismo tag, en vez de dos números escritos a mano que
 # nadie sincroniza.
-set(FUNSHI_VERSION "0.5.4" CACHE STRING "Versión del producto (X.Y.Z)")
+set(FUNSHI_VERSION "0.5.6" CACHE STRING "Versión del producto (X.Y.Z)")
 # C y CXX: el proyecto es C++, pero las distribuciones de CEF (cef_variables.cmake)
 # corren CHECK_C_COMPILER_FLAG en configure y CMake exige el lenguaje habilitado.
 project(FunshiEngineGL VERSION ${FUNSHI_VERSION} LANGUAGES C CXX)
