@@ -137,6 +137,9 @@ FunshiEngineGL/                          ← raíz del repo
     ├── External/nlohmann/json.hpp       ← nlohmann/json vendoriado (EditorConfig)
     ├── External/miniz/                   ← miniz 3.0.2 vendoriado (módulos separados;
     │                                       lectura/escritura de ZIP de los .fmod)
+    ├── External/stb_image/              ← stb_image vendoriado (decodificador de
+    │                                       imágenes; su implementación va en una
+    │                                       unidad propia, no en un módulo del motor)
 
     └── src/
         ├── main.cpp                     ← composition root: ventanas, callbacks, bucle, config
@@ -153,7 +156,10 @@ FunshiEngineGL/                          ← raíz del repo
         │   ├── AssimpMeshLoader.*       ← loader Assimp→Mesh
         │   └── StbImageLoader.*         ← loader stb_image→Image (solo engine) +
         │                                   `dimensiones()`: lee la cabecera del
-        │                                   archivo sin decodificar
+        │                                   archivo sin decodificar; el volteo
+        │                                   vertical se hace sobre la imagen
+        │                                   decodificada (no con el estado global
+        │                                   de la librería)
         ├── Audio/                       ← audio del motor (backend inyectable)
         │   ├── AudioEngine.h/.cpp       ← fachada thread-safe (cola de comandos + hilo)
         │   ├── ExtensionesAudio.h       ← extensiones de audio comparadas normalizadas
@@ -316,7 +322,8 @@ FunshiEngineGL/                          ← raíz del repo
         │   ├── PathUtils.h               ← PATH_SEP + regla de cotejo de rutas (rutaBajo)
         │   ├── MaterialPresets.h         ← presets de Material como datos (reemplaza a materiales.h)
         │   ├── TreeGUI/TreeGUI.h         ← widget de árbol genérico para ImGui
-        │   └── IconosGUI/                ← carga de íconos con stb_image
+        │   └── IconosGUI/                ← carga de íconos (usa stb_image, que ya
+        │                                   vive en External/stb_image)
         ├── Iluminacion/
         │   ├── LightSystem.h/.cpp        ← dueño del estado GL de luces (GL_LIGHT0..7) por frame
         │   │                              (además devuelve el objeto dueño de cada luz)

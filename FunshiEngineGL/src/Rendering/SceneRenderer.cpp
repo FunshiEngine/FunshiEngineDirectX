@@ -42,7 +42,7 @@
 #include "../Objetos/Componentes/SpriteRenderer.h"
 #include "../Objetos/Componentes/Tilemap.h"
 
-#include "../Herramientas/IconosGUI/stb_image.h"
+#include <stb_image/stb_image.h>
 #include "LineBatch.h"
 #include "LineBuilder.h"
 #include "LineRenderer.h"
