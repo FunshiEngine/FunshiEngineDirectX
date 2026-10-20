@@ -938,6 +938,24 @@ set_target_properties(diagnostic-registry-tests PROPERTIES
 )
 add_test(NAME diagnostic-registry-tests COMMAND diagnostic-registry-tests)
 
+# --- Pruebas headless del pool de hilos del motor -----------------------------
+# El pool ejecuta cada tarea exactamente una vez, sobrevive a una tarea que
+# lanza, drena lo pendiente al cerrar y espera() no vuelve antes de tiempo.
+# Necesita el nucleo de diagnostico (el pool reporta los fallos por ahi).
+add_executable(hilos-tests
+    ${SRC_DIR}/Hilos/MotorHilos.cpp
+    ${SRC_DIR}/Hilos/HiloActual.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../tests/HilosTests.cpp
+)
+target_include_directories(hilos-tests PRIVATE ${SRC_DIR})
+target_link_libraries(hilos-tests PRIVATE funshi_diagnostics_core)
+set_target_properties(hilos-tests PROPERTIES
+    CXX_STANDARD 17
+    CXX_STANDARD_REQUIRED ON
+    CXX_EXTENSIONS OFF
+)
+add_test(NAME hilos-tests COMMAND hilos-tests)
+
 # --- Pruebas headless del formato de la barra de progreso en texto ---
 # BarraProgresoTexto es header-only y puro (solo std): acotado de `hecha` a
 # `[0, total]` y caso `total == 0`, sin enlazar funshi_engine.
