@@ -372,6 +372,9 @@ FunshiEngineGL/                          ← raíz del repo
         │   │   │                              objetivo de profundidad del mapa de sombras)
         │   │   ├── OpenGL3Backend.h/.cpp   ← implementación OpenGL 3.3 core
         │   │   └── GLFuncs.h                ← carga perezosa de funciones GL
+        │   ├── Sombras/                    ← mapa de sombras de las luces
+        │   │   └── MapaSombras.h/.cpp     ← selección de proyectores (luces que proyectan)
+        │   │                              y dueño de los objetivos de profundidad por luz
         │   └── Shaders/                    ← sistema de shaders (gestor + GLSL embebido)
         │       ├── GestorShaders.h/.cpp   ← dueño de los programas: uno por nombre,
         │       │                              compilado una vez y compartido

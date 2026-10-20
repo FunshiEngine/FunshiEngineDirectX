@@ -32,7 +32,18 @@
 
 #include "../FunshiEngineGL/src/Iluminacion/MatrizLuz.h"
 #include "../FunshiEngineGL/src/Objetos/Componentes/Sombras/Sombras.h"
+#include "../FunshiEngineGL/src/Rendering/Sombras/MapaSombras.h"
 #include "TempPruebas.h"
+
+using Rendering::Backend::DepthFunc;
+using Rendering::Backend::Handle;
+using Rendering::Backend::Image2D;
+using Rendering::Backend::MeshData;
+using Rendering::CandidatoProyector;
+using Rendering::MapaSombras;
+using Rendering::ProyectorSombra;
+using Rendering::ResultadoSeleccion;
+using Rendering::TipoLuzProyector;
 
 int total = 0;
 int fallos = 0;
@@ -329,6 +340,161 @@ void testLecturaAcotaValores() {
     CHECK(leida.getDistancia() > 0.f, "una distancia cero se acota al leer");
 }
 
+// --- Seleccion de proyectores y mapas de sombra ------------------------------
+
+// Backend falso: solo se usa el objetivo de profundidad, asi que no hace
+// falta ni pila grafica ni driver.
+class BackendFalso : public Rendering::Backend::IRenderBackend {
+public:
+    int creados = 0;
+    int destruidos = 0;
+    int ultimoTamano = 0;
+
+    bool init() override { return true; }
+    bool available() const override { return true; }
+
+    Handle createMesh(const MeshData&) override { return 1; }
+    void destroyMesh(Handle) override {}
+    void drawMesh(Handle, unsigned int) override {}
+
+    Handle createLineBatch(const float*, std::size_t) override { return 2; }
+    void destroyLineBatch(Handle) override {}
+    void updateLineBatch(Handle, const float*, std::size_t) override {}
+    void drawLineBatch(Handle, unsigned int) override {}
+
+    Handle createTexture2D(const Image2D&) override { return 3; }
+    void destroyTexture2D(Handle) override {}
+    void bindTexture2D(Handle, int) override {}
+    void updateTexture2D(Handle, const Image2D&) override {}
+
+    Handle createTextureCube(const IRenderBackend::ImageCube&) override {
+        return 4;
+    }
+    void destroyTextureCube(Handle) override {}
+    void bindTextureCube(Handle, int) override {}
+
+    Handle createProgram(const char*, const char*) override { return 5; }
+    void destroyProgram(Handle) override {}
+    void useProgram(Handle) override {}
+    int uniformLocation(Handle, const char*) override { return -1; }
+    void setUniformMat4(int, const glm::mat4&) override {}
+    void setUniformMat3(int, const glm::mat3&) override {}
+    void setUniformVec3(int, const glm::vec3&) override {}
+    void setUniformVec4(int, const float*) override {}
+    void setUniformFloat(int, float) override {}
+    void setUniformInt(int, int) override {}
+
+    Handle createRenderTarget(int, int) override { return 6; }
+    void destroyRenderTarget(Handle) override {}
+    void bindRenderTarget(Handle) override {}
+    void bindDefaultFramebuffer() override {}
+    Handle renderTargetColorTexture(Handle) const override { return 7; }
+    void* imguiTextureId(Handle) const override { return nullptr; }
+
+    Handle createDepthTarget(int size) override {
+        ++creados;
+        ultimoTamano = size;
+        return 100 + static_cast<Handle>(creados);
+    }
+    void destroyDepthTarget(Handle) override { ++destruidos; }
+    void bindDepthTarget(Handle) override {}
+    Handle depthTargetTexture(Handle target) const override {
+        return target + 1000;
+    }
+
+    void setViewport(int, int, int, int) override {}
+    void clearScreen(const float[3]) override {}
+    void applyBaseState() override {}
+    void setClearColor(const float[3]) override {}
+    const char* diagnosticoGPU() const override { return "backend falso"; }
+    void setBlendEnabled(bool) override {}
+    void setDepthTestEnabled(bool) override {}
+    void setDepthMask(bool) override {}
+    void setDepthFunc(DepthFunc) override {}
+    void drawFullscreenTriangle() override {}
+};
+
+void testSeleccionDeProyectores() {
+    CandidatoProyector candidatos[4];
+    // Dos luces que si pueden proyectar.
+    candidatos[0].tipo = TipoLuzProyector::Direccional;
+    candidatos[0].direccion = glm::vec3(0.f, -1.f, 0.f);
+    candidatos[1].tipo = TipoLuzProyector::Spot;
+    candidatos[1].posicion = glm::vec3(5.f, 10.f, 5.f);
+    candidatos[1].direccion = glm::vec3(0.f, -1.f, 0.f);
+    candidatos[1].resolucion = 512;
+    // Una luz puntual: todavia no puede proyectar sombra.
+    candidatos[2].tipo = TipoLuzProyector::Puntual;
+    // Y otra direccional, que se queda fuera por el limite.
+    candidatos[3].tipo = TipoLuzProyector::Direccional;
+
+    ProyectorSombra salida[4];
+    const ResultadoSeleccion resultado = seleccionarProyectores(
+        candidatos, 4, 2, glm::vec3(0.f), salida);
+
+    CHECK(resultado.elegidos == 2, "se eligen los proyectores que caben");
+    CHECK(resultado.noSoportados == 1,
+          "la luz puntual se descarta por no soportada");
+    CHECK(resultado.porLimite == 1,
+          "el proyector que excede el limite se cuenta aparte");
+    CHECK(salida[0].resolucion == 1024,
+          "el primer proyector conserva su resolucion");
+    CHECK(salida[1].resolucion == 512,
+          "el segundo proyector conserva su resolucion");
+    CHECK(esFinita(salida[0].matrizLuz),
+          "la matriz del proyector es finita");
+    CHECK(esFinita(salida[1].matrizLuz),
+          "la matriz del proyector es finita");
+    CHECK(salida[0].textura == Rendering::Backend::kInvalidHandle,
+          "el proyector todavia no tiene textura (la pone el mapa de sombras)");
+}
+
+void testSeleccionSinCandidatos() {
+    ProyectorSombra salida[2];
+    const ResultadoSeleccion sinNada = seleccionarProyectores(
+        nullptr, 0, 4, glm::vec3(0.f), salida);
+    CHECK(sinNada.elegidos == 0, "sin candidatos no hay proyectores");
+
+    CandidatoProyector candidato;
+    candidato.tipo = TipoLuzProyector::Direccional;
+    const ResultadoSeleccion sinLimite = seleccionarProyectores(
+        &candidato, 1, 0, glm::vec3(0.f), salida);
+    CHECK(sinLimite.elegidos == 0, "sin limite no hay proyectores");
+    CHECK(sinLimite.porLimite == 1,
+          "el candidato se cuenta como descartado por el limite");
+}
+
+void testMapaDeSombras() {
+    BackendFalso backend;
+    MapaSombras mapa(backend);
+
+    const Handle textura = mapa.preparar(0, 1024);
+    CHECK(textura != Rendering::Backend::kInvalidHandle,
+          "el mapa crea su textura de profundidad");
+    CHECK(backend.creados == 1, "el mapa crea un objetivo de profundidad");
+    CHECK(backend.ultimoTamano == 1024, "el objetivo tiene el tamano pedido");
+    CHECK(mapa.activos() == 1, "el mapa cuenta un mapa activo");
+
+    // Pedirlo otra vez con la misma resolucion no crea otro objetivo.
+    mapa.preparar(0, 1024);
+    CHECK(backend.creados == 1, "el mapa se reutiliza si la resolucion no cambia");
+
+    // Cambiar la resolucion rehace el objetivo.
+    mapa.preparar(0, 512);
+    CHECK(backend.creados == 2, "cambiar la resolucion rehace el mapa");
+    CHECK(backend.destruidos == 1, "el mapa viejo se suelta");
+    CHECK(backend.ultimoTamano == 512, "el objetivo nuevo tiene el tamano nuevo");
+
+    // Un segundo proyector tiene su propio mapa.
+    mapa.preparar(1, 1024);
+    CHECK(mapa.activos() == 2, "cada proyector tiene su mapa");
+
+    // Al soltar el segundo, el primero sigue vivo.
+    mapa.liberarDesde(1);
+    CHECK(mapa.activos() == 1, "los mapas que no se usan se sueltan");
+    CHECK(backend.destruidos == 2, "el mapa del segundo proyector se destruye");
+}
+
 int main() {
     testVistaMiraEnLaDireccion();
     testVistaVerticalNoEsNaN();
@@ -342,6 +508,9 @@ int main() {
     testValoresAcotados();
     testViajeDeIdaYVuelta();
     testLecturaAcotaValores();
+    testSeleccionDeProyectores();
+    testSeleccionSinCandidatos();
+    testMapaDeSombras();
 
     std::cout << "SombrasTests: " << total << " verificaciones, " << fallos
               << " fallos" << std::endl;
