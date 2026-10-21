@@ -147,7 +147,11 @@ void GameExporter::runExportacion() {
 }
 
 void GameExporter::runExportacionInterna() {
-    log("Iniciando exportación de: " + cfg_.nombreProyectoExportado);
+    // La traza dice de que proyecto se exporta: es el dato que el dialogo
+    // puede perder (o no tener) y el que hace falta para saber desde el log
+    // que se exporto lo que el usuario pedia.
+    log("Iniciando exportación de: " + cfg_.nombreProyectoExportado +
+        " (proyecto: " + cfg_.nombreProyecto + ")");
     progreso(0.05f, "Preparando directorio de build");
 
     // Directorio temporal de build

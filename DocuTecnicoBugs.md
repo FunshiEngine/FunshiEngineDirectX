@@ -119,6 +119,7 @@ recorrer(destFolder); // Ahora SÍ re-lee porque cache inválido
 | **R25 — La consulta de disponibilidad es el resultado de la carga** | Si la carga de punteros a funciones comprueba treinta funciones y la consulta de disponibilidad mira una sola, existe un estado en el que la carga falló y la consulta dice que todo está bien: el motor llama a un puntero nulo. La consulta devuelve el resultado de la carga | `FunshiEngineGL/src/Rendering/Backend/GLFuncs.h` (ver §21.4) |
 | **R26 — El frame arranca limpio** | Dibujar sobre el framebuffer sin limpiarlo color y profundidad supone que el driver dejó el buffer de profundidad en 1.0: no todos lo hacen. El test de profundidad descarta entonces todo lo que se dibuja y la ventana queda en negro, sin error ni aviso. Cada frame limpia color y profundidad con el color del perfil de apariencia, y el editor y el juego exportado usan el mismo helper | `FunshiEngineGL/src/Rendering/FondoEscena.h` (ver §22.4) |
 | **R27 — Lo que solo compila otra herramienta, compílalo también en el motor** | Una unidad de traducción que el build del motor excluye porque otra herramienta la compila (el exportador genera su propio proyecto) queda sin compilar en la suite y en la CI: sus errores solo aparecen cuando el usuario exporta, y solo en la plataforma que exporta. El motor la compila en un target propio, y la herramienta generada declara los flags que necesita en vez de heredar los del build de trabajo | `FunshiEngineGL/CMakeLists.txt` (target `runtime-compile-check`) y `FunshiEngineGL/src/Exportador/GameExporter.cpp` (ver §23.4) |
+| **R28 — El resultado de una operación se conserva y se muestra** | Si la interfaz decide qué dibujar con la bandera «en curso», el mensaje final (éxito o error) se dibuja solo mientras la operación corre: al terminar, la bandera se apaga, el formulario vuelve a aparecer y el usuario no ve ni el fallo ni la confirmation. El estado de la operación tiene fases explícitas (configuración → en curso → resultado) y la interfaz dibuja lo que la fase dice; el motivo de un rechazo previo queda en el estado, y los datos que la operación necesita llegan por **todos** los caminos que la pueden abrir | `FunshiEngineGL/src/Exportador/EstadoExportacion.h` (ver §24.4) |
 
 ---
 
@@ -1578,7 +1579,87 @@ endif()
 
 ---
 
-## 24. Historial de Cambios
+## 24. Vigésimo concepto: **El resultado de una operación se dibuja solo mientras la operación corre**
+
+### 24.1 Patrón
+
+Un panel de la interfaz arranca una operación larga (compilar, exportar,
+empacar) y While dura, dibuja su progreso y su bitácora. Al terminar, la
+operación escribe su resultado (éxito o error) en un campo y **apaga la
+bandera de «en curso»**. El panel dibuja lo que esa bandera decide: con la
+bandera apagada vuelve a dibujar el formulario, y el mensaje —la única traza
+de lo que pasó— queda en un campo que ya nadie lee.
+
+El resultado es que un fallo se ve exactamente igual que un clic que no hizo
+nada. Y si la operación ni siquiera llegó a empezar (porque le faltaba un
+dato), el usuario no tiene forma de saberlo: el log tampoco lo dice, porque
+la operación no se announcement.
+
+### 24.2 Síntomas
+
+- Al pulsar el botón, la interfaz «no hace nada»: el formulario sigue ahí,
+  sin progreso y sin error.
+- El log del motor no muestra ninguna traza de la operación (nunca empezó) o
+  muestra que empezó pero no dice cómo terminó.
+- El mismo fallo se reproduce siempre por el mismo camino (por ejemplo, solo
+  cuando el editor arrancó con un parámetro concreto).
+
+### 24.3 Causa
+
+Dos cosas juntas:
+
+1. El panel decide qué dibujar con la bandera «en curso» en lugar de con el
+   estado de la operación: el resultado final no tiene fase propia y se
+   pierde en cuanto la operación acaba.
+2. El dato que la operación necesita (el proyecto del que exportar) solo
+   llegaba por el camino interactivo (elegir el proyecto en el menú). En los
+   demás caminos —por ejemplo, arrancar el editor con el proyecto ya
+   indicado— el panel lo recibía vacío, así que la operación se rechazaba
+   antes de empezar, y el motivo se perdía con ella.
+
+### 24.4 Fix canónico (Patrón R28 — el resultado se conserva y se muestra)
+
+El estado de la operación vive en una clase de dominio, sin interfaz, con
+fases explícitas; el panel dibuja lo que la fase dice:
+
+```cpp
+enum class Fase { Configuracion, Exportando, Resultado };
+enum class Resultado { Pendiente, Exito, Error };
+```
+
+- `finalizar(exito, mensaje)` deja la fase en `Resultado` y **conserva** el
+  mensaje: el panel tiene una vista para ese estado y dibuja el motivo (en
+  verde o en rojo) hasta que el usuario lo cierra.
+- Las precondiciones se comprueban **antes** de arrancar y su fallo deja el
+  motivo en el estado (no en un `return` que se lleva el texto).
+- El dato que la operación necesita se propaga por todos los caminos que la
+  pueden abrir: el gestor de proyectos lo refleja en la barra de menú también
+  cuando el proyecto se resuelve al arrancar, no solo cuando el usuario lo
+  elige a mano.
+- La operación se anuncia en el log (stdout) al empezar: así, «¿arrancó?» se
+  responde desde el log y no desde la impresión de la interfaz.
+
+### 24.5 Checklist de mitigación
+
+- [ ] El estado de la operación tiene una fase de «terminada» que sobrevive al
+      final, con el resultado (éxito/error) y el motivo.
+- [ ] El mensaje se dibuja en **todas** las fases donde existe, no solo
+      mientras la operación corre.
+- [ ] Las precondiciones se comprueban antes de arrancar y su motivo queda
+      en el estado, a la vista.
+- [ ] Los datos que la operación necesita llegan por todos los caminos que
+      pueden abrirla (arranque con parámetros, cambio de proyecto, etc.).
+- [ ] La operación deja traza en el log al empezar y al terminar.
+
+### 24.6 Registro de Instancias
+
+| # | Ubicación | Operación | Herramienta | Fix Aplicado | Commit |
+|---|-----------|-----------|-------------|--------------|--------|
+| 1 | `FunshiEngineGL/src/GUI/Export/ExportDialog.cpp` y `FunshiEngineGL/src/Proyectos/GestorDeProyectos.cpp` | Exportar el juego standalone desde el diálogo de exportación | Log de la sesión del editor (sin traza `[Exporter]`) + sonda local que replica el flujo del diálogo | El estado pasa a `EstadoExportacion` con fase de resultado y el motivo siempre visible; el gestor refleja el proyecto en la barra de menú también al arrancar con `--proyecto` (Patrón R28) | `fix(exportacion): el proyecto llega al dialogo y el resultado no se pierde` |
+
+---
+
+## 25. Historial de Cambios
 
 | Fecha | Autor | Cambio |
 |-------|-------|--------|
@@ -1605,10 +1686,11 @@ endif()
 | 2026-10-20 | Gianfranco Ivan Enrique | Añadido el decimoséptimo concepto (Patrón R25, una comprobación de disponibilidad más débil que la inicialización que la respalda) con su instancia #1: `available()` del backend de OpenGL comprobaba una sola de las treinta funciones que la carga exige. |
 | 2026-10-21 | Gianfranco Ivan Enrique | Añadido el decimoctavo concepto (Patrón R26, el frame arranca limpio) con su instancia #1: el juego exportado no limpiaba el framebuffer, el buffer de profundidad no arrancaba en 1.0 en el driver de la máquina y la ventana se quedaba en negro. |
 | 2026-10-21 | Gianfranco Ivan Enrique | Añadido el decimonoveno concepto (Patrón R27, lo que solo compila otra herramienta no lo compila nadie) con sus instancias #1–#2: el punto de entrada del juego exportado quedaba fuera de todo build (lo compilaba solo el exportador) y el proyecto generado heredaba los sanitizadores del motor, que el toolchain de exportación no trae. |
+| 2026-10-21 | Gianfranco Ivan Enrique | Añadido el vigésimo concepto (Patrón R28, el resultado de una operación se conserva y se muestra) con su instancia #1: el diálogo de exportación dibujaba el motivo solo mientras la exportación corría, y con el editor arrancado con `--proyecto` el diálogo recibía el proyecto vacío: la exportación se rechazaba y el fallo se perdía. |
 
 ---
 
-*Este documento es vivo: cada nuevo bug de esta clase debe registrarse en la tabla de su concepto (§2 para el primero, §6.5 para el segundo, §7.5 para el tercero, §8.5 para el cuarto, §9.5 para el quinto), §14.6 para el décimo, §15.6 para el undécimo, §16.6 para el duodécimo, §17.6 para el decimotercer, §18.6 para el decimocuarto, §19.6 para el decimoquinto, §20.6 para el decimosexto, §21.6 para el decimoséptimo, §22.6 para el decimoctavo y §23.6 para el decimonoveno; si revela un patrón nuevo, añadirse a §4.*
+*Este documento es vivo: cada nuevo bug de esta clase debe registrarse en la tabla de su concepto (§2 para el primero, §6.5 para el segundo, §7.5 para el tercero, §8.5 para el cuarto, §9.5 para el quinto), §14.6 para el décimo, §15.6 para el undécimo, §16.6 para el duodécimo, §17.6 para el decimotercer, §18.6 para el decimocuarto, §19.6 para el decimoquinto, §20.6 para el decimosexto, §21.6 para el decimoséptimo, §22.6 para el decimoctavo, §23.6 para el decimonoveno y §24.6 para el vigésimo; si revela un patrón nuevo, añadirse a §4.*
 ## CEF: "Invalid file descriptor to ICU data received" en InitializeICU
 
 - **Síntoma**: al arrancar el motor con `FUNSHI_CEF=ON`, `CefInitialize` aborta en
