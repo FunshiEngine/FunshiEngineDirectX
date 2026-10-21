@@ -232,12 +232,17 @@ FunshiEngineGL/                          ← raíz del repo
         ├── Exportador/
         │   ├── GameExporter.h/.cpp      ← exporta el juego standalone: proyecto CMake temporal,
         │   │                              compila el runtime (sin editor), empaqueta ejecutable +
-        │   │                              scenes/scripts/assets en estructura simplificada
+        │   │                              scenes/scripts/assets en estructura simplificada.
+        │   │                              Deja su traza en un archivo propio (logs/Exportacion_*.log):
+        │   │                              la salida de la compilación queda ahi, y el mensaje
+        │   │                              final la menciona
         │   ├── EstadoExportacion.h/.cpp ← estado de la exportación (fase, resultado, progreso,
         │   │                              mensaje): reglas de dominio, sin ImGui, para que el
         │   │                              resultado no se pierda y se pueda comprobar headless
         │   ├── PrecondicionesExportacion.h/.cpp ← comprueba que la exportación se puede lanzar
         │   │                              (proyecto elegido y con carpeta) y devuelve el motivo
+        │   ├── ImportacionesPE.h/.cpp   ← lee la tabla de importaciones de un binario PE (Windows):
+        │   │                              las DLL que el juego exportado necesita para arrancar
         │   ├── ConfigJuegoExportado.h   ← manifiesto JuegoExportado.json (header-only)
         │   ├── RaizEngine.h             ← búsqueda de la raíz del engine para add_subdirectory
         │   └── RutasExportacion.h       ← helpers de rutas del proyecto (header-only)
@@ -256,8 +261,10 @@ FunshiEngineGL/                          ← raíz del repo
         │   │                              en Linux; polling con mtime en el resto)
         │   └── Proceso.h/.cpp           ← runner de procesos SIN shell (argv propio:
         │                                  CreateProcessW / fork+execvp, log por handles/fd,
-        │                                  cwd, entorno extra; única vía a `cmd.exe` es la
-        │                                  receta cruda del harvest de vcvars)
+        │                                  cwd, entorno extra; el log se trunca por defecto y
+        │                                  puede abrirse en modo "agregar al final" para que
+        │                                  varias etapas compartan archivo; única vía a
+        │                                  `cmd.exe` es la receta cruda del harvest de vcvars)
         ├── GestorDeArchivos/            ← modelo/infra de bajo nivel: Binario (streams binarios),
         │                                  File, Carpeta, GestorDeArchivos (exploración del filesystem).
         │                                  FileManager lo consume como modelo del árbol.
@@ -1104,11 +1111,12 @@ también con `BUILD_ENGINE=OFF`):
   pura de `SelectorArchivoCubemap` (filtro de extensiones del cubemap y aviso
   de caras faltantes o de resolución dispares), que al vivir fuera del dibujo del
   modal se ejercita aquí sin crear contexto de ImGui.
-- `proceso-tests` (24): el runner de procesos sin shell `Proceso`: round-trip
+- `proceso-tests` (30): el runner de procesos sin shell `Proceso`: round-trip
   de argv byte a byte (el binario se relanza a sí mismo copiado en una carpeta
-  con espacios, con argumentos hostiles), exit codes, truncado del log, `cwd`,
-  entorno extra, tabla de `citar()` y, en Windows, la receta cruda de `cmd.exe`
-  del harvest de vcvars.
+  con espacios, con argumentos hostiles), exit codes, truncado del log, el modo
+  "agregar al final" (varias etapas escriben en el mismo archivo sin pisarse),
+  `cwd`, entorno extra, tabla de `citar()` y, en Windows, la receta cruda de
+  `cmd.exe` del harvest de vcvars.
 - `configuracion-tests` (174): round-trip del JSON de `EditorConfig` (general y
   por proyecto, con `ConfigPersistence`/`ProjectPaths`), carga tolerante ante
   archivos ausentes/corruptos/parciales, prioridad de las claves modernas sobre
@@ -1576,12 +1584,17 @@ GameScene → coordina todos los subsistemas del frame
   ninguno. La suite comprueba el alta y la baja de regiones, la sincronización
   con las que declara el modelo, el round-trip binario (con el material de cada
   region dentro) y las tres respuestas del resolvedor.
-- `tests/ExportacionTests.cpp`: el diálogo de exportación y el estado que lleva
-  (`EstadoExportacion`). La suite comprueba que las precondiciones digan el
-  motivo cuando no se puede exportar (sin proyecto, o con su carpeta
-  inexistente), que el resultado (éxito o error) se conserve al terminar la
-  exportación en vez de perderse, y que la barra de menú le pase al diálogo el
-  proyecto activo.
+
+- `tests/ExportacionTests.cpp`: el diálogo de exportación, el estado que lleva
+  (`EstadoExportacion`) y las dependencias del juego exportado. La suite
+  comprueba que las precondiciones digan el motivo cuando no se puede
+  exportar (sin proyecto, o con su carpeta inexistente), que el resultado
+  (éxito o error) se conserve al terminar la exportación en vez de perderse,
+  que la barra de menú le pase al diálogo el proyecto activo, que el lector de
+  importaciones PE encuentre las DLL que pide el binario (sobre un PE
+  construido a propósito), que el cierre de dependencias alcance las DLL de
+  segundo nivel y que la traza de la exportación se cree en un archivo propio
+  que una segunda exportación no reutiliza.
 - `tests/Primitivas3DTests.cpp`: la esfera de muestra de un material es
   geometría pura (sin OpenGL): la suite comprueba que los vértices están en la
   esfera, que las normales son unitarias, que las UVs están en [0,1], que los

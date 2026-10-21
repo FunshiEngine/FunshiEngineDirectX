@@ -777,7 +777,7 @@ exporta (el proyecto activo en ese momento):
 |---|---|
 | **Nombre del ejecutable** | Nombre del binario final (sin extension). |
 | **Nombre del proyecto exportado** | Nombre de la carpeta bajo `MotorGrafico/Exportaciones/`. |
-| **Plataforma objetivo** | Linux (nativo) o Windows (cross-compile MinGW). |
+| **Plataforma objetivo** | La que admita la maquina: en Windows, **Windows (nativo)** (sale un `.exe` con sus DLL al lado); en Linux, **Linux (nativo)** o **Windows (cross-compile MinGW)** (si esta instalado el toolchain cruzado). |
 
 Al pulsar **Exportar**, el motor:
 
@@ -801,6 +801,12 @@ Al pulsar **Exportar**, el motor:
    - `lib/` con las `.so` de sistema en Linux; en Windows las DLL quedan
      junto al `.exe`.
    - `JuegoExportado.json` (metadatos del proyecto).
+
+> El juego exportado **lleva consigo las DLL de las que depende**: el
+> exportador las lee de la tabla de importaciones del binario (y de las que
+> importan esas a su vez) y las copia desde la carpeta del toolchain (el
+> runtime de C++ y las bibliotecas con las que enlaza el motor). Asi el juego
+> arranca en otra maquina sin instalar nada.
    
    **NO se incluyen** archivos del editor:
    `ConfiguracionProyecto.json`, `imgui.ini` ni la estructura
@@ -824,6 +830,16 @@ al terminar queda abierto mostrando el resultado hasta que el usuario lo cierre.
 
 > Si el dialogo muestra «Proyecto: (ninguno)» no hay ningun proyecto activo
 > desde el que exportar: elige o abre un proyecto antes de exportar.
+
+**Traza de la exportacion:** cada exportacion deja su propio archivo de log
+en la carpeta `logs/` del motor (`MotorGrafico/logs/Exportacion_<AAAAMMDD_HHMMSS>.log`,
+timestamp en UTC). Ahi queda **todo lo que se imprimio en la terminal durante
+la compilacion** (el configure de CMake, el progreso de la compilacion, los
+avisos del compilador y del enlazador) junto con la bitacora de la
+exportacion. El mensaje final del dialogo dice la ruta exacta del archivo, y
+las etapas se agregan al final unas de otras (el configure no borra lo que
+escribio la compilacion). Es el sitio donde mirar cuando la exportacion falla
+o cuando el compilador avisa de algo.
 
 > Los scripts C++ del proyecto viajan como fuentes y se compilan en la
 > **primera ejecucion** del juego en la maquina que lo corre: hace falta un
