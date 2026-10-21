@@ -49,8 +49,13 @@ GUIManager::GUIManager(GLFWwindow* window)
     iconosGUI = std::make_unique<IconosGUI>();
     iconosGUI->init();
     menuBarGUI->setIconosGUI(iconosGUI.get());
+    statusBarGUI = std::make_unique<StatusBarInterface>(true);
+    terminalGUI = std::make_unique<TerminalInterface>(true);
     // Cada ventana se registra al crearse: el gestor no lleva una lista fija,
-    // asi que agregar una ventana no obliga a tocar el estado ni el menu.
+    // asi que agregar una ventana no obliga a tocar el estado ni el menu. La
+    // ventana se registra DESPUES de existir: registrarla antes guardaria un
+    // puntero nulo y la ventana quedaria fuera del registro (sin estado
+    // persistido y sin entrada en el menu de ventanas).
     registrarVentana(selecteableGUI.get());
     registrarVentana(menuBarGUI.get());
     registrarVentana(treeFilesGUI.get());
@@ -58,9 +63,11 @@ GUIManager::GUIManager(GLFWwindow* window)
     registrarVentana(dockSpaceGUI.get());
     registrarVentana(statusBarGUI.get());
     registrarVentana(terminalGUI.get());
-    statusBarGUI = std::make_unique<StatusBarInterface>(true);
-    terminalGUI = std::make_unique<TerminalInterface>(true);
     panelesModsGUI = std::make_unique<PanelesModsInterface>();
+    // El estado de la interfaz y la barra de la orbita son piezas de la GUI:
+    // las usa el input (que consulta el estado) y main (que dibuja la barra).
+    estadoInterfaz = std::make_unique<EstadoInterfazImGui>();
+    sidebarOrbitaGUI = std::make_unique<SidebarOrbitaGUI>();
     treeFilesGUI->setIconosGUI(iconosGUI.get());
     contentOfThisFolder->setIconosGUI(iconosGUI.get());
     selecteableGUI->setIconosGUI(iconosGUI.get());

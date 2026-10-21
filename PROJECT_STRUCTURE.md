@@ -255,8 +255,13 @@ FunshiEngineGL/                          ← raíz del repo
         │   ├── WindowNames.h
         │   ├── DockSpaceGUI/               ← dock principal del editor
         │   ├── Estado/
-        │   │   └── StatusBarInterface.h/.cpp ← ventana "Estado": toolchain (Compilador/javac/
-        │   │                                  libjvm) y estado de scripts (compilando/cargado/error)
+        │   │   ├── StatusBarInterface.h/.cpp ← ventana "Estado": toolchain (Compilador/javac/
+        │   │   │                              libjvm) y estado de scripts (compilando/cargado/error)
+        │   │   └── EstadoInterfazImGui.h/.cpp ← estado de la interfaz leído de ImGui (si el
+        │   │                                  teclado o el mouse pertenecen a un widget)
+        │   ├── Navegacion/
+        │   │   └── SidebarOrbitaGUI.h/.cpp ← barra lateral con el radio de la órbita de la
+        │   │                                  cámara (el input entrega el estado, la GUI dibuja)
         │   ├── Terminal/
         │   │   └── TerminalInterface.h/.cpp ← panel de shell integrado con cwd del proyecto
         │   ├── ModsGUI/                   ← paneles que aportan los mods cargados
@@ -333,8 +338,15 @@ FunshiEngineGL/                          ← raíz del repo
         │                                  vista desde la luz, proyección ortográfica
         │                                  y frustum de foco posicional/direccional
         ├── Input/
-        │   └── EditorInput.h/.cpp       ← callbacks GLFW de teclado/mouse + máquina de
-        │                                  movimiento de cámara (extraídas de main.cpp)
+        │   ├── EditorInput.h/.cpp       ← callbacks GLFW de teclado/mouse + máquina de
+        │   │                              movimiento de cámara (extraídas de main.cpp).
+        │   │                              Traduce los eventos y no dibuja: el estado de la
+        │   │                              interfaz le llega por IEstadoInterfaz
+        │   ├── IEstadoInterfaz.h        ← estado de la interfaz que consulta el input (¿el
+        │   │                              teclado es de un widget?) y su motivo
+        │   ├── EstadoOrbita.h           ← datos de la órbita de la cámara que la GUI dibuja
+        │   └── AtajosEditor.h           ← reglas de los atajos que compiten con el teclado
+        │                                  de la interfaz
         ├── ImGui/                        ← Dear ImGui v1.x integrado (+ backends glfw/opengl3)
         ├── Matematicas/
         │   └── StructVec3.h/.cpp         ← vec3 propio
@@ -386,6 +398,9 @@ FunshiEngineGL/                          ← raíz del repo
         │   ├── Cielo.h/.cpp                ← cielo degradado
         │   ├── Difuminado.h/.cpp           ← cálculo de difuminado radial
         │   ├── CacheCubemap.h             ← caché de caras del cubemap
+        │   ├── FondoEscena.h              ← color de fondo del perfil de apariencia y limpieza
+        │   │                                del framebuffer (color y profundidad) al inicio del
+        │   │                                frame; lo usan el editor y el juego exportado
         │   ├── Backend/                    ← abstracción de backend gráfico (Strategy)
         │   │   ├── IRenderBackend.h        ← contrato (handles opacos, MeshData, Image2D,
         │   │   │                              DepthFunc, recursos GPU, estados, FBO,
@@ -450,13 +465,21 @@ FunshiEngineGL/                          ← raíz del repo
         │                                   sin RTTI (Bullet se compila sin ella: vcpkg
         │                                   instala bullet3 con USE_MSVC_DISABLE_RTTI=ON)
         ├── Proyectos/
-        │   └── GestorDeProyectos.h/.cpp  ← ciclo de vida del proyecto activo (entrar,
-        │                                  guardar estado y escena Ctrl+S, renombrar, eliminar,
-        │                                  exportar, imgui.ini); extraído de main.cpp
+        │   ├── GestorDeProyectos.h/.cpp  ← ciclo de vida del proyecto activo (entrar,
+        │   │                              guardar estado y escena Ctrl+S, renombrar, eliminar,
+        │   │                              exportar); extraído de main.cpp
+        │   └── LayoutInterfazProyecto.h/.cpp ← layout de la interfaz del proyecto (imgui.ini):
+        │                                  qué archivo usa ImGui, volcado al abandonar un
+        │                                  proyecto y carga diferida del entrante
         ├── Runtime/
         │   └── main_juego.cpp            ← punto de entrada de juegos exportados (sin editor:
         │                                  GUIManager, MenuGUI, paneles). ImGui básico para runtime,
-        │                                  carga escenas desde estructura simplificada (scenes/)
+        │                                  carga escenas desde estructura simplificada (scenes/),
+        │                                  limpia el framebuffer al inicio de cada frame. Lo
+        │                                  compila el target `runtime-compile-check` del motor
+        │                                  (el exportador genera su propio proyecto, pero el
+        │                                  motor lo compila igual para que sus errores no
+        │                                  aparezcan al exportar)
         ├── Comandos/
         │   ├── IComando.h              ← interfaz Command: ejecutar(), deshacer(), descripcion()
         │   ├── GestorComandos.h/.cpp   ← pilas undo/redo (máx 50), ejecuta/deshace/rehace
@@ -574,7 +597,12 @@ main.cpp
 `main.cpp` es el composition root; las callbacks de teclado y ratón de GLFW
 viven en el módulo `src/Input/EditorInput` (`EditorInput::registrarCallbacks`,
 instancia única creada por `main`), que las traduce a acciones del editor y
-mantiene la máquina de estado del movimiento de cámara. El estado del menú lo
+mantiene la máquina de estado del movimiento de cámara. Ese módulo no dibuja
+nada: para saber si el teclado o el mouse pertenecen a un widget consulta el
+estado de la interfaz por `IEstadoInterfaz` (implementado sobre ImGui en
+`GUI/Estado/EstadoInterfazImGui`), y el dibujo de la barra de la órbita vive en
+`GUI/Navegacion/SidebarOrbitaGUI`, que recibe el estado (`Input/EstadoOrbita`)
+en lugar de leer el input. El estado del menú lo
 gobierna el modelo del paquete `MenuGUI`,
 sincronizado por frame desde `ApplicationStateMachine`. `GameScene` configura
 internamente `GUIManager`, `SceneRegistry`, `EditorController`, `SceneSerializer` y
@@ -1247,6 +1275,7 @@ ASan+UBSan en GCC/Clang.
 main.cpp
   │
   ├─ input GLFW ──► EditorInput (callbacks + máquina de teclas) ──► cámara activa (movimiento continuo)
+  │                 (consulta IEstadoInterfaz: ¿el teclado es de un widget?)
   │                                       ──► tecla E: toggleEditorInterfaces()
   │                                       ──► 1/T, 2/R, 3/U: operación del gizmo (y apagan la guía)
   │                                       ──► X/Y/Z: guía de eje del objeto seleccionado
@@ -1482,7 +1511,9 @@ GameScene → coordina todos los subsistemas del frame
   con deshacer/rehacer, la cadena de redo múltiple, el límite del historial, la
   descripción que el historial devuelve para avisar en la barra de estado y el
   registro de cuerpos en fisica al borrar/duplicar/agregar/quitar.
-- Los treinta targets compilan en cualquier plataforma y se ejecutan con `ctest`.
+- Las suites de prueba se ejecutan con `ctest`: el build con motor registra
+  **37** tests (35 habilitados y 2 deshabilitados) y el build headless
+  (`BUILD_ENGINE=OFF`) registra **21** (20 habilitados y 1 deshabilitado).
 - `.github/workflows/ci.yml` compila el engine completo en Ubuntu (Release, sin
   ASan) y ejecuta las pruebas; además ejecuta las headless en
   Linux/Windows con `BUILD_ENGINE=OFF`, el backend Java en Ubuntu con JDK y
@@ -1512,11 +1543,16 @@ GameScene → coordina todos los subsistemas del frame
   Windows usa el generador por defecto (multi-config), que es el mismo que
   comprueba el job multi-config de la CI.
 - La lista de targets que compila cada job tiene que cubrir todas las suites
-  registradas en ese modo de build (30 con `BUILD_ENGINE=ON`, 18 con
+  registradas en ese modo de build (37 con `BUILD_ENGINE=ON`, 21 con
   `BUILD_ENGINE=OFF`): `ctest` ejecuta todos los tests registrados en el build,
   no solo los compilados, y los que faltan quedan como `Not Run`, lo que hace
   fallar el job. Las suites con `DISABLED TRUE` se pueden omitir porque `ctest`
   las salta.
+- El punto de entrada del juego exportado (`src/Runtime/main_juego.cpp`) no
+  forma parte de la librería del motor: lo compila el proyecto que genera el
+  exportador, y ese proyecto solo existe cuando el usuario exporta. Para que
+  sus errores no aparezcan en ese momento, el motor lo compila en el target
+  `runtime-compile-check`, que la CI construye en Linux y en Windows.
 
 Los bugs de la Fase 2 (cámaras/vistas previas) y sus fixes están documentados en
 [CAMARAS_VISTAS_PREVIAS.md](CAMARAS_VISTAS_PREVIAS.md).

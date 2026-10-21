@@ -207,7 +207,7 @@ bool GameExporter::generarProyectoCMake(const std::string& buildDir) {
     }
 
     // CMakeLists.txt principal del proyecto de exportacion. El binario del
-    // juego comparte el punto de entrada del editor (main.cpp): arranca con
+    // juego tiene su propio punto de entrada (main_juego.cpp): arranca con
     // JuegoExportado.json junto al ejecutable y no pasa por el menu.
     std::string cmakeContent = R"(
 cmake_minimum_required(VERSION 3.15)
@@ -232,6 +232,11 @@ set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>DLL")
 # queda ON porque el motor incluye AssimpMeshLoader sin guards.
 set(BUILD_RUNTIME ON CACHE BOOL "" FORCE)
 set(FUNSHI_JAVA ON CACHE BOOL "" FORCE)
+
+# Los sanitizadores (ASan/UBSan) son para el build de trabajo del motor: el
+# toolchain de la exportacion (MinGW) no trae sus runtimes, asi que activarlos
+# rompe el enlace del binario del juego. La exportacion se compila sin ellos.
+set(ENABLE_ASAN OFF CACHE BOOL "" FORCE)
 
 add_subdirectory("@ENGINE@" engine_build)
 

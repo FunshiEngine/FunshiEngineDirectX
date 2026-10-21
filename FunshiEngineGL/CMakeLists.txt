@@ -416,6 +416,17 @@ if(BUILD_ENGINE)
 find_package(glfw3 REQUIRED)
 target_link_libraries(funshi_engine PRIVATE glfw)
 
+# El punto de entrada del juego exportado (src/Runtime/main_juego.cpp) no forma
+# parte de la libreria del motor: lo compila el exportador, al generar el
+# proyecto del juego. Sin nadie que lo compile, sus errores aparecen tarde,
+# cuando el usuario exporta, y solo en la plataforma que exporta. Este target
+# lo compila (sin enlazarlo) en cada build del engine, para que la suite los
+# vea antes de exportar.
+if(NOT BUILD_RUNTIME)
+    add_library(runtime-compile-check OBJECT ${SRC_DIR}/Runtime/main_juego.cpp)
+    target_link_libraries(runtime-compile-check PRIVATE funshi_engine glfw)
+endif()
+
 # 2. Configuración de OpenGL. El engine pide un contexto 3.3 core en Ventana.cpp
 # y usa las funciones modernas por puntero (GLFuncs), por lo que no se enlaza GLU:
 # no hay glu* que usar tras eliminar el modo inmediato.
@@ -1239,6 +1250,36 @@ set_target_properties(texturemanager-tests PROPERTIES
     CXX_EXTENSIONS OFF
 )
 add_test(NAME texturemanager-tests COMMAND texturemanager-tests)
+
+# Separacion entre el input del editor y la interfaz (headless y portatil):
+# el modulo de input traduce los eventos de GLFW y no dibuja; el estado de la
+# interfaz le llega por una interfaz (IEstadoInterfaz) y el dibujo de la barra
+# de la orbita vive en la GUI. La prueba comprueba que la implementacion sobre
+# ImGui devuelve las mismas banderas que el input leia antes, que sin contexto
+# no hay captura, y que la operacion del gizmo que usa el input es la del
+# gizmo (el numero persistido en la configuracion no puede cambiar).
+# Necesita el contexto de ImGui (sin backends ni pila grafica) y las
+# cabeceras del gizmo para comparar sus operaciones.
+add_executable(editor-input-tests
+    ${SRC_DIR}/ImGui/imgui.cpp
+    ${SRC_DIR}/ImGui/imgui_draw.cpp
+    ${SRC_DIR}/ImGui/imgui_tables.cpp
+    ${SRC_DIR}/ImGui/imgui_widgets.cpp
+    ${SRC_DIR}/GUI/Estado/EstadoInterfazImGui.cpp
+    ${SRC_DIR}/GUI/Navegacion/SidebarOrbitaGUI.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../tests/EditorInputTests.cpp
+)
+target_include_directories(editor-input-tests PRIVATE
+    ${SRC_DIR}
+    ${SRC_DIR}/ImGui
+    ${CMAKE_CURRENT_SOURCE_DIR}/ImGuizmo
+)
+set_target_properties(editor-input-tests PROPERTIES
+    CXX_STANDARD 17
+    CXX_STANDARD_REQUIRED ON
+    CXX_EXTENSIONS OFF
+)
+add_test(NAME editor-input-tests COMMAND editor-input-tests)
 
 # Estructuras de datos (headless y portatil): las estructuras son cabeceras
 # puras, solo se necesita RuntimeException.cpp por la jerarquia de excepciones.
