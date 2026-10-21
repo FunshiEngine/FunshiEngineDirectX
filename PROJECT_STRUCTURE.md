@@ -1548,6 +1548,11 @@ GameScene → coordina todos los subsistemas del frame
   no solo los compilados, y los que faltan quedan como `Not Run`, lo que hace
   fallar el job. Las suites con `DISABLED TRUE` se pueden omitir porque `ctest`
   las salta.
+- El punto de entrada del juego exportado (`src/Runtime/main_juego.cpp`) no
+  forma parte de la librería del motor: lo compila el proyecto que genera el
+  exportador, y ese proyecto solo existe cuando el usuario exporta. Para que
+  sus errores no aparezcan en ese momento, el motor lo compila en el target
+  `runtime-compile-check`, que la CI construye en Linux y en Windows.
 
 Los bugs de la Fase 2 (cámaras/vistas previas) y sus fixes están documentados en
 [CAMARAS_VISTAS_PREVIAS.md](CAMARAS_VISTAS_PREVIAS.md).

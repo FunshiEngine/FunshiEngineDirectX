@@ -416,6 +416,17 @@ if(BUILD_ENGINE)
 find_package(glfw3 REQUIRED)
 target_link_libraries(funshi_engine PRIVATE glfw)
 
+# El punto de entrada del juego exportado (src/Runtime/main_juego.cpp) no forma
+# parte de la libreria del motor: lo compila el exportador, al generar el
+# proyecto del juego. Sin nadie que lo compile, sus errores aparecen tarde,
+# cuando el usuario exporta, y solo en la plataforma que exporta. Este target
+# lo compila (sin enlazarlo) en cada build del engine, para que la suite los
+# vea antes de exportar.
+if(NOT BUILD_RUNTIME)
+    add_library(runtime-compile-check OBJECT ${SRC_DIR}/Runtime/main_juego.cpp)
+    target_link_libraries(runtime-compile-check PRIVATE funshi_engine glfw)
+endif()
+
 # 2. Configuración de OpenGL. El engine pide un contexto 3.3 core en Ventana.cpp
 # y usa las funciones modernas por puntero (GLFuncs), por lo que no se enlaza GLU:
 # no hay glu* que usar tras eliminar el modo inmediato.
