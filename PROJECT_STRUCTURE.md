@@ -462,9 +462,12 @@ FunshiEngineGL/                          ← raíz del repo
         │                                   sin RTTI (Bullet se compila sin ella: vcpkg
         │                                   instala bullet3 con USE_MSVC_DISABLE_RTTI=ON)
         ├── Proyectos/
-        │   └── GestorDeProyectos.h/.cpp  ← ciclo de vida del proyecto activo (entrar,
-        │                                  guardar estado y escena Ctrl+S, renombrar, eliminar,
-        │                                  exportar, imgui.ini); extraído de main.cpp
+        │   ├── GestorDeProyectos.h/.cpp  ← ciclo de vida del proyecto activo (entrar,
+        │   │                              guardar estado y escena Ctrl+S, renombrar, eliminar,
+        │   │                              exportar); extraído de main.cpp
+        │   └── LayoutInterfazProyecto.h/.cpp ← layout de la interfaz del proyecto (imgui.ini):
+        │                                  qué archivo usa ImGui, volcado al abandonar un
+        │                                  proyecto y carga diferida del entrante
         ├── Runtime/
         │   └── main_juego.cpp            ← punto de entrada de juegos exportados (sin editor:
         │                                  GUIManager, MenuGUI, paneles). ImGui básico para runtime,
