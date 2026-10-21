@@ -64,6 +64,10 @@ GUIManager::GUIManager(GLFWwindow* window)
     registrarVentana(statusBarGUI.get());
     registrarVentana(terminalGUI.get());
     panelesModsGUI = std::make_unique<PanelesModsInterface>();
+    // El estado de la interfaz y la barra de la orbita son piezas de la GUI:
+    // las usa el input (que consulta el estado) y main (que dibuja la barra).
+    estadoInterfaz = std::make_unique<EstadoInterfazImGui>();
+    sidebarOrbitaGUI = std::make_unique<SidebarOrbitaGUI>();
     treeFilesGUI->setIconosGUI(iconosGUI.get());
     contentOfThisFolder->setIconosGUI(iconosGUI.get());
     selecteableGUI->setIconosGUI(iconosGUI.get());

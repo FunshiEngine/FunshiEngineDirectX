@@ -1494,12 +1494,13 @@ void GameScene::mostrarMensaje(const std::string& mensaje) {
         barra->mostrarMensaje(mensaje);
 }
 
-void GameScene::setGizmoOperation(int operation) {
+void GameScene::setGizmoOperation(OperacionGizmo operation) {
     if (gizmoController_) gizmoController_->setGizmoOperation(operation);
 }
 
-int GameScene::getGizmoOperation() const {
-    return gizmoController_ ? gizmoController_->getGizmoOperation() : 7;
+OperacionGizmo GameScene::getGizmoOperation() const {
+    if (!gizmoController_) return OperacionGizmo::Trasladar;
+    return gizmoController_->getGizmoOperation();
 }
 
 bool GameScene::isGizmoGlobal() const noexcept {

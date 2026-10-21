@@ -255,8 +255,13 @@ FunshiEngineGL/                          ← raíz del repo
         │   ├── WindowNames.h
         │   ├── DockSpaceGUI/               ← dock principal del editor
         │   ├── Estado/
-        │   │   └── StatusBarInterface.h/.cpp ← ventana "Estado": toolchain (Compilador/javac/
-        │   │                                  libjvm) y estado de scripts (compilando/cargado/error)
+        │   │   ├── StatusBarInterface.h/.cpp ← ventana "Estado": toolchain (Compilador/javac/
+        │   │   │                              libjvm) y estado de scripts (compilando/cargado/error)
+        │   │   └── EstadoInterfazImGui.h/.cpp ← estado de la interfaz leído de ImGui (si el
+        │   │                                  teclado o el mouse pertenecen a un widget)
+        │   ├── Navegacion/
+        │   │   └── SidebarOrbitaGUI.h/.cpp ← barra lateral con el radio de la órbita de la
+        │   │                                  cámara (el input entrega el estado, la GUI dibuja)
         │   ├── Terminal/
         │   │   └── TerminalInterface.h/.cpp ← panel de shell integrado con cwd del proyecto
         │   ├── ModsGUI/                   ← paneles que aportan los mods cargados
@@ -333,8 +338,15 @@ FunshiEngineGL/                          ← raíz del repo
         │                                  vista desde la luz, proyección ortográfica
         │                                  y frustum de foco posicional/direccional
         ├── Input/
-        │   └── EditorInput.h/.cpp       ← callbacks GLFW de teclado/mouse + máquina de
-        │                                  movimiento de cámara (extraídas de main.cpp)
+        │   ├── EditorInput.h/.cpp       ← callbacks GLFW de teclado/mouse + máquina de
+        │   │                              movimiento de cámara (extraídas de main.cpp).
+        │   │                              Traduce los eventos y no dibuja: el estado de la
+        │   │                              interfaz le llega por IEstadoInterfaz
+        │   ├── IEstadoInterfaz.h        ← estado de la interfaz que consulta el input (¿el
+        │   │                              teclado es de un widget?) y su motivo
+        │   ├── EstadoOrbita.h           ← datos de la órbita de la cámara que la GUI dibuja
+        │   └── AtajosEditor.h           ← reglas de los atajos que compiten con el teclado
+        │                                  de la interfaz
         ├── ImGui/                        ← Dear ImGui v1.x integrado (+ backends glfw/opengl3)
         ├── Matematicas/
         │   └── StructVec3.h/.cpp         ← vec3 propio
@@ -574,7 +586,12 @@ main.cpp
 `main.cpp` es el composition root; las callbacks de teclado y ratón de GLFW
 viven en el módulo `src/Input/EditorInput` (`EditorInput::registrarCallbacks`,
 instancia única creada por `main`), que las traduce a acciones del editor y
-mantiene la máquina de estado del movimiento de cámara. El estado del menú lo
+mantiene la máquina de estado del movimiento de cámara. Ese módulo no dibuja
+nada: para saber si el teclado o el mouse pertenecen a un widget consulta el
+estado de la interfaz por `IEstadoInterfaz` (implementado sobre ImGui en
+`GUI/Estado/EstadoInterfazImGui`), y el dibujo de la barra de la órbita vive en
+`GUI/Navegacion/SidebarOrbitaGUI`, que recibe el estado (`Input/EstadoOrbita`)
+en lugar de leer el input. El estado del menú lo
 gobierna el modelo del paquete `MenuGUI`,
 sincronizado por frame desde `ApplicationStateMachine`. `GameScene` configura
 internamente `GUIManager`, `SceneRegistry`, `EditorController`, `SceneSerializer` y
@@ -1247,6 +1264,7 @@ ASan+UBSan en GCC/Clang.
 main.cpp
   │
   ├─ input GLFW ──► EditorInput (callbacks + máquina de teclas) ──► cámara activa (movimiento continuo)
+  │                 (consulta IEstadoInterfaz: ¿el teclado es de un widget?)
   │                                       ──► tecla E: toggleEditorInterfaces()
   │                                       ──► 1/T, 2/R, 3/U: operación del gizmo (y apagan la guía)
   │                                       ──► X/Y/Z: guía de eje del objeto seleccionado

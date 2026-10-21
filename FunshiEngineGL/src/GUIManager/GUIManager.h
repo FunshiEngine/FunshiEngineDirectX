@@ -34,6 +34,8 @@
 #include "../GUI/SceneGUI/SceneMenuBarInterface.h"
 #include "../GUI/DockSpaceGUI/DockSpaceInterface.h"
 #include "../GUI/Estado/StatusBarInterface.h"
+#include "../GUI/Estado/EstadoInterfazImGui.h"
+#include "../GUI/Navegacion/SidebarOrbitaGUI.h"
 #include "../GUI/Terminal/TerminalInterface.h"
 #include "../GUI/ModsGUI/PanelesModsInterface.h"
 #include "../Herramientas/IconosGUI/IconosGUI.h"
@@ -75,6 +77,11 @@ private:
 	// Paneles que aportan los mods cargados. Cada uno es una ventana propia
 	// que dibuja el motor alrededor del callback que entrego el mod.
 	std::unique_ptr<PanelesModsInterface> panelesModsGUI;
+	// Estado de la interfaz (la captura de teclado y mouse de ImGui): el
+	// input lo consulta para saber si una tecla es de un widget.
+	std::unique_ptr<EstadoInterfazImGui> estadoInterfaz;
+	// Barra lateral del radio de orbita (ayuda de navegacion del editor).
+	std::unique_ptr<SidebarOrbitaGUI> sidebarOrbitaGUI;
 	// Motor de audio inyectado por la escena para el inspector de AudioSource.
 	AudioEngine* audioMotor = nullptr;
 
@@ -119,6 +126,12 @@ public:
 	PanelesModsInterface* getPanelesModsGUI() noexcept {
 		return panelesModsGUI.get();
 	}
+	// Estado de la interfaz: el input lo consulta para saber si el teclado o
+	// el mouse pertenecen a un widget.
+	IEstadoInterfaz* getEstadoInterfaz() noexcept { return estadoInterfaz.get(); }
+	// Barra lateral del radio de orbita: la dibuja la GUI con el estado que
+	// entrega el input.
+	SidebarOrbitaGUI* getSidebarOrbitaGUI() noexcept { return sidebarOrbitaGUI.get(); }
 
 	// La escena inyecta su AudioEngine (para el inspector de AudioSource).
 	void setAudioEngine(AudioEngine* motor);

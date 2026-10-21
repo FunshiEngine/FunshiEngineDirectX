@@ -74,7 +74,7 @@ void GestorDeProyectos::guardarProyectoCompleto() {
     cfg.sensibilidadCamara = menu_->getSensibilidadCamara();
     cfg.ventanaCamarasAbierta = scene_->getVentanaCamarasAbierta();
     cfg.sensibilidadMovimientoCamara = scene_->getSensibilidadMovimientoCamara();
-    cfg.gizmoOperacion = scene_->getGizmoOperation();
+    cfg.gizmoOperacion = numeroDeOperacion(scene_->getGizmoOperation());
     cfg.gizmoGlobal = scene_->isGizmoGlobal();
     cfg.camaraActivaId = scene_->getActiveCameraId();
     cfg.estadoVentanas = gui_->obtenerEstadosVentanas();
@@ -280,7 +280,8 @@ void GestorDeProyectos::guardarEstadoActivo() {
     if (proyectoActual_.empty())
         return;
     config_.datos().ventanaCamarasAbierta = scene_->getVentanaCamarasAbierta();
-    config_.datos().gizmoOperacion = scene_->getGizmoOperation();
+    config_.datos().gizmoOperacion =
+        numeroDeOperacion(scene_->getGizmoOperation());
     config_.datos().gizmoGlobal = scene_->isGizmoGlobal();
     config_.datos().camaraActivaId = scene_->getActiveCameraId();
     config_.datos().estadoVentanas = gui_->obtenerEstadosVentanas();
@@ -337,7 +338,8 @@ void GestorDeProyectos::entrar(const std::string& destino) {
 
     // Aplicar resto de estado de la escena (gizmo, cámara, etc.)
     scene_->setVentanaCamarasAbierta(config_.datos().ventanaCamarasAbierta);
-    scene_->setGizmoOperation(config_.datos().gizmoOperacion);
+    scene_->setGizmoOperation(
+        operacionDesdeNumero(config_.datos().gizmoOperacion));
     scene_->setGizmoGlobal(config_.datos().gizmoGlobal);
     scene_->setActiveCameraById(config_.datos().camaraActivaId);
 }

@@ -31,6 +31,7 @@
 #include "../Input/InputScripts.h"
 #include "../Configuracion/Apariencia.h"
 #include "../Configuracion/DimensionProyecto.h"
+#include "OperacionGizmo.h"
 #include "../WebUI/VistasWebUI.h"
 #include "../WebUI/EstadoInterfaces.h"
 class CameraComponent;
@@ -248,8 +249,8 @@ public:
     void registrarTeclaScript(int key, int action);
     void registrarMouseScript(double x, double y);
     void gameScene();
-    void setGizmoOperation(int operation);
-    int getGizmoOperation() const;
+    void setGizmoOperation(OperacionGizmo operation);
+    OperacionGizmo getGizmoOperation() const;
     // Sistema de coordenadas del gizmo (LOCAL con rotacion de los ejes del
     // objeto, o GLOBAL con los ejes del mundo fijos). Se persiste por proyecto.
     bool isGizmoGlobal() const noexcept;

@@ -68,14 +68,8 @@ bool GizmoController::gizmoInUse() const noexcept {
     return listo_ && ImGuizmo::IsUsing();
 }
 
-void GizmoController::setGizmoOperation(int operation) {
-    if (operation == ImGuizmo::TRANSLATE ||
-        operation == ImGuizmo::ROTATE ||
-        operation == ImGuizmo::SCALE ||
-        operation == ImGuizmo::UNIVERSAL ||
-        operation == 0) {
-        operation_ = operation;
-    }
+void GizmoController::setGizmoOperation(OperacionGizmo operation) {
+    operation_ = operation;
 }
 
 void GizmoController::tomarFotoTransform(Transform* t,
@@ -134,7 +128,8 @@ void GizmoController::procesarSeleccion(ImGuiIO& io, CameraComponent* camara,
                 pickObject(io.MousePos.x, io.MousePos.y, camara, objetos);
             if (clicked) {
                 if (seleccion_) seleccion_->setReturnableEntity(clicked);
-                if (operation_ == 0) operation_ = ImGuizmo::TRANSLATE;
+                if (operation_ == OperacionGizmo::Ninguna)
+                    operation_ = OperacionGizmo::Trasladar;
             } else {
                 if (seleccion_) seleccion_->setReturnableEntity(nullptr);
             }
@@ -212,7 +207,7 @@ void GizmoController::dibujarYRastrear(ImGuiIO& io, CameraComponent* camara,
     // En 2D la rotacion se limita a Z (el eje perpendicular al plano XY): el
     // anillo completo giraria fuera del plano, que en una vista ortografica no
     // se puede leer. La traslacion y la escala no cambian.
-    int operacionBase = operation_;
+    int operacionBase = static_cast<int>(operation_);
     if (modo2D && operacionBase == ImGuizmo::ROTATE)
         operacionBase = ImGuizmo::ROTATE_Z;
     const int operacionEfectiva =

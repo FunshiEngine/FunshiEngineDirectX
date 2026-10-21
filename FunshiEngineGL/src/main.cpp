@@ -335,9 +335,12 @@ static int EjecutarMotor(int argc, char* argv[])
     ContentFolderInterface* contentFolderInterface = managerOfGUI->getContentFolderGUI();
     // Callbacks del editor (teclado/mouse) + navegacion de la camara: su
     // propio modulo (Input/EditorInput) las traduce a acciones y mantiene la
-    // maquina de estado de movimiento (diagonales WASD normalizadas).
+    // maquina de estado de movimiento (diagonales WASD normalizadas). El
+    // estado de la interfaz se le inyecta: el input no sabe que hay una GUI
+    // debajo, solo pregunta si el teclado es de un widget.
     EditorInput* input =
-        new EditorInput(scene, &appStateMachine, &orquestadorDeGUI);
+        new EditorInput(scene, &appStateMachine, &orquestadorDeGUI,
+                        managerOfGUI->getEstadoInterfaz());
     // Los controles del menu de escena piden transiciones al orquestador,
     // unica fuente de verdad para Depuracion, Juego, pausa, reset y fin.
     if (SceneMenuBarInterface* menuBarEscena = managerOfGUI->getMenuBarGUI())
@@ -476,7 +479,8 @@ static int EjecutarMotor(int argc, char* argv[])
     scene->setVentanaCamarasAbierta(editorConfig.datos().ventanaCamarasAbierta);
     scene->setSensibilidadMovimientoCamara(
         editorConfig.datos().sensibilidadMovimientoCamara);
-    scene->setGizmoOperation(editorConfig.datos().gizmoOperacion);
+    scene->setGizmoOperation(
+        operacionDesdeNumero(editorConfig.datos().gizmoOperacion));
     scene->setGizmoGlobal(editorConfig.datos().gizmoGlobal);
     scene->setApariencia(editorConfig.datos().apariencia);
     scene->setSensibilidadCamara(editorConfig.datos().sensibilidadCamara);
@@ -638,7 +642,7 @@ static int EjecutarMotor(int argc, char* argv[])
                     cfg.sensibilidadMovimientoCamara);
                 mainMenu->setApariencia(cfg.apariencia);
                 scene->setVentanaCamarasAbierta(cfg.ventanaCamarasAbierta);
-                scene->setGizmoOperation(cfg.gizmoOperacion);
+                scene->setGizmoOperation(operacionDesdeNumero(cfg.gizmoOperacion));
                 scene->setGizmoGlobal(cfg.gizmoGlobal);
                 scene->setActiveCameraById(cfg.camaraActivaId);
                 managerOfGUI->restaurarEstadosVentanas(cfg.estadoVentanas);
@@ -858,8 +862,10 @@ static int EjecutarMotor(int argc, char* argv[])
             // modelo del paquete MenuGUI (MenuModel), no un bool suelto de main.
 
         // Sidebar de radio de orbita (editor oculto + clic derecho): es una
-        // ayuda de navegacion del editor, no una superposicion del Juego.
-        if (!scene->isModoJuego()) input->dibujarSidebarOrbita();
+        // ayuda de navegacion del editor, no una superposicion del Juego. La
+        // dibuja la GUI con el estado que entrega el input.
+        if (!scene->isModoJuego())
+            managerOfGUI->getSidebarOrbitaGUI()->dibujar(input->estadoOrbita());
 
         ImGui::Render();
         // Mismo guardia que NewFrame: sin backend, RenderDrawData tambien

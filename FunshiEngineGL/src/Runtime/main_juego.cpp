@@ -36,6 +36,7 @@
 #include "../EngineTime.h"
 #include "../Ventana.h"
 #include "../Input/EditorInput.h"
+#include "../GUI/Estado/EstadoInterfazImGui.h"
 #include "../Hilos/HiloActual.h"
 #include "../Rendering/Backend/IRenderBackend.h"
 #include "../Behaviour/ScriptRuntime.h"
@@ -235,8 +236,13 @@ int EjecutarJuego(int argc, char* argv[]) {
     appStateMachine.transitionTo(ApplicationState::Playing);
     scene->setModoJuego(true);
 
-    // 11. Input para juego (EditorInput maneja input de juego SIN GUI de editor)
-    EditorInput* input = new EditorInput(scene, &appStateMachine, &orquestadorDeGUI);
+    // 11. Input para juego (EditorInput maneja input de juego SIN GUI de editor).
+    // El estado de la interfaz se inyecta: el juego exportado si tiene contexto
+    // de ImGui (para el HUD web), asi que el input puede preguntar si el
+    // teclado es de un widget.
+    EstadoInterfazImGui estadoInterfaz;
+    EditorInput* input = new EditorInput(scene, &appStateMachine,
+                                          &orquestadorDeGUI, &estadoInterfaz);
 
     // 12. Registrar callbacks de input (antes del loop)
     input->registrarCallbacks(window);
