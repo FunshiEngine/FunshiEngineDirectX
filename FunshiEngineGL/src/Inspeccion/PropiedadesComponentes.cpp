@@ -30,6 +30,7 @@
 #include "../Objetos/Componentes/Colliders/MallaCollider.h"
 #include "../Objetos/Componentes/Colliders/TilemapCollider.h"
 #include "../Objetos/Componentes/Color.h"
+#include "../Objetos/Componentes/EmisorParticulas.h"
 #include "../Objetos/Componentes/Grid.h"
 #include "../Objetos/Componentes/InterfaceComponent.h"
 #include "../Objetos/Componentes/Light.h"
@@ -566,6 +567,128 @@ CatalogoPropiedades::CatalogoPropiedades() {
             "emissionMap", "Textura de emision",
             [](Material* m) { return m->getEmissionMapPath(); },
             [](Material* m, const std::string& v) { m->setEmissionMapPath(v); }),
+    });
+
+    // --- EmisorParticulas ------------------------------------------------
+    registrar("EmisorParticulas", {
+        propiedadBooleana<EmisorParticulas>(
+            "active", "Activo",
+            [](EmisorParticulas* e) { return e->activa(); },
+            [](EmisorParticulas* e, bool v) { e->setActiva(v); }),
+        propiedadEntera<EmisorParticulas>(
+            "rate", "Particulas por segundo",
+            [](EmisorParticulas* e) { return e->parametros().cantidadPorSegundo; },
+            [](EmisorParticulas* e, int v) {
+                e->parametros().cantidadPorSegundo = v < 0 ? 0 : v;
+            }),
+        propiedadFlotante<EmisorParticulas>(
+            "lifeMin", "Vida minima (segundos)",
+            [](EmisorParticulas* e) { return e->parametros().vidaMinima; },
+            [](EmisorParticulas* e, float v) {
+                e->parametros().vidaMinima = v;
+                if (e->parametros().vidaMaxima < v)
+                    e->parametros().vidaMaxima = v;
+            }),
+        propiedadFlotante<EmisorParticulas>(
+            "lifeMax", "Vida maxima (segundos)",
+            [](EmisorParticulas* e) { return e->parametros().vidaMaxima; },
+            [](EmisorParticulas* e, float v) {
+                e->parametros().vidaMaxima = v;
+                if (e->parametros().vidaMinima > v)
+                    e->parametros().vidaMinima = v;
+            }),
+        propiedadFlotante<EmisorParticulas>(
+            "speedMin", "Velocidad minima",
+            [](EmisorParticulas* e) { return e->parametros().velocidadMinima; },
+            [](EmisorParticulas* e, float v) {
+                e->parametros().velocidadMinima = v;
+                if (e->parametros().velocidadMaxima < v)
+                    e->parametros().velocidadMaxima = v;
+            }),
+        propiedadFlotante<EmisorParticulas>(
+            "speedMax", "Velocidad maxima",
+            [](EmisorParticulas* e) { return e->parametros().velocidadMaxima; },
+            [](EmisorParticulas* e, float v) {
+                e->parametros().velocidadMaxima = v;
+                if (e->parametros().velocidadMinima > v)
+                    e->parametros().velocidadMinima = v;
+            }),
+        propiedadFlotante<EmisorParticulas>(
+            "sizeMin", "Tamano minimo",
+            [](EmisorParticulas* e) { return e->parametros().tamanoMinimo; },
+            [](EmisorParticulas* e, float v) {
+                e->parametros().tamanoMinimo = v;
+                if (e->parametros().tamanoMaximo < v)
+                    e->parametros().tamanoMaximo = v;
+            }),
+        propiedadFlotante<EmisorParticulas>(
+            "sizeMax", "Tamano maximo",
+            [](EmisorParticulas* e) { return e->parametros().tamanoMaximo; },
+            [](EmisorParticulas* e, float v) {
+                e->parametros().tamanoMaximo = v;
+                if (e->parametros().tamanoMinimo > v)
+                    e->parametros().tamanoMinimo = v;
+            }),
+        propiedadVec4<EmisorParticulas>(
+            "color", "Color",
+            [](EmisorParticulas* e) {
+                const float* v = e->parametros().color;
+                return std::array<float, 4>{v[0], v[1], v[2], v[3]};
+            },
+            [](EmisorParticulas* e, float r, float g, float b, float a) {
+                float* v = e->parametros().color;
+                v[0] = r; v[1] = g; v[2] = b; v[3] = a;
+            }),
+        propiedadVec3<EmisorParticulas>(
+            "direction", "Direccion",
+            [](EmisorParticulas* e) {
+                const float* v = e->parametros().direccion;
+                return std::array<float, 3>{v[0], v[1], v[2]};
+            },
+            [](EmisorParticulas* e, float x, float y, float z) {
+                float* v = e->parametros().direccion;
+                v[0] = x; v[1] = y; v[2] = z;
+            }),
+        propiedadFlotante<EmisorParticulas>(
+            "dispersion", "Dispersion del cono",
+            [](EmisorParticulas* e) { return e->parametros().dispersion; },
+            [](EmisorParticulas* e, float v) {
+                e->parametros().dispersion = v < 0.0f ? 0.0f : (v > 1.0f ? 1.0f : v);
+            }),
+        propiedadVec3<EmisorParticulas>(
+            "gravity", "Gravedad",
+            [](EmisorParticulas* e) {
+                const float* v = e->parametros().gravedad;
+                return std::array<float, 3>{v[0], v[1], v[2]};
+            },
+            [](EmisorParticulas* e, float x, float y, float z) {
+                float* v = e->parametros().gravedad;
+                v[0] = x; v[1] = y; v[2] = z;
+            }),
+        propiedadFlotante<EmisorParticulas>(
+            "drag", "Rozamiento",
+            [](EmisorParticulas* e) { return e->parametros().rozamiento; },
+            [](EmisorParticulas* e, float v) {
+                e->parametros().rozamiento = v < 0.0f ? 0.0f : v;
+            }),
+        propiedadFlotante<EmisorParticulas>(
+            "rotation", "Rotacion inicial (radianes)",
+            [](EmisorParticulas* e) { return e->parametros().rotacionInicial; },
+            [](EmisorParticulas* e, float v) {
+                e->parametros().rotacionInicial = v;
+            }),
+        propiedadFlotante<EmisorParticulas>(
+            "rotationSpeed", "Velocidad de rotacion (rad/s)",
+            [](EmisorParticulas* e) { return e->parametros().velocidadRotacion; },
+            [](EmisorParticulas* e, float v) {
+                e->parametros().velocidadRotacion = v;
+            }),
+        propiedadTexto<EmisorParticulas>(
+            "profilePath", "Perfil de efecto",
+            [](EmisorParticulas* e) { return e->rutaPerfil(); },
+            [](EmisorParticulas* e, const std::string& v) {
+                e->setRutaPerfil(v);
+            }),
     });
 
     // --- Materiales (materiales por region) -------------------------------

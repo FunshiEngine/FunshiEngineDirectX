@@ -86,6 +86,7 @@ SceneRenderer::SceneRenderer(Rendering::Backend::IRenderBackend& backend)
     meshRenderer_->setBackend(backend);
     spriteRenderer_.setBackend(backend);
     tilemapRenderer_.setBackend(backend);
+    particulasRenderer_.setBackend(&backend);
 }
 
 SceneRenderer::~SceneRenderer() = default;
@@ -94,6 +95,7 @@ void SceneRenderer::setTextureManager(TextureManager* textureManager) noexcept {
     if (meshRenderer_) meshRenderer_->setTextureManager(textureManager);
     spriteRenderer_.setTextureManager(textureManager);
     tilemapRenderer_.setTextureManager(textureManager);
+    particulasRenderer_.setTextureManager(textureManager);
 }
 
 void SceneRenderer::setResolvedorMateriales(
@@ -109,6 +111,7 @@ void SceneRenderer::setGestorShaders(Rendering::GestorShaders* gestorShaders) no
     lineRenderer().setGestorShaders(gestorShaders);
     spriteRenderer_.setGestorShaders(gestorShaders);
     tilemapRenderer_.setGestorShaders(gestorShaders);
+    particulasRenderer_.setGestorShaders(gestorShaders);
 }
 
 void SceneRenderer::destruir() {
@@ -130,6 +133,7 @@ void SceneRenderer::destruir() {
     // Malla, shader y texturas del renderer de sprites (mismo criterio: el
     // contexto GL todavia vive).
     spriteRenderer_.destruir();
+    particulasRenderer_.destruir();
     // Mallas horneadas por tilemap, su shader y sus texturas de atlas.
     tilemapRenderer_.destruir();
 }
@@ -298,6 +302,10 @@ void SceneRenderer::dibujarEscena(const FrameContext& ctx,
     // Sprites 2D: despues de las mallas (que ya escribieron profundidad) y
     // antes de la guia de eje, para que la recta del editor quede por encima.
     dibujarSprites(ctx, view, projection);
+
+    // Particululas: despues de los sprites, para que el humo y las chispas
+    // queden por encima del plano de juego.
+    dibujarParticulas(ctx, view, projection);
 
     // Guia de eje: despues de los objetos para que la recta se vea por encima
     // de la malla, y solo en la pasada principal.
@@ -904,6 +912,13 @@ void SceneRenderer::dibujarObjectConOjo(const FrameContext& ctx,
             collider->dibujarCollider();
         }
     }
+}
+
+void SceneRenderer::dibujarParticulas(const FrameContext& ctx, const float view[16],
+                                    const float projection[16]) {
+    if (!ctx.sistemaParticulas) return;
+    if (ctx.sistemaParticulas->particulas().empty()) return;
+    particulasRenderer_.dibujar(*ctx.sistemaParticulas, view, projection);
 }
 
 void SceneRenderer::dibujarSprites(const FrameContext& ctx, const float view[16],

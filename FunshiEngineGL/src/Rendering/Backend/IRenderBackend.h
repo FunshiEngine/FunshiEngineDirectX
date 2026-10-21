@@ -68,6 +68,13 @@ enum class DepthFunc { Less, LessEqual };
 constexpr DepthFunc kDepthFuncLess = DepthFunc::Less;
 constexpr DepthFunc kDepthFuncLessEqual = DepthFunc::LessEqual;
 
+// Modo de mezcla del lote. "Alfa" es la mezcla normal (el resultado se funde
+// con lo que hay debajo); "aditivo" suma el color (fuego, chispas, humo
+// caliente). El modo se elige por el consumidor del batch, no por el backend.
+enum class BlendMode { Alpha, Additive };
+constexpr BlendMode kBlendModeAlpha = BlendMode::Alpha;
+constexpr BlendMode kBlendModeAdditive = BlendMode::Additive;
+
 // Contrato de backend grafico. Los recursos se crean/destruyen por handle y
 // las operaciones de dibujado son el pipeline moderno completo: no queda
 // superficie fixed-function (ni glBegin/glEnd, ni stack de matrices, ni
@@ -104,6 +111,19 @@ public:
     virtual void updateLineBatch(Handle batch, const float* vertices,
                                  std::size_t vertexCount) = 0;
     virtual void drawLineBatch(Handle batch, unsigned int vertexCount) = 0;
+
+    // --- Batch de particulas (VAO/VBO de la geometria expandida por
+    // ParticulasBuilder) ---------------------------------------------------
+    // Los vertices vienen en el layout de ParticulasBuilder (9 floats:
+    // posicion, uv y rgba) y se dibujan como triangulos con glDrawArrays (cada
+    // particula es un quad de dos triangulos). Es el mismo patron que el batch
+    // de lineas: un unico VBO interleaved que se vuelve a subir cada frame.
+    virtual Handle createParticulasBatch(const float* vertices,
+                                          std::size_t vertexCount) = 0;
+    virtual void destroyParticulasBatch(Handle batch) = 0;
+    virtual void updateParticulasBatch(Handle batch, const float* vertices,
+                                      std::size_t vertexCount) = 0;
+    virtual void drawParticulasBatch(Handle batch, unsigned int vertexCount) = 0;
 
     // --- Textura 2D ----------------------------------------------------------
     virtual Handle createTexture2D(const Image2D& image) = 0;
@@ -195,6 +215,9 @@ public:
     // fondo). No se confunde con el suavizado de lineas: glLineSmooth no existe
     // en un perfil core y el ancho ya no se toma de glLineWidth.
     virtual void setBlendEnabled(bool enabled) = 0;
+    // Modo de mezcla con el que se dibuja el lote. El modo se recuerda: al
+    // volver a habilitar la mezcla se conserva el ultimo puesto.
+    virtual void setBlendMode(BlendMode mode) = 0;
 
     // --- Estado de profundidad (para el cielo: depth test on + depth mask off)
     virtual void setDepthTestEnabled(bool enabled) = 0;

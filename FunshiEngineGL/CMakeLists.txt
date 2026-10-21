@@ -635,6 +635,26 @@ if(WIN32)
     target_compile_definitions(inspeccion-escena-tests PRIVATE _HAS_STD_BYTE=0)
 endif()
 
+# --- Pruebas headless del componente emisor de particulas ---------------------
+# La simulacion en si es CPU pura (particulas-tests, sin motor), pero el
+# componente resuelve la ruta del perfil con la configuracion del editor, asi
+# que su suite necesita funshi_engine.
+add_executable(emisor-particulas-tests
+    ${CMAKE_CURRENT_SOURCE_DIR}/../tests/EmisorParticulasTests.cpp
+)
+target_include_directories(emisor-particulas-tests PRIVATE
+    ${SRC_DIR}
+    ${CMAKE_SOURCE_DIR}/External
+    ${CMAKE_SOURCE_DIR}/External/imgui
+)
+target_link_libraries(emisor-particulas-tests PRIVATE funshi_engine)
+set_target_properties(emisor-particulas-tests PROPERTIES
+    CXX_STANDARD 17
+    CXX_STANDARD_REQUIRED ON
+    CXX_EXTENSIONS OFF
+)
+add_test(NAME emisor-particulas-tests COMMAND emisor-particulas-tests)
+
 # --- Pruebas headless de la lectura de datos serializados ---------------------
 # Las longitudes y las etiquetas las controla el archivo: si estan corruptas,
 # la lectura se corta con un error limpio en vez de reservar una memoria
@@ -1505,6 +1525,24 @@ set_target_properties(rendering-tests PROPERTIES
     CXX_EXTENSIONS OFF
 )
 add_test(NAME rendering-tests COMMAND rendering-tests)
+
+# Simulación de partículas (CPU pura): emision, cono de dispersion, integracion,
+# muerte y presupuesto de particulas vivas. No toca OpenGL ni glm, asi que
+# compila y corre tambien en el build sin motor.
+add_executable(particulas-tests
+    ${SRC_DIR}/Particulas/SistemaParticulas.cpp
+    ${SRC_DIR}/Particulas/PerfilParticula.cpp
+    ${SRC_DIR}/Particulas/LectorPerfil.cpp
+    ${SRC_DIR}/Particulas/ParticulasBuilder.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../tests/ParticulasTests.cpp
+)
+target_include_directories(particulas-tests PRIVATE ${CMAKE_SOURCE_DIR}/External)
+set_target_properties(particulas-tests PROPERTIES
+    CXX_STANDARD 17
+    CXX_STANDARD_REQUIRED ON
+    CXX_EXTENSIONS OFF
+)
+add_test(NAME particulas-tests COMMAND particulas-tests)
 
 # Reflexion de comportamiento (motor de SerializeField): headless y portatil.
 # Cubre las macros REFLECT_*, la lectura/escritura de campos (incl. grupos

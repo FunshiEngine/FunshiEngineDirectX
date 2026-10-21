@@ -22,6 +22,7 @@
 #include "AudioSource.h"
 #include "CameraComponent.h"
 #include "Color.h"
+#include "EmisorParticulas.h"
 #include "Colliders/CubeCollider.h"
 #include "Colliders/EsfereCollider.h"
 #include "Colliders/MallaCollider.h"
@@ -56,6 +57,7 @@
 #include "../../GUI/ObjetosGUI/Colliders/SettingsColliderTilemap.h"
 #include "../../GUI/ObjetosGUI/Grid/SettingsGrid.h"
 #include "../../GUI/ObjetosGUI/Interface/SettingsInterface.h"
+#include "../../GUI/ObjetosGUI/Particulas/SettingsEmisorParticulas.h"
 #include "../../GUI/ObjetosGUI/Light/SettingsLight.h"
 #include "../../GUI/ObjetosGUI/Material/SettingsMaterial.h"
 #include "../../GUI/ObjetosGUI/Materiales/SettingsMateriales.h"
@@ -361,6 +363,17 @@ CatalogoComponentes::CatalogoComponentes() {
             auto* s = new SettingsMusica(o);
             s->setAudioEngine(ctx.audio);
             return std::unique_ptr<SettingsComponent>(s);
+        });
+    // Emisor de particulas: funciona en cualquier dimension y no exige nada.
+    add("EmisorParticulas", "Emisor de particulas",
+        DimensionesComponente::Ambas, "",
+        kIconoGenerico,
+        [](GameObject&) {
+            return std::unique_ptr<Component>(new EmisorParticulas());
+        },
+        [](Component*, GameObject* o, const ContextoPanel&) {
+            return std::unique_ptr<SettingsComponent>(
+                new SettingsEmisorParticulas(o));
         });
     add("InterfaceComponent", "Interfaz de juego (HTML)",
         DimensionesComponente::Ambas, "",

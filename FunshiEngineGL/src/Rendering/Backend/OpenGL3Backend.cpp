@@ -25,6 +25,7 @@
 #include <glm/gtc/type_ptr.hpp>
 
 #include "../LineBuilder.h"
+#include "../../Particulas/ParticulasBuilder.h"
 #include "../Shaders/ShaderException.h"
 
 namespace Rendering {
@@ -348,6 +349,92 @@ void OpenGL3Backend::updateLineBatch(Handle batch, const float* vertices,
 }
 
 void OpenGL3Backend::drawLineBatch(Handle batch, unsigned int vertexCount) {
+    if (batch == kInvalidHandle || vertexCount == 0) return;
+    GLFuncs::pfnBindVertexArray(static_cast<GLuint>(batch));
+    glDrawArrays(GL_TRIANGLES, 0, static_cast<GLsizei>(vertexCount));
+    GLFuncs::pfnBindVertexArray(0);
+}
+
+// ---------------------------------------------------------------------------
+// Batch de particulas
+// ---------------------------------------------------------------------------
+
+Handle OpenGL3Backend::createParticulasBatch(const float* vertices,
+                                              std::size_t vertexCount) {
+    if (!vertices || vertexCount == 0) return kInvalidHandle;
+
+    GLuint vao = 0;
+    GLFuncs::pfnGenVertexArrays(1, &vao);
+    GLFuncs::pfnBindVertexArray(vao);
+
+    GLuint vbo = 0;
+    GLFuncs::pfnGenBuffers(1, &vbo);
+    GLFuncs::pfnBindBuffer(GL_ARRAY_BUFFER, vbo);
+    GLFuncs::pfnBufferData(
+        GL_ARRAY_BUFFER,
+        static_cast<GLsizeiptr>(vertexCount *
+                                ParticulasBuilder::kFloatsPorVertice *
+                                sizeof(float)),
+        vertices, GL_STATIC_DRAW);
+
+    // Un solo VBO interleaved; el layout lo define ParticulasBuilder (9 floats
+    // por vertice) y el shader los lee de los atributos 0..2.
+    const GLsizei stride = static_cast<GLsizei>(ParticulasBuilder::stride());
+    GLFuncs::pfnEnableVertexAttribArray(0);
+    GLFuncs::pfnVertexAttribPointer(
+        0, 3, GL_FLOAT, GL_FALSE, stride,
+        reinterpret_cast<const void*>(ParticulasBuilder::offsetPosicion()));
+    GLFuncs::pfnEnableVertexAttribArray(1);
+    GLFuncs::pfnVertexAttribPointer(
+        1, 2, GL_FLOAT, GL_FALSE, stride,
+        reinterpret_cast<const void*>(ParticulasBuilder::offsetUv()));
+    GLFuncs::pfnEnableVertexAttribArray(2);
+    GLFuncs::pfnVertexAttribPointer(
+        2, 4, GL_FLOAT, GL_FALSE, stride,
+        reinterpret_cast<const void*>(ParticulasBuilder::offsetColor()));
+
+    GLFuncs::pfnBindVertexArray(0);
+
+    const Handle handle = static_cast<Handle>(vao);
+    particulasBatches_[handle] = GpuParticulasBatch{vao, vbo};
+    return handle;
+}
+
+void OpenGL3Backend::destroyParticulasBatch(Handle batch) {
+    if (batch == kInvalidHandle) return;
+    const auto it = particulasBatches_.find(batch);
+    if (it == particulasBatches_.end()) return;
+    if (GLFuncs::pfnDeleteVertexArrays) {
+        GLuint vao = it->second.vao;
+        GLFuncs::pfnDeleteVertexArrays(1, &vao);
+    }
+    if (GLFuncs::pfnDeleteBuffers) {
+        GLuint vbo = it->second.vbo;
+        GLFuncs::pfnDeleteBuffers(1, &vbo);
+    }
+    particulasBatches_.erase(it);
+}
+
+void OpenGL3Backend::updateParticulasBatch(Handle batch, const float* vertices,
+                                           std::size_t vertexCount) {
+    if (batch == kInvalidHandle || !vertices || vertexCount == 0) return;
+    if (particulasBatches_.find(batch) == particulasBatches_.end()) return;
+
+    // Igual que el batch de lineas: glBufferData sobre el buffer ya enlazado
+    // en el VAO, que el driver reutiliza si la store anterior ya no lo
+    // referencia. El tamano del lote cambia cada frame.
+    GLFuncs::pfnBindVertexArray(static_cast<GLuint>(batch));
+    GLFuncs::pfnBindBuffer(GL_ARRAY_BUFFER, particulasBatches_[batch].vbo);
+    GLFuncs::pfnBufferData(
+        GL_ARRAY_BUFFER,
+        static_cast<GLsizeiptr>(vertexCount *
+                                ParticulasBuilder::kFloatsPorVertice *
+                                sizeof(float)),
+        vertices, GL_DYNAMIC_DRAW);
+    GLFuncs::pfnBindVertexArray(0);
+}
+
+void OpenGL3Backend::drawParticulasBatch(Handle batch, unsigned int vertexCount) {
     if (batch == kInvalidHandle || vertexCount == 0) return;
     GLFuncs::pfnBindVertexArray(static_cast<GLuint>(batch));
     glDrawArrays(GL_TRIANGLES, 0, static_cast<GLsizei>(vertexCount));
@@ -825,9 +912,25 @@ const char* OpenGL3Backend::diagnosticoGPU() const {
 void OpenGL3Backend::setBlendEnabled(bool enabled) {
     if (enabled) {
         glEnable(GL_BLEND);
-        glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+        aplicarBlend();
     } else {
         glDisable(GL_BLEND);
+    }
+}
+
+void OpenGL3Backend::setBlendMode(BlendMode mode) {
+    modoBlend_ = mode;
+    aplicarBlend();
+}
+
+void OpenGL3Backend::aplicarBlend() {
+    // glBlendFunc es GL 1.1: esta en el gl.h de Windows y de Linux, asi que
+    // no hace falta cargarla por puntero como las funciones del perfil core.
+    if (modoBlend_ == BlendMode::Additive) {
+        // Sumar el color: el fuego y las chispas brillan sobre el fondo.
+        glBlendFunc(GL_SRC_ALPHA, GL_ONE);
+    } else {
+        glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
     }
 }
 

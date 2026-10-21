@@ -53,6 +53,12 @@ public:
     void updateLineBatch(Handle batch, const float* vertices,
                          std::size_t vertexCount) override;
     void drawLineBatch(Handle batch, unsigned int vertexCount) override;
+    Handle createParticulasBatch(const float* vertices,
+                                 std::size_t vertexCount) override;
+    void destroyParticulasBatch(Handle batch) override;
+    void updateParticulasBatch(Handle batch, const float* vertices,
+                               std::size_t vertexCount) override;
+    void drawParticulasBatch(Handle batch, unsigned int vertexCount) override;
 
     // --- Textura 2D ---
     Handle createTexture2D(const Image2D& image) override;
@@ -99,6 +105,7 @@ public:
     void setClearColor(const float color[3]) override;
     const char* diagnosticoGPU() const override;
     void setBlendEnabled(bool enabled) override;
+    void setBlendMode(BlendMode mode) override;
 
     // --- Estado de profundidad (para el cielo: depth test on + depth mask off)
     void setDepthTestEnabled(bool enabled) override;
@@ -114,6 +121,11 @@ private:
     // LineBuilder): VAO + el VBO, sin EBO porque la expansion a quads no
     // comparte vertices.
     struct GpuLineBatch { unsigned int vao; unsigned int vbo; };
+    // El batch de particulas es, igual que el de lineas, un unico VBO
+    // interleaved (el layout lo fija ParticulasBuilder): VAO + el VBO, sin EBO
+    // porque cada particula es un quad de dos triangulos sin vertices
+    // compartidos.
+    struct GpuParticulasBatch { unsigned int vao; unsigned int vbo; };
     struct GpuTarget {
         unsigned int fbo;
         unsigned int rbo;
@@ -130,6 +142,7 @@ private:
     bool fboFuncionesCargadas();
     std::unordered_map<Handle, GpuMesh> meshes_;
     std::unordered_map<Handle, GpuLineBatch> lineBatches_;
+    std::unordered_map<Handle, GpuParticulasBatch> particulasBatches_;
     std::unordered_map<Handle, GpuTarget> targets_;
     std::unordered_map<Handle, GpuDepthTarget> depthTargets_;
     // Dimensiones vigentes de cada textura 2D creada: updateTexture2D las
@@ -138,6 +151,11 @@ private:
     // sin preguntarselo a GL.
     std::unordered_map<Handle, std::pair<int, int>> tamanosTextura2D_;
     bool fboCargadas_ = false;
+    // Modo de mezcla vigente: lo recuerda el backend para que al volver a
+    // habilitar la mezcla siga siendo el que eligio el consumidor.
+    BlendMode modoBlend_ = BlendMode::Alpha;
+    // Traduce el modo de mezcla a la funcion de GL que corresponde.
+    void aplicarBlend();
     // VAO sin atributos de la pasada a pantalla completa (cielo degradado): se
     // crea en el primer dibujo y se reusa. Vive hasta que termina el proceso,
     // igual que el resto de los recursos GPU del backend (no hay apagado de GL

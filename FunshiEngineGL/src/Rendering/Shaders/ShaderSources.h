@@ -428,6 +428,44 @@ void main() {
 }
 )";
 
+// Particulas: el quad de cada particula ya viene expandido en el mundo (con
+// su tamano y su rotacion aplicados), asi que el vertex shader solo proyecta.
+// El color va por vertice (cada particula tiene el suyo, y lo cambia la curva
+// del perfil a lo largo de la vida) y la textura es opcional.
+inline const char* const kParticulasVertexShader = R"(#version 330 core
+layout(location = 0) in vec3 aPosicion;
+layout(location = 1) in vec2 aUv;
+layout(location = 2) in vec4 aColor;
+
+uniform mat4 uView;
+uniform mat4 uProjection;
+
+out vec2 vUv;
+out vec4 vColor;
+
+void main() {
+    vUv = aUv;
+    vColor = aColor;
+    gl_Position = uProjection * uView * vec4(aPosicion, 1.0);
+}
+)";
+
+inline const char* const kParticulasFragmentShader = R"(#version 330 core
+in vec2 vUv;
+in vec4 vColor;
+out vec4 FragColor;
+
+uniform sampler2D uTexture;
+uniform int uUseTexture;
+
+void main() {
+    vec4 color = vColor;
+    if (uUseTexture == 1) color *= texture(uTexture, vUv);
+    if (color.a <= 0.0001) discard;
+    FragColor = color;
+}
+)";
+
 inline const char* const kSkyVertexShader = R"(#version 330 core
 // Fullscreen triangle (no VBO needed): gl_VertexID 0..2 maps to the three
 // corners of a triangle that covers the viewport. Solo emite la coordenada NDC

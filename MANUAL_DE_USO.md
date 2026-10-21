@@ -38,6 +38,7 @@ por arrastre y escribir scripts con la API exacta que expone el motor.
 17. [Terminal integrada](#17-terminal-integrada)
 18. [Mods del editor (.fmod)](#18-mods-del-editor-fmod)
 19. [API de inspeccion de escena](#19-api-de-inspeccion-de-escena)
+20. [Particulas y efectos](#20-particulas-y-efectos)
 
 ---
 
@@ -1919,5 +1920,95 @@ Notas:
 - Los valores se **validan antes** de aplicarse: un texto que no encaja con
   el tipo (por ejemplo `abc` en una variable numerica) se rechaza con su
   motivo y la escena no cambia.
+
+---
+
+---
+
+## 20. Particulas y efectos
+
+Un **emisor de particulas** es un componente: se agrega a cualquier objeto
+desde el inspector (pestaña "Agregar componente") y suelta particulas en la
+posicion del objeto. Sin mas, cada particula es un quad de color plano que
+sale disparado en la direccion del emisor y se apaga al terminar su vida.
+
+### 20.1 Que se puede editar
+
+El panel del emisor tiene:
+
+| Campo | Que hace |
+|---|---|
+| Activo | Apaga o enciende la emision sin quitar el componente |
+| Particulas por segundo | Cuantas particulas suelta por segundo |
+| Vida minima / maxima | Cuanto viven (en segundos) |
+| Velocidad minima / maxima | A que velocidad salen (unidades de mundo por segundo) |
+| Tamano minimo / maximo | De que tamano nacen (unidades de mundo) |
+| Color | El color con el que nacen |
+| Direccion | El eje del cono de emision |
+| Dispersion | Cuanto se abre el cono (0 = todas en la direccion, 1 = cono de 90 grados) |
+| Gravedad | La aceleracion constante que se les aplica |
+| Rozamiento | La fraccion de velocidad que pierden por segundo |
+| Rotacion / Velocidad de rotacion | El giro del quad |
+| Ruta (perfil de efecto) | El JSON del efecto (opcional) |
+
+Las particulas se dibujan despues de los sprites, con mezcla aditiva, y no
+escriben profundidad: el orden de dibujo decide el solapamiento.
+
+### 20.2 El perfil de efecto
+
+Un perfil es un archivo JSON que describe un efecto completo: la textura, la
+vida, la velocidad, la gravedad y las **curvas de tamano y color** a lo largo
+de la vida. Con perfil, sus valores mandan sobre los del emisor (salvo la
+tasa, que sigue siendo del emisor).
+
+El formato:
+
+```json
+{
+  "version": 1,
+  "nombre": "Humo",
+  "textura": "particulas/humo.png",
+  "vida": [0.6, 1.2],
+  "velocidad": [1.0, 2.0],
+  "aceleracion": [0.0, -1.0, 0.0],
+  "rozamiento": 0.2,
+  "tamanos": [0.4, 1.0, 1.2],
+  "colores": [[1, 1, 1, 0.6], [0.5, 0.5, 0.5, 0.0]]
+}
+```
+
+- `vida` y `velocidad` son pares `[minimo, maximo]`.
+- `aceleracion` es una terna (x, y, z).
+- `tamanos` son los multiplicadores de tamano por punto de la curva: el
+  primero es el nacimiento y el ultimo la muerte; entre ellos se interpola de
+  forma lineal. Un tamano de 0.4 que sube a 1.2 hace que la particula crezca.
+- `colores` son los colores RGBA por punto de la curva, con la misma
+  convencion. Un color que se va a alfa 0 hace que la particula se apague.
+
+Todos los campos son opcionales. Si el JSON esta mal escrito (un rango
+invertido, un color con menos de cuatro componentes), el emisor se queda sin
+perfil y el panel muestra el motivo.
+
+La ruta del perfil se guarda **relativa a la carpeta de assets** del proyecto,
+igual que las texturas de los materiales.
+
+### 20.3 Como se ejecuta
+
+La simulacion corre en el editor y en juego: un efecto se ve mientras se
+edita. El numero de particulas vivas esta acotado (4000 por defecto), asi que
+un efecto con muchos emisores no puede hundir el frame: cuando se llega al
+limite, se descarta la particula mas vieja.
+
+Las particulas son **cinematicas**: no chocan con la fisica. Si un efecto
+necesita rebotar, habria que consultarlo contra el mundo.
+
+### 20.4 Desde la consola
+
+El emisor es un componente mas, asi que la API de inspeccion (seccion 19) lo
+altera como a cualquier otro: `scene.component.create` con el tipo
+`EmisorParticulas`, y `scene.component.set` con sus variables (`rate`,
+`lifeMin`, `lifeMax`, `speedMin`, `speedMax`, `sizeMin`, `sizeMax`, `color`,
+`direction`, `dispersion`, `gravity`, `drag`, `rotation`, `rotationSpeed`,
+`profilePath` y `active`).
 
 ---

@@ -482,6 +482,9 @@ FunshiEngineGL/                          ← raíz del repo
         │   │                                wireframes de los colliders): es la única vía de
         │   │                                dibujo de líneas (VBO/VAO + shader de líneas
         │   │                                gruesas; el glLineWidth quedó eliminado)
+        │   ├── ParticulasRenderer.h/.cpp   ← dibuja el lote de particulas: agrupa por
+        │   │                                perfil (cada perfil tiene su textura) y
+        │   │                                sube un lote por grupo
         │   ├── GrillaRenderer.h/.cpp       ← geometría/lógica de grilla infinita
         │   ├── GuiaEje.h/.cpp              ← guía de eje con contraste
         │   ├── TextureGL.h/.cpp            ← wrapper de textura 2D + cubemap
@@ -559,6 +562,9 @@ FunshiEngineGL/                          ← raíz del repo
         │       ├── AudioSource.h/.cpp    ← fuente de sonido: ruta del archivo, volumen y loop
         │       ├── Musica.h/.cpp        ← reproductor de música: lista ordenada de pistas
         │       │                            (rutas), volumen, fundido y repetición de la lista
+        │       ├── EmisorParticulas.h/.cpp ← emisor de partículas: tasa, vida, velocidad,
+        │       │                            tamaño, color, cono de emisión y perfil de
+        │       │                            efecto opcional (serial FPT1)
         │       ├── RigidBody/RigidBody.h/.cpp ← cuerpo Bullet sincronizado, habilitable, con detección de apoyo (RAII); masa, gravedad por cuerpo (uso+escala), friccion y freeze por ejes via setGravity/setFriction/setLinearFactor/setAngularFactor, serial v3 con lectura de v1 y v2
         │       └── Colliders/
         │           ├── Collider.h/.cpp   ← base abstracta; radio; visibilidad persistente y gizmo
@@ -615,6 +621,15 @@ FunshiEngineGL/                          ← raíz del repo
         │   └── InspeccionEscena.h/.cpp   ← implementación sobre SceneRegistry y
         │                                    EditorController; toda mutación pasa por
         │                                    el gestor de comandos
+        ├── Particulas/                 ← sistema de particulas (CPU puro)
+        │   ├── Particula.h             ← estado de una particula viva (dato plano)
+        │   ├── ParametrosEmisor.h      ← los datos que edita el inspector
+        │   ├── PerfilParticula.h/.cpp  ← perfil de efecto: curvas de tamano y color
+        │   ├── LectorPerfil.h/.cpp     ← carga del perfil de efecto (JSON)
+        │   ├── SistemaParticulas.h/.cpp ← simulacion: emision, integracion, muerte
+        │   │                              y presupuesto de particulas vivas
+        │   └── ParticulasBuilder.h/.cpp← expansion de cada particula a un quad
+        │                                  (CPU puro, como LineBuilder)
         ├── WebUI/
         │   ├── VistaWebUI.h             ← una interfaz web ya montada por un backend
         │   │                               (estado opaco + ruta .html + sello mtime +
@@ -790,6 +805,33 @@ solo como orquestador de arranque y bucle.
   interactuar con la GUI. Regla: ninguna mutación de escena desde la GUI salta
   el gestor; un comando nuevo se agrega con su clase en `Comandos/` y su caso
   en `tests/ComandosTests.cpp`.
+- Sistema de partículas (`src/Particulas/`): la simulación es **CPU pura**
+  (no toca OpenGL ni glm), así que se puede probar entera en los targets
+  headless, igual que `LineBuilder`.
+  - `SistemaParticulas` emite, integra (rozamiento y gravedad), retira las
+    partículas sin vida y acota cuántas hay vivas: al llegar al límite se
+    descarta la más vieja, de modo que el coste por frame no depende de lo que
+    se edite en el inspector. El azar sale de un `mt19937` con semilla, y el
+    número real se arma a mano (no con `uniform_real_distribution`, que no
+    está especificada y difiere entre implementaciones): la simulación es
+    reproducible.
+  - `ParticulasBuilder` expande cada partícula a un quad de dos triángulos con
+    el tamaño y la rotación ya aplicados: el vertex shader solo proyecta. Es
+    el mismo patrón que `LineBuilder` (un VBO interleaved, sin EBO).
+  - El **perfil de efecto** es el guion de una partícula a lo largo de su
+    vida (textura, vida, velocidad, gravedad y las curvas de tamaño y color).
+    Lo guarda el componente emisor y la partícula lo comparte, así que sigue
+    vivo aunque el emisor desaparezca de la escena.
+  - El componente `EmisorParticulas` guarda los datos del emisor; su estado de
+    ejecución (el acumulador de emisión) no se serializa, igual que hace
+    `Animador2D` con su fotograma. `GameScene` es quien avanza el sistema y
+    pide a cada emisor que suelte las suyas: la simulación corre también en el
+    editor, no solo en juego.
+  - El renderer (`src/Rendering/ParticulasRenderer.*`) no conoce el emisor:
+    recibe el sistema y dibuja lo que hay, como los demás renderers.
+  - El backend graphics incorporaron un lote de partículas y un **modo de
+    mezcla aditivo** (`BlendMode`): el fuego y las chispas suman el color en
+    vez de fundirse con el fondo.
 - API de inspección (`src/Inspeccion/`): contrato público del motor para
   herramientas externas. La CLI (`FunshiEngineCLI`) es un **proyecto aparte**
   que consume este contrato; el motor publica la API y la CLI la usa.
@@ -1447,8 +1489,8 @@ los que necesitan glm (`interface-component-tests`, `webui-runtime-tests`,
 (`tema-tests`) y los que usan solo el core de diagnóstico
 (`manifiesto-assets-tests` y `orquestador-estado-tests`). El resto compila sus
 fuentes directamente (`barra-progreso-tests` entre ellas) y corre también con
-`BUILD_ENGINE=OFF`: con el motor hay 43 suites que se ejecutan (45
-registradas, dos deshabilitadas) y sin él 22.
+`BUILD_ENGINE=OFF`: con el motor hay 45 suites que se ejecutan (47
+registradas, dos deshabilitadas) y sin él 23.
 
 La opción `BUILD_ENGINE=OFF` compila solo las pruebas (útil en CI y plataformas
 sin las librerías gráficas), y `ENABLE_ASAN` (ON por defecto en Debug) activa

@@ -31,6 +31,7 @@
 #include "../Iluminacion/LightSystem.h"
 #include "../Objetos/Componentes/Script.h"
 #include "../Objetos/Componentes/Transform.h"
+#include "../Objetos/Componentes/EmisorParticulas.h"
 #include "../Objetos/Componentes/Grid.h"
 #include "../Objetos/Modelos3D.h"
 #include "../Objetos/SimpleObject.h"
@@ -1068,8 +1069,35 @@ void GameScene::pintarVentanaCamaras() {
     ImGui::End();
 }
 
+void GameScene::emitirParticulas(float deltaTime) {
+    if (deltaTime <= 0.0f) return;
+    auto* objetos = getGameObjectsScene();
+    if (!objetos || objetos->isEmpty()) return;
+    Position<GameObject*>* posicion = objetos->first();
+    while (posicion && posicion->getElement()) {
+        GameObject* objeto = posicion->getElement();
+        posicion = (posicion != objetos->last()) ? objetos->next(posicion)
+                                                  : nullptr;
+        if (!objeto) continue;
+        EmisorParticulas* emisor = objeto->getComponent<EmisorParticulas>();
+        if (!emisor) continue;
+        // La transformacion global se calcula en un buffer del objeto: la
+        // posicion se copia de inmediato (el emisor la usa ya).
+        Transform* global = objeto->getGlobalTransform();
+        if (!global) continue;
+        emisor->emitir(sistemaParticulas, global->getTranslatef(), deltaTime);
+    }
+}
+
 void GameScene::update(float value) {
     deltaTime = value;
+
+    // Particulas: primero se mueven las que viven y despues los emisores
+    // sueltan las nuevas. Corre en el editor y en juego (a diferencia de los
+    // componentes, que solo avanzan en play), asi que un efecto se ve mientras
+    // se edita.
+    sistemaParticulas.actualizar(value);
+    emitirParticulas(value);
     if (resetSimulacionPendiente && start) {
         resetSimulacionPendiente = false;
         if (!snapshotSimulacionDisponible()) {
@@ -1457,6 +1485,7 @@ void GameScene::gameScene() {
     ctx.assetManager = assetManager.get();
     // Proyecto 2D: la pasada omite el cielo y el difuminado por distancia.
     ctx.modo2D = dimensionProyecto == DimensionProyecto::DosD;
+    ctx.sistemaParticulas = &sistemaParticulas;
 
     // Pasada de la escena (vistas previas + pasada principal + diag) en la
     // capa de Rendering.
