@@ -229,7 +229,10 @@ FunshiEngineGL/                          ← raíz del repo
         ├── Exportador/
         │   ├── GameExporter.h/.cpp      ← exporta el juego standalone: proyecto CMake temporal,
         │   │                              compila el runtime (sin editor), empaqueta ejecutable +
-        │   │                              scenes/scripts/assets en estructura simplificada
+        │   │                              scenes/scripts/assets en estructura simplificada.
+        │   │                              Deja su traza en un archivo propio (logs/Exportacion_*.log):
+        │   │                              la salida de la compilación queda ahi, y el mensaje
+        │   │                              final la menciona
         │   ├── EstadoExportacion.h/.cpp ← estado de la exportación (fase, resultado, progreso,
         │   │                              mensaje): reglas de dominio, sin ImGui, para que el
         │   │                              resultado no se pierda y se pueda comprobar headless
@@ -255,8 +258,10 @@ FunshiEngineGL/                          ← raíz del repo
         │   │                              en Linux; polling con mtime en el resto)
         │   └── Proceso.h/.cpp           ← runner de procesos SIN shell (argv propio:
         │                                  CreateProcessW / fork+execvp, log por handles/fd,
-        │                                  cwd, entorno extra; única vía a `cmd.exe` es la
-        │                                  receta cruda del harvest de vcvars)
+        │                                  cwd, entorno extra; el log se trunca por defecto y
+        │                                  puede abrirse en modo "agregar al final" para que
+        │                                  varias etapas compartan archivo; única vía a
+        │                                  `cmd.exe` es la receta cruda del harvest de vcvars)
         ├── GestorDeArchivos/            ← modelo/infra de bajo nivel: Binario (streams binarios),
         │                                  File, Carpeta, GestorDeArchivos (exploración del filesystem).
         │                                  FileManager lo consume como modelo del árbol.
@@ -1097,11 +1102,12 @@ también con `BUILD_ENGINE=OFF`):
   pura de `SelectorArchivoCubemap` (filtro de extensiones del cubemap y aviso
   de caras faltantes o de resolución dispares), que al vivir fuera del dibujo del
   modal se ejercita aquí sin crear contexto de ImGui.
-- `proceso-tests` (24): el runner de procesos sin shell `Proceso`: round-trip
+- `proceso-tests` (30): el runner de procesos sin shell `Proceso`: round-trip
   de argv byte a byte (el binario se relanza a sí mismo copiado en una carpeta
-  con espacios, con argumentos hostiles), exit codes, truncado del log, `cwd`,
-  entorno extra, tabla de `citar()` y, en Windows, la receta cruda de `cmd.exe`
-  del harvest de vcvars.
+  con espacios, con argumentos hostiles), exit codes, truncado del log, el modo
+  "agregar al final" (varias etapas escriben en el mismo archivo sin pisarse),
+  `cwd`, entorno extra, tabla de `citar()` y, en Windows, la receta cruda de
+  `cmd.exe` del harvest de vcvars.
 - `configuracion-tests` (174): round-trip del JSON de `EditorConfig` (general y
   por proyecto, con `ConfigPersistence`/`ProjectPaths`), carga tolerante ante
   archivos ausentes/corruptos/parciales, prioridad de las claves modernas sobre
@@ -1574,10 +1580,11 @@ GameScene → coordina todos los subsistemas del frame
   comprueba que las precondiciones digan el motivo cuando no se puede
   exportar (sin proyecto, o con su carpeta inexistente), que el resultado
   (éxito o error) se conserve al terminar la exportación en vez de perderse,
-  que la barra de menú le pase al diálogo el proyecto activo y que el lector de
+  que la barra de menú le pase al diálogo el proyecto activo, que el lector de
   importaciones PE encuentre las DLL que pide el binario (sobre un PE
-  construido a propósito) y que el cierre de dependencias alcance las DLL de
-  segundo nivel.
+  construido a propósito), que el cierre de dependencias alcance las DLL de
+  segundo nivel y que la traza de la exportación se cree en un archivo propio
+  que una segunda exportación no reutiliza.
 - Las suites de prueba se ejecutan con `ctest`: el build con motor registra
   **41** tests (39 habilitados y 2 deshabilitados) y el build headless
   (`BUILD_ENGINE=OFF`) registra **21** (20 habilitados y 1 deshabilitado).

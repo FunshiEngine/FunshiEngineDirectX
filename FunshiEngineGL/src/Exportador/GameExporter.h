@@ -99,6 +99,11 @@ public:
     static std::vector<std::pair<std::string, std::string>>
     cierreDeDependencias(const std::string& rutaEjecutable,
                           const BuscadorDll& buscador);
+    // Ruta del archivo donde esta exportacion deja su traza: la salida de la
+    // compilacion (cmake, el enlazador, los avisos del compilador) se
+    // escribe ahi, y no mezclada con el log general del motor. Vacia si no
+    // se pudo crear la carpeta.
+    static std::string rutaLogExportacion();
 
 private:
     Config cfg_;
@@ -113,6 +118,8 @@ private:
     mutable std::mutex mutexEstado_;
     std::condition_variable cvEstado_;
     std::string mensajeFinal_;
+    // Archivo de traza de esta exportacion (salida de la compilacion).
+    std::string rutaLog_;
 
     void runExportacion();
     void runExportacionInterna();

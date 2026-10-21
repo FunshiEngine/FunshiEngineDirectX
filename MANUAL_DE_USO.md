@@ -825,6 +825,16 @@ al terminar queda abierto mostrando el resultado hasta que el usuario lo cierre.
 > Si el dialogo muestra «Proyecto: (ninguno)» no hay ningun proyecto activo
 > desde el que exportar: elige o abre un proyecto antes de exportar.
 
+**Traza de la exportacion:** cada exportacion deja su propio archivo de log
+en la carpeta `logs/` del motor (`MotorGrafico/logs/Exportacion_<AAAAMMDD_HHMMSS>.log`,
+timestamp en UTC). Ahi queda **todo lo que se imprimio en la terminal durante
+la compilacion** (el configure de CMake, el progreso de la compilacion, los
+avisos del compilador y del enlazador) junto con la bitacora de la
+exportacion. El mensaje final del dialogo dice la ruta exacta del archivo, y
+las etapas se agregan al final unas de otras (el configure no borra lo que
+escribio la compilacion). Es el sitio donde mirar cuando la exportacion falla
+o cuando el compilador avisa de algo.
+
 > Los scripts C++ del proyecto viajan como fuentes y se compilan en la
 > **primera ejecucion** del juego en la maquina que lo corre: hace falta un
 > compilador C++ ahi (`g++`/`cl` en el PATH o la variable `FUNSHI_CXX`).

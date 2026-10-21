@@ -19,6 +19,7 @@
 #include "GameExporter.h"
 
 #include "../Configuracion/ProjectPaths.h"
+#include "../Configuracion/RutasLog.h"
 #include "../FileManager/Proceso.h"
 #include "../Hilos/MotorHilos.h"
 #include "ConfigJuegoExportado.h"
@@ -30,6 +31,7 @@
 #include <fstream>
 #include <filesystem>
 #include <cstdlib>
+#include <ctime>
 #include <iostream>
 #include <set>
 #include <string>
@@ -164,6 +166,16 @@ void GameExporter::runExportacion() {
 }
 
 void GameExporter::runExportacionInterna() {
+    // Traza propia de esta exportacion: la salida de la compilacion se
+    // escribe ahi, para poder revisarla cuando algo salga raro.
+    rutaLog_ = rutaLogExportacion();
+    if (!rutaLog_.empty()) {
+        std::ofstream cabecera(rutaLog_, std::ios::app);
+        if (cabecera) {
+            cabecera << "=== Exportacion de " << cfg_.nombreProyectoExportado
+                     << " (proyecto: " << cfg_.nombreProyecto << ") ===\n";
+        }
+    }
     // La traza dice de que proyecto se exporta: es el dato que el dialogo
     // puede perder (o no tener) y el que hace falta para saber desde el log
     // que se exporto lo que el usuario pedia.
@@ -317,8 +329,10 @@ bool GameExporter::compilarEngineRuntime(const std::string& buildDir) {
     // Compilar solo la libreria del motor. Sin shell (H-3 nivel 2): el
     // `cd X && ...` viejo pasaba la linea entera por cmd.exe/make; ahora el
     // directorio de trabajo es el parametro cwd del runner y cada token va
-    // como argv. El log vacio = el hijo hereda la salida del motor (igual
-    // que con std::system: la progresion del export queda en el log propio).
+    // como argv. La salida del compilador va al archivo de traza de esta
+    // exportacion (agregandose al final, para que las etapas se acumulen en
+    // el mismo archivo); si no hay traza, el hijo hereda la salida del motor
+    // (igual que con std::system).
     // `cmake .` (fuente = el propio buildDir, donde el generador dejo el
     // CMakeLists): el viejo `cmake ..` apuntaba al padre del buildDir, que no
     // contiene CMakeLists.txt y el configure fallaba siempre. El toolchain
@@ -328,11 +342,11 @@ bool GameExporter::compilarEngineRuntime(const std::string& buildDir) {
     if (cfg_.plataforma == Plataforma::Windows && !hostEsWindows())
         argvConfigure.push_back("-DCMAKE_TOOLCHAIN_FILE=" + buildDir +
                                 "/toolchain-mingw.cmake");
-    if (Proceso::ejecutar(argvConfigure, std::string(), buildDir) != 0)
+    if (Proceso::ejecutar(argvConfigure, rutaLog_, buildDir, {}, false) != 0)
         return false;
     return Proceso::ejecutar(
                {"cmake", "--build", ".", "--target", "funshi_engine", "-j4"},
-               std::string(), buildDir) == 0;
+               rutaLog_, buildDir, {}, false) == 0;
 }
 
 bool GameExporter::compilarJuego(const std::string& buildDir) {
@@ -342,7 +356,7 @@ bool GameExporter::compilarJuego(const std::string& buildDir) {
     return Proceso::ejecutar(
                {"cmake", "--build", ".", "--target", cfg_.nombreEjecutable,
                 "-j4"},
-               std::string(), buildDir) == 0;
+               rutaLog_, buildDir, {}, false) == 0;
 }
 
 bool GameExporter::copiarAssetsYDependencias(const std::string& buildDir) {
@@ -469,6 +483,48 @@ const char* GameExporter::etiquetaPlataforma(Plataforma plataforma) {
     return plataforma == Plataforma::Windows ? "Windows (cross-compile MinGW)"
                                              : "Linux (nativo)";
 #endif
+}
+
+std::string GameExporter::rutaLogExportacion() {
+    // Timestamp en UTC, como el log del motor: asi el nombre ordena igual en
+    // cualquier huso horario.
+    const std::time_t ahora = std::time(nullptr);
+    std::tm utc{};
+#if defined(_WIN32)
+    gmtime_s(&utc, &ahora);
+#else
+    gmtime_r(&ahora, &utc);
+#endif
+    char sufijo[32] = {0};
+    std::strftime(sufijo, sizeof(sufijo), "%Y%m%d_%H%M%S", &utc);
+
+    const std::string nombreBase = std::string("Exportacion_") + sufijo;
+    // La traza vive junto al log del motor (carpeta "logs/"): el usuario
+    // encuentra los dos en el mismo sitio.
+    const std::vector<std::string> carpetas =
+        RutasLog::candidatas(ProjectPaths::directorioBase(), std::string(),
+                             std::string());
+    for (const std::string& carpeta : carpetas) {
+        std::error_code ec;
+        fs::create_directories(carpeta, ec);
+        if (ec) continue;
+        // Dos exportaciones en el mismo segundo no pisan el log anterior:
+        // el nombre se reserva creando el archivo.
+        std::string ruta =
+            (fs::path(carpeta) / (nombreBase + ".log")).string();
+        int indice = 2;
+        while (fs::exists(ruta, ec)) {
+            ruta = (fs::path(carpeta) /
+                    (nombreBase + "_" + std::to_string(indice) + ".log"))
+                       .string();
+            ++indice;
+        }
+        std::ofstream reserva(ruta, std::ios::out | std::ios::trunc);
+        if (!reserva) continue;
+        reserva.close();
+        return ruta;
+    }
+    return std::string();
 }
 
 bool GameExporter::copiarDependenciasRuntime(const std::string& buildDir) {
@@ -683,6 +739,13 @@ std::string GameExporter::obtenerExtensionEjecutable() const {
 void GameExporter::log(const std::string& msg) {
     if (cfg_.onLog) cfg_.onLog(msg);
     std::cout << "[Exporter] " << msg << std::endl;
+    // La traza tambien queda en el archivo de la exportacion: lo que se ve
+    // en la terminal (compilacion, avisos del enlazador) se puede revisar
+    // despues sin bucear en el log general del motor.
+    if (!rutaLog_.empty()) {
+        std::ofstream archivo(rutaLog_, std::ios::app);
+        if (archivo) archivo << msg << "\n";
+    }
 }
 
 void GameExporter::progreso(float p, const std::string& etapa) {
@@ -690,14 +753,18 @@ void GameExporter::progreso(float p, const std::string& etapa) {
 }
 
 void GameExporter::finalizar(bool ok, const std::string& msg) {
+    // El mensaje final dice donde esta la traza: sin eso, lo que se ve en la
+    // terminal al compilar se pierde al cerrar la ventana.
+    const std::string detalle =
+        rutaLog_.empty() ? msg : (msg + " (traza: " + rutaLog_ + ")");
     exito_.store(ok, std::memory_order_release);
     {
         std::lock_guard<std::mutex> bloqueo(mutexEstado_);
-        mensajeFinal_ = msg;
+        mensajeFinal_ = detalle;
     }
     // El mensaje se escribe antes del indicador: quien vea que la
     // exportacion termino ve tambien el mensaje final.
     terminado_.store(true, std::memory_order_release);
     cvEstado_.notify_all();
-    if (cfg_.onFinalizado) cfg_.onFinalizado(ok, msg);
+    if (cfg_.onFinalizado) cfg_.onFinalizado(ok, detalle);
 }

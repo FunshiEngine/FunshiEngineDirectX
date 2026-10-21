@@ -1656,6 +1656,7 @@ enum class Resultado { Pendiente, Exito, Error };
 | # | Ubicación | Operación | Herramienta | Fix Aplicado | Commit |
 |---|-----------|-----------|-------------|--------------|--------|
 | 1 | `FunshiEngineGL/src/GUI/Export/ExportDialog.cpp` y `FunshiEngineGL/src/Proyectos/GestorDeProyectos.cpp` | Exportar el juego standalone desde el diálogo de exportación | Log de la sesión del editor (sin traza `[Exporter]`) + sonda local que replica el flujo del diálogo | El estado pasa a `EstadoExportacion` con fase de resultado y el motivo siempre visible; el gestor refleja el proyecto en la barra de menú también al arrancar con `--proyecto` (Patrón R28) | `fix(exportacion): el proyecto llega al dialogo y el resultado no se pierde` |
+| 2 | `FunshiEngineGL/src/Exportador/GameExporter.cpp` y `FunshiEngineGL/src/FileManager/Proceso.cpp` | Exportar el juego standalone: la salida de la compilación se perdía (solo se pintaba en la terminal del editor) | Compilación observada en la terminal durante la exportación (el usuario no podía revisarla después) | La exportación deja su traza en un archivo propio (`logs/Exportacion_*.log`) y el mensaje final dice la ruta; las etapas de la compilación se agregan al final del mismo archivo en vez de pisarse (Patrón R28) | `feat(exportacion): la traza de la exportación queda en un archivo` |
 
 ---
 
@@ -1748,6 +1749,7 @@ su tabla de importaciones.
 | 2026-10-21 | Gianfranco Ivan Enrique | Añadido el decimonoveno concepto (Patrón R27, lo que solo compila otra herramienta no lo compila nadie) con sus instancias #1–#2: el punto de entrada del juego exportado quedaba fuera de todo build (lo compilaba solo el exportador) y el proyecto generado heredaba los sanitizadores del motor, que el toolchain de exportación no trae. |
 | 2026-10-21 | Gianfranco Ivan Enrique | Añadido el vigésimo concepto (Patrón R28, el resultado de una operación se conserva y se muestra) con su instancia #1: el diálogo de exportación dibujaba el motivo solo mientras la exportación corría, y con el editor arrancado con `--proyecto` el diálogo recibía el proyecto vacío: la exportación se rechazaba y el fallo se perdía. |
 | 2026-10-21 | Gianfranco Ivan Enrique | Añadido el vigesimoprimer concepto (Patrón R29, las dependencias de una biblioteca son dependencias de quien la usa) con su instancia #1: el juego exportado se llevaba solo las DLL que importaba él, y las que importan esas (zlib y minizip, de la biblioteca de modelos) se quedaban fuera: al arrancar, el sistema las pedía. |
+| 2026-10-21 | Gianfranco Ivan Enrique | Añadida la segunda instancia del patrón R28 (el resultado de una operación se conserva y se muestra): la salida de la compilación de la exportación solo se pintaba en la terminal del editor, así que no se podía revisar; ahora queda en un archivo de traza propio, cuya ruta anuncia el mensaje final. |
 
 ---
 

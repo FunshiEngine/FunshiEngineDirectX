@@ -355,12 +355,35 @@ void comprobarDependencias() {
     }
 }
 
+static void comprobarLogExportacion() {
+    // La exportacion deja su traza en un archivo propio (la salida de la
+    // compilacion): el usuario tiene que poder abrirlo y leerlo.
+    const std::string ruta = GameExporter::rutaLogExportacion();
+    CHECK(!ruta.empty(), "se encuentra una carpeta donde dejar la traza");
+    CHECK(std::filesystem::exists(ruta),
+          "la traza de la exportacion es un archivo que existe");
+    const std::filesystem::path carpeta = std::filesystem::path(ruta).parent_path();
+    CHECK(std::filesystem::exists(carpeta),
+          "la traza vive en una carpeta que existe");
+    // Dos exportaciones seguidas no comparten archivo: la segunda no pisa lo
+    // que escribio la primera.
+    const std::string otra = GameExporter::rutaLogExportacion();
+    CHECK(!otra.empty() && otra != ruta,
+          "una segunda exportacion no reutiliza el archivo de la primera");
+    // Los archivos reservados se borran: la prueba no deja rastro en la
+    // carpeta de logs del motor.
+    std::error_code ec;
+    std::filesystem::remove(ruta, ec);
+    std::filesystem::remove(otra, ec);
+}
+
 int main() {
     comprobarPrecondiciones();
     comprobarEstado();
     comprobarDialogo();
     comprobarBarraDeMenu();
     comprobarDependencias();
+    comprobarLogExportacion();
 
     std::cout << (fallos == 0 ? "OK" : "FALLOS") << ": " << total
               << " comprobaciones" << std::endl;
