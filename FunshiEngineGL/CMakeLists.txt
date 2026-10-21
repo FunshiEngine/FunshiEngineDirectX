@@ -708,6 +708,25 @@ set_target_properties(materiales-regiones-tests PROPERTIES
 )
 add_test(NAME materiales-regiones-tests COMMAND materiales-regiones-tests)
 
+# --- Pruebas headless de las primitivas 3D en CPU ----------------------------
+# La esfera es la muestra de un material (el editor la dibuja en una textura
+# para mostrar como queda). Es geometria pura, sin OpenGL.
+add_executable(primitivas3d-tests
+    ${CMAKE_CURRENT_SOURCE_DIR}/../tests/Primitivas3DTests.cpp
+)
+target_include_directories(primitivas3d-tests PRIVATE
+    ${SRC_DIR}
+    ${CMAKE_SOURCE_DIR}/External
+    ${CMAKE_SOURCE_DIR}/External/imgui
+)
+target_link_libraries(primitivas3d-tests PRIVATE funshi_engine)
+set_target_properties(primitivas3d-tests PROPERTIES
+    CXX_STANDARD 17
+    CXX_STANDARD_REQUIRED ON
+    CXX_EXTENSIONS OFF
+)
+add_test(NAME primitivas3d-tests COMMAND primitivas3d-tests)
+
 if(WIN32)
     target_link_libraries(escena-serializacion-tests PRIVATE dbghelp)
     target_compile_definitions(escena-serializacion-tests PRIVATE _HAS_STD_BYTE=0)
@@ -719,6 +738,8 @@ if(WIN32)
     target_compile_definitions(malla-regiones-tests PRIVATE _HAS_STD_BYTE=0)
     target_link_libraries(materiales-regiones-tests PRIVATE dbghelp)
     target_compile_definitions(materiales-regiones-tests PRIVATE _HAS_STD_BYTE=0)
+    target_link_libraries(primitivas3d-tests PRIVATE dbghelp)
+    target_compile_definitions(primitivas3d-tests PRIVATE _HAS_STD_BYTE=0)
     target_link_libraries(serializacion-tests PRIVATE dbghelp)
     target_compile_definitions(serializacion-tests PRIVATE _HAS_STD_BYTE=0)
 endif()

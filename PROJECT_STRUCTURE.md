@@ -159,6 +159,9 @@ FunshiEngineGL/                          ← raíz del repo
         │   │                              y nombre del material del archivo)
         │   ├── AssimpMeshLoader.*       ← loader Assimp→Mesh (conserva el material de
         │   │                              cada sub-malla como región)
+        │   ├── Primitivas2D.h            ← quad 2D unitario (CPU puro, testeable)
+        │   ├── Primitivas3D.h            ← esfera UV (CPU puro, testeable): es la
+        │   │                              muestra con la que el editor enseña un material
         │   └── StbImageLoader.*         ← loader stb_image→Image (solo engine) +
         │                                   `dimensiones()`: lee la cabecera del
         │                                   archivo sin decodificar; el volteo
@@ -1563,8 +1566,13 @@ GameScene → coordina todos los subsistemas del frame
   ninguno. La suite comprueba el alta y la baja de regiones, la sincronización
   con las que declara el modelo, el round-trip binario (con el material de cada
   region dentro) y las tres respuestas del resolvedor.
+- `tests/Primitivas3DTests.cpp`: la esfera de muestra de un material es
+  geometría pura (sin OpenGL): la suite comprueba que los vértices están en la
+  esfera, que las normales son unitarias, que las UVs están en [0,1], que los
+  índices apuntan a vértices válidos y que ningún triángulo es degenerado (un
+  vértice repetido dejaría un trozo invisible).
 - Las suites de prueba se ejecutan con `ctest`: el build con motor registra
-  **40** tests (38 habilitados y 2 deshabilitados) y el build headless
+  **41** tests (39 habilitados y 2 deshabilitados) y el build headless
   (`BUILD_ENGINE=OFF`) registra **21** (20 habilitados y 1 deshabilitado).
 - `.github/workflows/ci.yml` compila el engine completo en Ubuntu (Release, sin
   ASan) y ejecuta las pruebas; además ejecuta las headless en
@@ -1595,7 +1603,7 @@ GameScene → coordina todos los subsistemas del frame
   Windows usa el generador por defecto (multi-config), que es el mismo que
   comprueba el job multi-config de la CI.
 - La lista de targets que compila cada job tiene que cubrir todas las suites
-  registradas en ese modo de build (40 con `BUILD_ENGINE=ON`, 21 con
+  registradas en ese modo de build (41 con `BUILD_ENGINE=ON`, 21 con
   `BUILD_ENGINE=OFF`): `ctest` ejecuta todos los tests registrados en el build,
   no solo los compilados, y los que faltan quedan como `Not Run`, lo que hace
   fallar el job. Las suites con `DISABLED TRUE` se pueden omitir porque `ctest`
