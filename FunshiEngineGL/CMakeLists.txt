@@ -1513,6 +1513,7 @@ add_executable(particulas-tests
     ${SRC_DIR}/Particulas/SistemaParticulas.cpp
     ${SRC_DIR}/Particulas/PerfilParticula.cpp
     ${SRC_DIR}/Particulas/LectorPerfil.cpp
+    ${SRC_DIR}/Particulas/ParticulasBuilder.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../tests/ParticulasTests.cpp
 )
 target_include_directories(particulas-tests PRIVATE ${CMAKE_SOURCE_DIR}/External)

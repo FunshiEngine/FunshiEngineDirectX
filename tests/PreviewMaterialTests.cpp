@@ -40,6 +40,7 @@
 #include "../FunshiEngineGL/src/Rendering/Preview/PreviewMaterial.h"
 #include "../FunshiEngineGL/src/Rendering/Shaders/GestorShaders.h"
 
+using Rendering::Backend::BlendMode;
 using Rendering::Backend::DepthFunc;
 using Rendering::Backend::Handle;
 using Rendering::Backend::Image2D;
@@ -85,6 +86,11 @@ public:
     void destroyLineBatch(Handle) override {}
     void updateLineBatch(Handle, const float*, std::size_t) override {}
     void drawLineBatch(Handle, unsigned int) override {}
+
+    Handle createParticulasBatch(const float*, std::size_t) override { return 5; }
+    void destroyParticulasBatch(Handle) override {}
+    void updateParticulasBatch(Handle, const float*, std::size_t) override {}
+    void drawParticulasBatch(Handle, unsigned int) override {}
 
     Handle createTexture2D(const Image2D&) override { return 3; }
     void destroyTexture2D(Handle) override {}
@@ -159,6 +165,7 @@ public:
     void setClearColor(const float[3]) override {}
     const char* diagnosticoGPU() const override { return "backend falso"; }
     void setBlendEnabled(bool) override {}
+    void setBlendMode(BlendMode) override {}
     void setDepthTestEnabled(bool) override {}
     void setDepthMask(bool) override {}
     void setDepthFunc(DepthFunc) override {}
