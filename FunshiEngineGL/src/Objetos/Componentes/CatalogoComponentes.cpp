@@ -171,8 +171,9 @@ CatalogoComponentes::CatalogoComponentes() {
     add("Material", "Material", DimensionesComponente::TresD, "",
         kIconoMaterial,
         [](GameObject&) { return std::unique_ptr<Component>(new Material()); },
-        [](Component*, GameObject* o, const ContextoPanel&) {
-            return std::unique_ptr<SettingsComponent>(new SettingsMaterial(o));
+        [](Component*, GameObject* o, const ContextoPanel& ctx) {
+            return std::unique_ptr<SettingsComponent>(
+                new SettingsMaterial(o, ctx.preview));
         });
     // Materiales por region: cada parte de la malla (la cara de un cubo, la
     // parte de un personaje) puede llevar su propio material.
@@ -181,7 +182,7 @@ CatalogoComponentes::CatalogoComponentes() {
         [](GameObject&) { return std::unique_ptr<Component>(new Materiales()); },
         [](Component*, GameObject* o, const ContextoPanel& ctx) {
             return std::unique_ptr<SettingsComponent>(
-                new SettingsMateriales(o, ctx.editor));
+                new SettingsMateriales(o, ctx.editor, ctx.preview));
         });
     add("Light", "Light", DimensionesComponente::TresD, "",
         kIconoLuz,

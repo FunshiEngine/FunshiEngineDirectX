@@ -30,15 +30,18 @@
 #include "../../../Objetos/Componentes/Materiales.h"
 #include "../../../Objetos/Componentes/Model.h"
 #include "../../../Objetos/GameObject.h"
+#include "../../../Rendering/Preview/IPreviewMaterial.h"
 #include "../../../Scenes/EditorController.h"
 #include "../Material/EditorMaterialGUI.h"
 #include <imgui.h>
 
 SettingsMateriales::SettingsMateriales(GameObject* gameObject,
-                                         EditorController* editor)
+                                         EditorController* editor,
+                                         IPreviewMaterial* preview)
     : SettingsComponent(demangle(typeid(Materiales).name())),
       gameObject(gameObject),
-      editor(editor) {}
+      editor(editor),
+      preview(preview) {}
 
 SettingsMateriales::~SettingsMateriales() {}
 
@@ -112,7 +115,14 @@ void SettingsMateriales::showDataComponent() {
             ImGui::CollapsingHeader(region.nombre.c_str(),
                                     ImGuiTreeNodeFlags_DefaultOpen);
         if (abierto && region.material) {
-            dibujarEditorMaterial(*region.material, presetsAplicados_[i]);
+            // Cada region tiene su propia vista previa: la clave la
+            // distingue (con el id del objeto y el nombre de la region), para
+            // que se puedan ver a la vez y no se pisen entre objetos.
+            const std::string clave = "region:" +
+                                      std::to_string(gameObject->getId()) +
+                                      ":" + region.nombre;
+            dibujarEditorMaterial(*region.material, presetsAplicados_[i],
+                                  preview, clave);
         }
         if (ImGui::SmallButton("Quitar region")) {
             materiales->quitarRegion(region.nombre);

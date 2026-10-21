@@ -157,6 +157,9 @@ FunshiEngineGL/                          ← raíz del repo
         │   │                              y nombre del material del archivo)
         │   ├── AssimpMeshLoader.*       ← loader Assimp→Mesh (conserva el material de
         │   │                              cada sub-malla como región)
+        │   ├── Primitivas2D.h            ← quad 2D unitario (CPU puro, testeable)
+        │   ├── Primitivas3D.h            ← esfera UV (CPU puro, testeable): es la
+        │   │                              muestra con la que el editor enseña un material
         │   └── StbImageLoader.*         ← loader stb_image→Image (solo engine) +
         │                                   `dimensiones()`: lee la cabecera del
         │                                   archivo sin decodificar; el volteo
@@ -426,6 +429,12 @@ FunshiEngineGL/                          ← raíz del repo
         │   ├── GuiaEje.h/.cpp              ← guía de eje con contraste
         │   ├── TextureGL.h/.cpp            ← wrapper de textura 2D + cubemap
         │   ├── RenderTarget.h/.cpp         ← FBO (viewport/vista previa)
+        │   ├── Preview/                   ← vista previa de material (la esfera de muestra)
+        │   │   ├── IPreviewMaterial.h     ← contrato para la GUI: una vista por clave
+        │   │   │                              (la textura y su estado de "sucia")
+        │   │   └── PreviewMaterial.h/.cpp ← render target propio + renderer con luces
+        │   │                                fijas: dibuja la esfera de muestra con el
+        │   │                                material que se está editando
         │   ├── Cielo.h/.cpp                ← cielo degradado
         │   ├── Difuminado.h/.cpp           ← cálculo de difuminado radial
         │   ├── CacheCubemap.h             ← caché de caras del cubemap
@@ -1575,6 +1584,7 @@ GameScene → coordina todos los subsistemas del frame
   ninguno. La suite comprueba el alta y la baja de regiones, la sincronización
   con las que declara el modelo, el round-trip binario (con el material de cada
   region dentro) y las tres respuestas del resolvedor.
+
 - `tests/ExportacionTests.cpp`: el diálogo de exportación, el estado que lleva
   (`EstadoExportacion`) y las dependencias del juego exportado. La suite
   comprueba que las precondiciones digan el motivo cuando no se puede
@@ -1585,8 +1595,19 @@ GameScene → coordina todos los subsistemas del frame
   construido a propósito), que el cierre de dependencias alcance las DLL de
   segundo nivel y que la traza de la exportación se cree en un archivo propio
   que una segunda exportación no reutiliza.
+- `tests/Primitivas3DTests.cpp`: la esfera de muestra de un material es
+  geometría pura (sin OpenGL): la suite comprueba que los vértices están en la
+  esfera, que las normales son unitarias, que las UVs están en [0,1], que los
+  índices apuntan a vértices válidos y que ningún triángulo es degenerado (un
+  vértice repetido dejaría un trozo invisible).
+- `tests/PreviewMaterialTests.cpp`: la vista previa de un material (la esfera
+  de muestra del panel). La suite la ejercita con un backend falso (sin GPU):
+  cada material editado tiene su vista propia, la vista se dibuja en un render
+  target de su tamaño con su viewport y vuelve al framebuffer de la ventana, el
+  material editado llega al shader (el color difuso se sube) y al invalidarla
+  queda sucia para redibujarse.
 - Las suites de prueba se ejecutan con `ctest`: el build con motor registra
-  **41** tests (39 habilitados y 2 deshabilitados) y el build headless
+  **43** tests (41 habilitados y 2 deshabilitados) y el build headless
   (`BUILD_ENGINE=OFF`) registra **21** (20 habilitados y 1 deshabilitado).
 - `.github/workflows/ci.yml` compila el engine completo en Ubuntu (Release, sin
   ASan) y ejecuta las pruebas; además ejecuta las headless en
@@ -1617,7 +1638,7 @@ GameScene → coordina todos los subsistemas del frame
   Windows usa el generador por defecto (multi-config), que es el mismo que
   comprueba el job multi-config de la CI.
 - La lista de targets que compila cada job tiene que cubrir todas las suites
-  registradas en ese modo de build (40 con `BUILD_ENGINE=ON`, 21 con
+  registradas en ese modo de build (41 con `BUILD_ENGINE=ON`, 21 con
   `BUILD_ENGINE=OFF`): `ctest` ejecuta todos los tests registrados en el build,
   no solo los compilados, y los que faltan quedan como `Not Run`, lo que hace
   fallar el job. Las suites con `DISABLED TRUE` se pueden omitir porque `ctest`

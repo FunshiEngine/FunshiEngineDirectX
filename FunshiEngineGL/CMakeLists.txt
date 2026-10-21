@@ -708,6 +708,47 @@ set_target_properties(materiales-regiones-tests PROPERTIES
 )
 add_test(NAME materiales-regiones-tests COMMAND materiales-regiones-tests)
 
+# --- Pruebas headless de las primitivas 3D en CPU ----------------------------
+# La esfera es la muestra de un material (el editor la dibuja en una textura
+# para mostrar como queda). Es geometria pura, sin OpenGL.
+add_executable(primitivas3d-tests
+    ${CMAKE_CURRENT_SOURCE_DIR}/../tests/Primitivas3DTests.cpp
+)
+target_include_directories(primitivas3d-tests PRIVATE
+    ${SRC_DIR}
+    ${CMAKE_SOURCE_DIR}/External
+    ${CMAKE_SOURCE_DIR}/External/imgui
+)
+target_link_libraries(primitivas3d-tests PRIVATE funshi_engine)
+set_target_properties(primitivas3d-tests PROPERTIES
+    CXX_STANDARD 17
+    CXX_STANDARD_REQUIRED ON
+    CXX_EXTENSIONS OFF
+)
+add_test(NAME primitivas3d-tests COMMAND primitivas3d-tests)
+
+# --- Pruebas headless de la vista previa de material ------------------------
+# La esfera de muestra del panel del material: un servicio con su render
+# target y su renderer propio. La suite comprueba su contrato con un backend
+# falso (sin GPU): vistas por clave, render target, viewport y el material
+# editado llegando al shader.
+add_executable(preview-material-tests
+    ${CMAKE_CURRENT_SOURCE_DIR}/../tests/PreviewMaterialTests.cpp
+)
+target_include_directories(preview-material-tests PRIVATE
+    ${SRC_DIR}
+    ${SRC_DIR}/ImGui
+    ${CMAKE_SOURCE_DIR}/External
+    ${CMAKE_SOURCE_DIR}/External/imgui
+)
+target_link_libraries(preview-material-tests PRIVATE funshi_engine)
+set_target_properties(preview-material-tests PROPERTIES
+    CXX_STANDARD 17
+    CXX_STANDARD_REQUIRED ON
+    CXX_EXTENSIONS OFF
+)
+add_test(NAME preview-material-tests COMMAND preview-material-tests)
+
 # --- Pruebas headless de la exportacion de juegos ---------------------------
 # El dialogo de exportacion y el estado que lleva (fase, resultado, mensaje)
 # son reglas de dominio: se comprueban sin ventana, con la barra de menu
@@ -740,6 +781,10 @@ if(WIN32)
     target_compile_definitions(malla-regiones-tests PRIVATE _HAS_STD_BYTE=0)
     target_link_libraries(materiales-regiones-tests PRIVATE dbghelp)
     target_compile_definitions(materiales-regiones-tests PRIVATE _HAS_STD_BYTE=0)
+    target_link_libraries(primitivas3d-tests PRIVATE dbghelp)
+    target_compile_definitions(primitivas3d-tests PRIVATE _HAS_STD_BYTE=0)
+    target_link_libraries(preview-material-tests PRIVATE dbghelp)
+    target_compile_definitions(preview-material-tests PRIVATE _HAS_STD_BYTE=0)
     target_link_libraries(exportacion-tests PRIVATE dbghelp)
     target_compile_definitions(exportacion-tests PRIVATE _HAS_STD_BYTE=0)
     target_link_libraries(serializacion-tests PRIVATE dbghelp)

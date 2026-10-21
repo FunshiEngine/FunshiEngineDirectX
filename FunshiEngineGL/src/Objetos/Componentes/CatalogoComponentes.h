@@ -30,6 +30,7 @@ class GameObject;
 class SettingsComponent;
 class EditorController;
 class AudioEngine;
+class IPreviewMaterial;
 
 // Dimension del proyecto en la que un componente tiene sentido. El menu de
 // "agregar componente" solo ofrece los que aplican a la dimension vigente;
@@ -62,6 +63,9 @@ struct ContextoPanel {
     EditorController* editor = nullptr;
     AudioEngine* audio = nullptr;
     DimensionProyecto dimension = DimensionProyecto::TresD;
+    // Vista previa de material (la esfera de muestra). Puede ser nullptr:
+    // entonces el panel del material se dibuja sin vista previa.
+    IPreviewMaterial* preview = nullptr;
 };
 
 struct DescriptorComponente {

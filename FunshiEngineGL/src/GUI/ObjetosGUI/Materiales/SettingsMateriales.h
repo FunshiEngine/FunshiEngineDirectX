@@ -26,6 +26,7 @@
 
 class EditorController;
 class GameObject;
+class IPreviewMaterial;
 
 // Panel de los materiales por region: una entrada por region de la malla (la
 // cara de un cubo, la parte de un personaje) con su material y sus texturas.
@@ -33,13 +34,16 @@ class SettingsMateriales : public SettingsComponent {
 private:
 	GameObject* gameObject;
 	EditorController* editor = nullptr;
+	// Vista previa de material (la esfera de muestra). Puede ser nullptr.
+	IPreviewMaterial* preview = nullptr;
 	// Preset aplicado por region (indice en la lista de regiones).
 	std::vector<int> presetsAplicados_;
 	// Nombre de la region nueva que se esta anadiendo.
 	std::string nombreNuevaRegion_;
 
 public:
-	SettingsMateriales(GameObject* gameObject, EditorController* editor);
+	SettingsMateriales(GameObject* gameObject, EditorController* editor,
+	                   IPreviewMaterial* preview = nullptr);
 	~SettingsMateriales();
 
 	virtual void showDataComponent() override;

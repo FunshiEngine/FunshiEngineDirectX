@@ -51,6 +51,7 @@ class EditorController;
 class EventBus;
 class Modelos3D;
 class AudioEngine;
+class IPreviewMaterial;
 
 using namespace std;
 
@@ -90,6 +91,8 @@ private:
 	std::unique_ptr<SidebarOrbitaGUI> sidebarOrbitaGUI;
 	// Motor de audio inyectado por la escena para el inspector de AudioSource.
 	AudioEngine* audioMotor = nullptr;
+	// Vista previa de material (inyectada por la escena).
+	IPreviewMaterial* previewMaterial = nullptr;
 
 	// Canal de eventos de GUI interna (ARQUITECTURA_ESTADOS_GUI.md §4.2B).
 	// El dueño del bus es GUIManager (su registro central de ventanas): el
@@ -141,6 +144,10 @@ public:
 
 	// La escena inyecta su AudioEngine (para el inspector de AudioSource).
 	void setAudioEngine(AudioEngine* motor);
+
+	// La escena inyecta su vista previa de material (la esfera de muestra del
+	// panel del material). Puede ser nullptr.
+	void setPreviewMaterial(IPreviewMaterial* preview);
 
 	// Registra una ventana del editor en el registro central: su estado se
 	// persiste con el resto y se puede alternar por nombre desde el menu.

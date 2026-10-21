@@ -19,7 +19,10 @@
 #ifndef EDITORMATERIALGUI_H
 #define EDITORMATERIALGUI_H
 
+#include <string>
+
 class Material;
+class IPreviewMaterial;
 
 // Editor de un material: preset, colores del modelo de iluminacion, brillo y
 // los cuatro slots de textura.
@@ -27,6 +30,12 @@ class Material;
 // Vive aparte del panel del componente Material porque el panel de materiales
 // por region reutiliza los mismos controles: asi el material de una region se
 // edita exactamente igual que el material unico del objeto.
-void dibujarEditorMaterial(Material& material, int& presetAplicado);
+//
+// Devuelve true si el material cambio (para que quien lo dibuje invalidate
+// su vista previa). La vista previa (esfera de muestra) es opcional: sin ella
+// el editor funciona igual, solo que sin la imagen.
+bool dibujarEditorMaterial(Material& material, int& presetAplicado,
+                            IPreviewMaterial* preview = nullptr,
+                            const std::string& clave = std::string());
 
 #endif // EDITORMATERIALGUI_H

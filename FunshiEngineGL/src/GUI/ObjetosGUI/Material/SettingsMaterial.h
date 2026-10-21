@@ -23,14 +23,17 @@
 
 class GameObject;
 class Material;
+class IPreviewMaterial;
 
 class SettingsMaterial : public SettingsComponent {
 private:
 	GameObject* gameObject;
 	int presetAplicado = -1;
+	// Vista previa de material (la esfera de muestra). Puede ser nullptr.
+	IPreviewMaterial* preview = nullptr;
 
 public:
-	SettingsMaterial(GameObject* gameObject);
+	SettingsMaterial(GameObject* gameObject, IPreviewMaterial* preview = nullptr);
 	~SettingsMaterial();
 
 	virtual void showDataComponent() override;
