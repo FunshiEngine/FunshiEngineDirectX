@@ -154,8 +154,11 @@ FunshiEngineGL/                          ← raíz del repo
         │   │                                margin/spacing, flag solid) y UV por tile
         │   ├── AssetPath.h / Image.h    ← rutas normalizadas y metadatos de imagen
         │   ├── AssetException.h / TextureException.h ← errores de carga con mensaje y ruta
-        │   ├── Mesh.h/.cpp              ← geometría CPU (vértices, normales, índices)
-        │   ├── AssimpMeshLoader.*       ← loader Assimp→Mesh
+        │   ├── Mesh.h/.cpp              ← geometría CPU (vértices, normales, índices) y
+        │   │                              regiones con material propio (rango de índices
+        │   │                              y nombre del material del archivo)
+        │   ├── AssimpMeshLoader.*       ← loader Assimp→Mesh (conserva el material de
+        │   │                              cada sub-malla como región)
         │   └── StbImageLoader.*         ← loader stb_image→Image (solo engine) +
         │                                   `dimensiones()`: lee la cabecera del
         │                                   archivo sin decodificar; el volteo
@@ -1537,8 +1540,13 @@ GameScene → coordina todos los subsistemas del frame
   icono, que la imagen exista en el disco, que la regla resuelva por nombre de
   tipo, por alias ("Camera") y con el prefijo que MSVC antepone ("class
   Transform"), y que un tipo desconocido no devuelva icono.
+- `tests/MallaRegionesTests.cpp`: un archivo con varios materiales (un `.obj`
+  con dos `usemtl`) produce una región por material: un rango contiguo de
+  índices con el nombre del material. La suite escribe el `.obj` y su `.mtl` en
+  una carpeta temporal, los carga con el importador real y comprueba que las
+  regiones salen en orden, sin huecos y cubriendo todos los índices.
 - Las suites de prueba se ejecutan con `ctest`: el build con motor registra
-  **38** tests (36 habilitados y 2 deshabilitados) y el build headless
+  **39** tests (37 habilitados y 2 deshabilitados) y el build headless
   (`BUILD_ENGINE=OFF`) registra **21** (20 habilitados y 1 deshabilitado).
 - `.github/workflows/ci.yml` compila el engine completo en Ubuntu (Release, sin
   ASan) y ejecuta las pruebas; además ejecuta las headless en
@@ -1569,7 +1577,7 @@ GameScene → coordina todos los subsistemas del frame
   Windows usa el generador por defecto (multi-config), que es el mismo que
   comprueba el job multi-config de la CI.
 - La lista de targets que compila cada job tiene que cubrir todas las suites
-  registradas en ese modo de build (38 con `BUILD_ENGINE=ON`, 21 con
+  registradas en ese modo de build (39 con `BUILD_ENGINE=ON`, 21 con
   `BUILD_ENGINE=OFF`): `ctest` ejecuta todos los tests registrados en el build,
   no solo los compilados, y los que faltan quedan como `Not Run`, lo que hace
   fallar el job. Las suites con `DISABLED TRUE` se pueden omitir porque `ctest`
