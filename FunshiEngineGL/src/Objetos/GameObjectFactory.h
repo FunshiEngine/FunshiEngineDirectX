@@ -20,6 +20,7 @@
 #define GAME_OBJECT_FACTORY_H
 
 #include <memory>
+#include <string>
 
 class GameObject;
 
