@@ -19,6 +19,10 @@
 #ifndef PARTICULA_H
 #define PARTICULA_H
 
+#include <memory>
+
+#include "PerfilParticula.h"
+
 // Estado de una particula viva.
 //
 // Es un dato plano: el sistema de particulas lo mueve y el renderer lo
@@ -39,13 +43,20 @@ struct Particula {
     float vida = 0.0f;
     // Segundos que vivio en total: el denominador de la fraccion de vida.
     float vidaMaxima = 0.0f;
-    // Tamano del quad en unidades de mundo.
+    // Tamano base del quad en unidades de mundo (el que le dio el emisor).
+    float tamanoBase = 1.0f;
+    // Tamano efectivo: el base por el multiplicador que da la curva del
+    // perfil en este instante de su vida.
     float tamano = 1.0f;
     // Rozamiento: fraccion de velocidad que se pierde por segundo.
     float rozamiento = 0.0f;
     // Rotacion del quad y su velocidad (radianes por segundo).
     float rotacion = 0.0f;
     float velocidadRotacion = 0.0f;
+    // Perfil de efecto que la creo (nulo si el emisor no tenia perfil). Se
+    // comparte con el emisor: si el emisor desaparece, la particula sigue
+    // viva con su perfil.
+    std::shared_ptr<const PerfilParticula> perfil;
 
     bool viva() const noexcept { return vida > 0.0f; }
 

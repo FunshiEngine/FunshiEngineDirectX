@@ -635,6 +635,26 @@ if(WIN32)
     target_compile_definitions(inspeccion-escena-tests PRIVATE _HAS_STD_BYTE=0)
 endif()
 
+# --- Pruebas headless del componente emisor de particulas ---------------------
+# La simulacion en si es CPU pura (particulas-tests, sin motor), pero el
+# componente resuelve la ruta del perfil con la configuracion del editor, asi
+# que su suite necesita funshi_engine.
+add_executable(emisor-particulas-tests
+    ${CMAKE_CURRENT_SOURCE_DIR}/../tests/EmisorParticulasTests.cpp
+)
+target_include_directories(emisor-particulas-tests PRIVATE
+    ${SRC_DIR}
+    ${CMAKE_SOURCE_DIR}/External
+    ${CMAKE_SOURCE_DIR}/External/imgui
+)
+target_link_libraries(emisor-particulas-tests PRIVATE funshi_engine)
+set_target_properties(emisor-particulas-tests PROPERTIES
+    CXX_STANDARD 17
+    CXX_STANDARD_REQUIRED ON
+    CXX_EXTENSIONS OFF
+)
+add_test(NAME emisor-particulas-tests COMMAND emisor-particulas-tests)
+
 # --- Pruebas headless de la lectura de datos serializados ---------------------
 # Las longitudes y las etiquetas las controla el archivo: si estan corruptas,
 # la lectura se corta con un error limpio en vez de reservar una memoria

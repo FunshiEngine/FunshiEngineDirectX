@@ -22,6 +22,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <deque>
+#include <memory>
 #include <random>
 #include <vector>
 
@@ -46,7 +47,11 @@ public:
 
     // Suelta una particula con los parametros dados en el punto 'origen'.
     // Si el presupuesto esta lleno, se descarta la particula mas vieja.
-    void emitir(const ParametrosEmisor& parametros, const float origen[3]);
+    //
+    // 'perfil' es opcional: es el efecto del que sale la particula y el que
+    // manda sobre su tamano y su color a lo largo de la vida.
+    void emitir(const ParametrosEmisor& parametros, const float origen[3],
+                const std::shared_ptr<const PerfilParticula>& perfil = nullptr);
 
     // Avanza la simulacion: aplica el rozamiento y la gravedad, integra la
     // posicion y retira las particulas que se quedaron sin vida.

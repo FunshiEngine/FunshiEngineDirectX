@@ -107,7 +107,8 @@ void SistemaParticulas::direccionAleatoria(const float direccion[3],
 }
 
 void SistemaParticulas::emitir(const ParametrosEmisor& parametros,
-                               const float origen[3]) {
+                               const float origen[3],
+                               const std::shared_ptr<const PerfilParticula>& perfil) {
     if (presupuesto_ == 0) return;
     if (particulas_.size() >= presupuesto_) particulas_.pop_front();
 
@@ -121,8 +122,10 @@ void SistemaParticulas::emitir(const ParametrosEmisor& parametros,
     nueva.vidaMaxima = uniforme(parametros.vidaMinima, parametros.vidaMaxima);
     if (nueva.vidaMaxima <= 0.0f) nueva.vidaMaxima = 0.0f;
     nueva.vida = nueva.vidaMaxima;
-    nueva.tamano = uniforme(parametros.tamanoMinimo, parametros.tamanoMaximo);
+    nueva.tamanoBase = uniforme(parametros.tamanoMinimo, parametros.tamanoMaximo);
+    nueva.tamano = nueva.tamanoBase;
     nueva.rozamiento = parametros.rozamiento;
+    nueva.perfil = perfil;
     nueva.rotacion = parametros.rotacionInicial;
     nueva.velocidadRotacion = parametros.velocidadRotacion;
 
@@ -149,6 +152,14 @@ void SistemaParticulas::actualizar(float deltaTime) {
             particula.posicion[i] += particula.velocidad[i] * deltaTime;
         }
         particula.rotacion += particula.velocidadRotacion * deltaTime;
+        // Las curvas del perfil mandan sobre el tamano y el color mientras la
+        // particula vive: asi un efecto crece y se apaga solo.
+        if (particula.perfil) {
+            const float fraccion = particula.fraccionVida();
+            particula.tamano =
+                particula.tamanoBase * particula.perfil->multiplicadorTamano(fraccion);
+            particula.perfil->colorEn(fraccion, particula.color);
+        }
     }
     particulas_.erase(
         std::remove_if(particulas_.begin(), particulas_.end(),
