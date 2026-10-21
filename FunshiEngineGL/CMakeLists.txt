@@ -727,6 +727,28 @@ set_target_properties(primitivas3d-tests PROPERTIES
 )
 add_test(NAME primitivas3d-tests COMMAND primitivas3d-tests)
 
+# --- Pruebas headless de la vista previa de material ------------------------
+# La esfera de muestra del panel del material: un servicio con su render
+# target y su renderer propio. La suite comprueba su contrato con un backend
+# falso (sin GPU): vistas por clave, render target, viewport y el material
+# editado llegando al shader.
+add_executable(preview-material-tests
+    ${CMAKE_CURRENT_SOURCE_DIR}/../tests/PreviewMaterialTests.cpp
+)
+target_include_directories(preview-material-tests PRIVATE
+    ${SRC_DIR}
+    ${SRC_DIR}/ImGui
+    ${CMAKE_SOURCE_DIR}/External
+    ${CMAKE_SOURCE_DIR}/External/imgui
+)
+target_link_libraries(preview-material-tests PRIVATE funshi_engine)
+set_target_properties(preview-material-tests PROPERTIES
+    CXX_STANDARD 17
+    CXX_STANDARD_REQUIRED ON
+    CXX_EXTENSIONS OFF
+)
+add_test(NAME preview-material-tests COMMAND preview-material-tests)
+
 if(WIN32)
     target_link_libraries(escena-serializacion-tests PRIVATE dbghelp)
     target_compile_definitions(escena-serializacion-tests PRIVATE _HAS_STD_BYTE=0)
@@ -740,6 +762,8 @@ if(WIN32)
     target_compile_definitions(materiales-regiones-tests PRIVATE _HAS_STD_BYTE=0)
     target_link_libraries(primitivas3d-tests PRIVATE dbghelp)
     target_compile_definitions(primitivas3d-tests PRIVATE _HAS_STD_BYTE=0)
+    target_link_libraries(preview-material-tests PRIVATE dbghelp)
+    target_compile_definitions(preview-material-tests PRIVATE _HAS_STD_BYTE=0)
     target_link_libraries(serializacion-tests PRIVATE dbghelp)
     target_compile_definitions(serializacion-tests PRIVATE _HAS_STD_BYTE=0)
 endif()

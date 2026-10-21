@@ -418,6 +418,12 @@ FunshiEngineGL/                          ← raíz del repo
         │   ├── GuiaEje.h/.cpp              ← guía de eje con contraste
         │   ├── TextureGL.h/.cpp            ← wrapper de textura 2D + cubemap
         │   ├── RenderTarget.h/.cpp         ← FBO (viewport/vista previa)
+        │   ├── Preview/                   ← vista previa de material (la esfera de muestra)
+        │   │   ├── IPreviewMaterial.h     ← contrato para la GUI: una vista por clave
+        │   │   │                              (la textura y su estado de "sucia")
+        │   │   └── PreviewMaterial.h/.cpp ← render target propio + renderer con luces
+        │   │                                fijas: dibuja la esfera de muestra con el
+        │   │                                material que se está editando
         │   ├── Cielo.h/.cpp                ← cielo degradado
         │   ├── Difuminado.h/.cpp           ← cálculo de difuminado radial
         │   ├── CacheCubemap.h             ← caché de caras del cubemap
@@ -1571,8 +1577,14 @@ GameScene → coordina todos los subsistemas del frame
   esfera, que las normales son unitarias, que las UVs están en [0,1], que los
   índices apuntan a vértices válidos y que ningún triángulo es degenerado (un
   vértice repetido dejaría un trozo invisible).
+- `tests/PreviewMaterialTests.cpp`: la vista previa de un material (la esfera
+  de muestra del panel). La suite la ejercita con un backend falso (sin GPU):
+  cada material editado tiene su vista propia, la vista se dibuja en un render
+  target de su tamaño con su viewport y vuelve al framebuffer de la ventana, el
+  material editado llega al shader (el color difuso se sube) y al invalidarla
+  queda sucia para redibujarse.
 - Las suites de prueba se ejecutan con `ctest`: el build con motor registra
-  **41** tests (39 habilitados y 2 deshabilitados) y el build headless
+  **42** tests (40 habilitados y 2 deshabilitados) y el build headless
   (`BUILD_ENGINE=OFF`) registra **21** (20 habilitados y 1 deshabilitado).
 - `.github/workflows/ci.yml` compila el engine completo en Ubuntu (Release, sin
   ASan) y ejecuta las pruebas; además ejecuta las headless en

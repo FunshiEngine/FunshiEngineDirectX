@@ -53,6 +53,7 @@ class SceneRenderer;
 class AudioEngine;
 class MiniAudioBackend;
 class GizmoController;
+class PreviewMaterial;
 
 namespace Rendering {
 class GestorShaders;
@@ -106,6 +107,10 @@ private:
     // de la malla (los materiales por parte) y cual es el material unico del
     // objeto. Se inyecta al renderer de la escena.
     std::unique_ptr<ResolvedorMateriales> resolvedorMateriales_;
+    // Vista previa de material (la esfera de muestra del panel del material).
+    // Solo tiene uso en el editor: el juego exportado no tiene paneles que la
+    // pinten.
+    std::unique_ptr<PreviewMaterial> previewMaterial_;
     EventBus events;
     // Los constructores de EditorController y SceneSerializer reciben
     // pointers a los miembros anteriores (assetManager/events): deben estar

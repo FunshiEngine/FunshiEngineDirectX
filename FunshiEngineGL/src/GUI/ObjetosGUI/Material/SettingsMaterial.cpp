@@ -25,8 +25,10 @@
 #include "../../../Objetos/Componentes/Material.h"
 #include <imgui.h>
 
-SettingsMaterial::SettingsMaterial(GameObject* gameObject)
-    : SettingsComponent(demangle(typeid(Material).name())), gameObject(gameObject) {}
+SettingsMaterial::SettingsMaterial(GameObject* gameObject,
+                                   IPreviewMaterial* preview)
+    : SettingsComponent(demangle(typeid(Material).name())), gameObject(gameObject),
+      preview(preview) {}
 
 SettingsMaterial::~SettingsMaterial() {}
 
@@ -35,7 +37,12 @@ void SettingsMaterial::showDataComponent() {
 	if (!material) return;
 
 	ImGui::Text("===Material===");
-	dibujarEditorMaterial(*material, presetAplicado);
+	// La vista previa (esfera de muestra) tiene su propia clave: la del
+	// material unico del objeto, con su id (asi el material de otro objeto no
+	// pisa el de este, que se dibuja al seleccionar otro objeto).
+	const std::string clave =
+		"material:" + std::to_string(gameObject->getId());
+	dibujarEditorMaterial(*material, presetAplicado, preview, clave);
 }
 
 Component* SettingsMaterial::getComponent() {

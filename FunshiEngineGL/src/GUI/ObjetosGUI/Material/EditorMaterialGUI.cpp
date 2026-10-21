@@ -19,13 +19,22 @@
 
 #include "EditorMaterialGUI.h"
 
+#include <cstdint>
 #include <cstring>
 
 #include "../../../Herramientas/MaterialPresets.h"
 #include "../../../Objetos/Componentes/Material.h"
+#include "../../../Rendering/Preview/IPreviewMaterial.h"
 #include <imgui.h>
 
-void dibujarEditorMaterial(Material& material, int& presetAplicado) {
+bool dibujarEditorMaterial(Material& material, int& presetAplicado,
+                            IPreviewMaterial* preview,
+                            const std::string& clave) {
+    // El material cambio: hay que redibujar la vista previa (la esfera de
+    // muestra). Se lleva un bool y no un valor de retorno para que el panel
+    // pueda invalidar la vista antes de que se dibuje.
+    bool cambio = false;
+
     // Presets de MaterialPresets como DATOS aplicados al material actual.
     static const char* const presets[] = {"Personalizado", "Bronce", "Cobre",
                                           "Cromo",     "Laton", "Jade", "Luz"};
@@ -42,6 +51,7 @@ void dibujarEditorMaterial(Material& material, int& presetAplicado) {
             default: break; // Personalizado
         }
         presetAplicado = combo - 1;
+        cambio = true;
     }
 
     // Toda edicion manual marca el material como Personalizado.
@@ -50,6 +60,7 @@ void dibujarEditorMaterial(Material& material, int& presetAplicado) {
     if (ImGui::ColorEdit3("Ambient", amb)) {
         material.setAmbient(amb[0], amb[1], amb[2]);
         presetAplicado = -1;
+        cambio = true;
     }
 
     float diff[3] = {material.getDiffuse()[0], material.getDiffuse()[1],
@@ -57,6 +68,7 @@ void dibujarEditorMaterial(Material& material, int& presetAplicado) {
     if (ImGui::ColorEdit3("Diffuse", diff)) {
         material.setDiffuse(diff[0], diff[1], diff[2]);
         presetAplicado = -1;
+        cambio = true;
     }
 
     float spec[3] = {material.getSpecular()[0], material.getSpecular()[1],
@@ -64,6 +76,7 @@ void dibujarEditorMaterial(Material& material, int& presetAplicado) {
     if (ImGui::ColorEdit3("Specular", spec)) {
         material.setSpecular(spec[0], spec[1], spec[2]);
         presetAplicado = -1;
+        cambio = true;
     }
 
     float emiss[3] = {material.getEmission()[0], material.getEmission()[1],
@@ -71,12 +84,14 @@ void dibujarEditorMaterial(Material& material, int& presetAplicado) {
     if (ImGui::ColorEdit3("Emission", emiss)) {
         material.setEmission(emiss[0], emiss[1], emiss[2]);
         presetAplicado = -1;
+        cambio = true;
     }
 
     float shin = material.getShininess();
     if (ImGui::SliderFloat("Shininess", &shin, 0.f, 128.f)) {
         material.setShininess(shin);
         presetAplicado = -1;
+        cambio = true;
     }
 
     // Texturas (descriptores): paths a las imagenes compartidas por el
@@ -87,8 +102,10 @@ void dibujarEditorMaterial(Material& material, int& presetAplicado) {
         char buf[1024];
         std::strncpy(buf, actual.c_str(), sizeof(buf) - 1);
         buf[sizeof(buf) - 1] = '\0';
-        if (ImGui::InputText(label, buf, sizeof(buf)))
+        if (ImGui::InputText(label, buf, sizeof(buf))) {
             (material.*setter)(buf);
+            cambio = true;
+        }
     };
     ImGui::Separator();
     ImGui::Text("Texturas (vacias = sin textura):");
@@ -100,4 +117,26 @@ void dibujarEditorMaterial(Material& material, int& presetAplicado) {
                  &Material::setNormalMapPath);
     campoTextura("Emision", material.getEmissionMapPath(),
                  &Material::setEmissionMapPath);
+
+    // Vista previa: la esfera de muestra con el material. Se redibuja solo
+    // cuando el material cambia (o la primera vez).
+    if (preview && preview->disponible()) {
+        if (cambio) preview->invalidar(clave);
+        if (preview->sucia(clave)) preview->renderizar(clave, material);
+        const void* textura = preview->descriptorTextura(clave);
+        if (textura) {
+            ImGui::Separator();
+            ImGui::Text("Vista previa:");
+            // La textura del render target tiene el origen abajo-izquierda:
+            // se voltea la V para que la esfera no salga dada vuelta.
+            ImGui::Image(
+                static_cast<ImTextureID>(
+                    reinterpret_cast<std::intptr_t>(textura)),
+                ImVec2(static_cast<float>(preview->lado()),
+                       static_cast<float>(preview->lado())),
+                ImVec2(0.f, 1.f), ImVec2(1.f, 0.f));
+        }
+    }
+
+    return cambio;
 }

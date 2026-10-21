@@ -151,6 +151,11 @@ void GUIManager::setAudioEngine(AudioEngine* motor) {
     if (settingGUI) settingGUI->setAudioEngine(motor);
 }
 
+void GUIManager::setPreviewMaterial(IPreviewMaterial* preview) {
+    previewMaterial = preview;
+    if (settingGUI) settingGUI->setPreviewMaterial(preview);
+}
+
 StatusBarInterface* GUIManager::getStatusBarGUI() { return statusBarGUI.get(); }
 
 void GUIManager::restaurarEstadosVentanas(const std::map<std::string, bool>& estados) {

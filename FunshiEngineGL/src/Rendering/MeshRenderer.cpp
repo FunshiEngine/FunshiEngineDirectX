@@ -350,8 +350,6 @@ bool MeshRenderer::intentarRenderMesh(GameObject* contexto, const Mesh* mesh,
                                       const float view[16],
                                       const float projection[16],
                                       float deltaTime) {
-    if (!inicializar()) return false;
-
     // El render NO simula: los scripts y la fisica se actualizan una sola vez
     // por frame en GameScene::update (y solo en play). Antes se llamaba aca a
     // objeto->update(), lo que corria los scripts tambien en el editor, los
@@ -359,6 +357,34 @@ bool MeshRenderer::intentarRenderMesh(GameObject* contexto, const Mesh* mesh,
     (void)deltaTime;
 
     if (!contexto) return false;
+
+    // Cada region de la malla se dibuja con el material que le corresponde: lo
+    // decide el resolvedor con el objeto como contexto.
+    return renderMesh(contexto, mesh, modelo, view, projection,
+                      [this, contexto](const std::string& nombreRegion) {
+                          return resolvedorMateriales_
+                                     ? resolvedorMateriales_->materialDeRegion(
+                                           contexto, nombreRegion)
+                                     : nullptr;
+                      });
+}
+
+bool MeshRenderer::renderMeshConMaterial(const Mesh* mesh,
+                                         const IMaterial* material,
+                                         const float modelo[16],
+                                         const float view[16],
+                                         const float projection[16]) {
+    // Un unico material para toda la malla: es la vista previa de un material
+    // (la esfera de muestra), donde las regiones no aplican.
+    return renderMesh(nullptr, mesh, modelo, view, projection,
+                      [material](const std::string&) { return material; });
+}
+
+bool MeshRenderer::renderMesh(GameObject* contexto, const Mesh* mesh,
+                              const float modelo[16], const float view[16],
+                              const float projection[16],
+                              const ProveedorMaterial& proveedor) {
+    if (!inicializar()) return false;
 
     // Sin malla, vacia o sin normales no hay nada que pintar. Ya no existe el
     // modo inmediato de respaldo, asi que se avisa una vez por malla (el loader
@@ -410,10 +436,7 @@ bool MeshRenderer::intentarRenderMesh(GameObject* contexto, const Mesh* mesh,
     // material, en el rango de indices que le corresponde. Sin regiones, la
     // malla entera se dibuja de una vez con el material del objeto.
     if (mesh->subMallas.empty()) {
-        const IMaterial* material =
-            resolvedorMateriales_
-                ? resolvedorMateriales_->materialDeRegion(contexto, "")
-                : nullptr;
+        const IMaterial* material = proveedor("");
         aplicarMaterial(contexto, material);
         aplicarTexturas(material, mesh);
         enlazarTexturasSombra();
@@ -421,11 +444,7 @@ bool MeshRenderer::intentarRenderMesh(GameObject* contexto, const Mesh* mesh,
     } else {
         for (const SubMalla& region : mesh->subMallas) {
             if (region.indiceCantidad == 0) continue;
-            const IMaterial* material =
-                resolvedorMateriales_
-                    ? resolvedorMateriales_->materialDeRegion(contexto,
-                                                             region.nombreMaterial)
-                    : nullptr;
+            const IMaterial* material = proveedor(region.nombreMaterial);
             aplicarMaterial(contexto, material);
             aplicarTexturas(material, mesh);
             enlazarTexturasSombra();

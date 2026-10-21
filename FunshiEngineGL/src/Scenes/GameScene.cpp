@@ -47,6 +47,7 @@
 #include "../Assets/StbImageLoader.h"
 #include "../Assets/TextureManager.h"
 #include "../Rendering/Backend/IRenderBackend.h"
+#include "../Rendering/Preview/PreviewMaterial.h"
 #include "../Rendering/RenderTarget.h"
 #include "../Rendering/SceneRenderer.h"
 #include "../Rendering/Shaders/GestorShaders.h"
@@ -139,6 +140,13 @@ GameScene::GameScene(GUIManager* manager, Rendering::Backend::IRenderBackend& ba
     sceneRenderer->setResolvedorMateriales(resolvedorMateriales_.get());
     // Los renderers piden los programas al gestor de shaders.
     sceneRenderer->setGestorShaders(gestorShaders.get());
+    // Vista previa de material: la esfera de muestra que pinta el panel del
+    // material. Usa el cache de imagenes de la escena (las texturas del
+    // material salen de ahi) y su propio renderer, con luces fijas: asi la
+    // vista previa no depende de las luces de la escena.
+    previewMaterial_ = std::make_unique<PreviewMaterial>(
+        backend_, gestorShaders.get(), textureManager.get());
+    if (managerGUI) managerGUI->setPreviewMaterial(previewMaterial_.get());
 }
 
 GameScene::~GameScene() {

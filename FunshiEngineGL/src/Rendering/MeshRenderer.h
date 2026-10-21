@@ -19,6 +19,7 @@
 #ifndef MESHRENDERER_H
 #define MESHRENDERER_H
 
+#include <functional>
 #include <memory>
 #include <string>
 #include <unordered_map>
@@ -114,6 +115,14 @@ public:
                             const float modelo[16], const float view[16],
                             const float projection[16], float deltaTime);
 
+    // Dibuja una malla con un material concreto (no resuelto por region) en las
+    // matrices dadas. Es el camino de la vista previa de un material: la esfera
+    // de muestra se dibuja con el material que se esta editando, sin las
+    // regiones que pueda declarar la malla.
+    bool renderMeshConMaterial(const Mesh* mesh, const IMaterial* material,
+                               const float modelo[16], const float view[16],
+                               const float projection[16]);
+
     // Pases de sombras.
     //
     // Dibuja la malla en el pase de profundidad: solo escribe la profundidad
@@ -133,6 +142,12 @@ public:
     void clearCache();
 
 private:
+    // Resuelve el material de una region de la malla (por su nombre; vacio
+    // = la malla entera). La escena lo resuelve con el resolvedor y el objeto
+    // como contexto; la vista previa pasa el material que se esta editando.
+    using ProveedorMaterial =
+        std::function<const IMaterial*(const std::string& nombreRegion)>;
+
     std::shared_ptr<ShaderProgram> shader_;
     // Programa del pase de profundidad (mapa de sombras). Es aparte del de
     // las mallas: escribe profundidad y nada mas.
@@ -160,6 +175,14 @@ private:
     // Compila el shader por defecto la primera vez. No lanza: si el pipeline
     // moderno no esta disponible, deja available() == false.
     bool inicializar();
+    // Dibuja la malla con el material que resuelve el proveedor para cada
+    // region (o para la malla entera si no tiene regiones). El contexto puede
+    // ser nullptr (vista previa): entonces, sin material, se usan los valores
+    // por defecto en vez de los del objeto.
+    bool renderMesh(GameObject* contexto, const Mesh* mesh,
+                    const float modelo[16], const float view[16],
+                    const float projection[16],
+                    const ProveedorMaterial& proveedor);
     void aplicarLuces();
     // Sube los uniforms del material (contrato IMaterial). Si el material es
     // nullptr, se usa el color del objeto o los valores por defecto.

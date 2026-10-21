@@ -266,6 +266,12 @@ seleccion).
   agrega las regiones que declara el archivo del modelo, con el nombre del
   material que trae. Si una region no tiene material propio, se dibuja con el
   material único del objeto.
+- **Vista previa del material:** el panel de `Material` (y el de cada region de
+  `Materiales`) dibuja una **esfera de muestra** con el material que se esta
+  editando, con luz propia. Se redibuja sola cuando cambia el material (color,
+  brillo o textura), asi que se ve el efecto del cambio sin salir del panel.
+  La esfera usa las texturas del slot difuso; el resto de slots se aplican
+  igual que en la escena.
 - **Inspector:** boton "Agregar componente" abre el popup de componentes; cada
   uno tiene su panel propio (Transform, Luz con tipo/atenuacion/color, etc.).
   Cada componente se lista con su icono a la izquierda del nombre; el icono
