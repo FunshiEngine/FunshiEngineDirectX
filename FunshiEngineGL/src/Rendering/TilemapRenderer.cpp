@@ -175,7 +175,7 @@ bool TilemapRenderer::dibujar(const TilemapDraw& draw) {
     auto& backend = *backend_;
     backend.setBlendEnabled(true);
     backend.setDepthMask(false);
-    backend.drawMesh(malla, indices);
+    backend.drawMesh(malla, 0, indices);
     backend.setDepthMask(true);
     backend.setBlendEnabled(false);
     ShaderProgram::unbind(backend);

@@ -301,6 +301,11 @@ FunshiEngineGL/                          ← raíz del repo
         │   │   ├── Transform/SettingsTransform.h/.cpp ← transform + checkbox "Gizmo activo"
         │   │   ├── Color/  Model/  Script/
         │   │   ├── Material/SettingsMaterial.*  Light/SettingsLight.*
+        │   │   ├── Material/EditorMaterialGUI.* ← editor de un material (preset, colores
+        │   │   │                                 y texturas), compartido por el panel del
+        │   │   │                                 material y el de materiales por region
+        │   │   ├── Materiales/SettingsMateriales.* ← una entrada por region con su
+        │   │   │                                 material y sus texturas
         │   │   ├── Camera/SettingsCamera.*       ← FOV, planos, velocidad, vista previa
         │   │   ├── Grid/SettingsGrid.*           ← visible y color de la grilla (infinita,
         │   │   │                                 densidad fija: no hay tamaño/separación)
@@ -453,6 +458,13 @@ FunshiEngineGL/                          ← raíz del repo
         │       ├── Transform.h/.cpp      ← local/global con GLM; anti-NaN; flag gizmoHabilitado
         │       ├── CameraComponent.h/.cpp ← cámara componente: vista, FPS, flag de vista previa
         │       ├── Material.h/.cpp       ← AMBIENT/DIFFUSE/SPECULAR/EMISSION/SHININESS
+        │       ├── Materiales.h/.cpp     ← materiales por region: una entrada por parte de
+        │       │                            la malla (el nombre con el que el archivo
+        │       │                            declara el material) con su material
+        │       ├── IMaterial.h           ← contrato de material (colores y texturas)
+        │       ├── IResolutorMateriales.h ← contrato: objeto + region → material
+        │       ├── ResolvedorMateriales.h/.cpp ← decide el material de cada region y el
+        │       │                            material unico del objeto
         │       ├── Light.h/.cpp          ← luz puntual serializable
         │       ├── Sombras/Sombras.h/.cpp ← ajustes de la sombra que proyecta la luz de su
         │       │                           objeto: resolución, sesbio, fuerza, radio y distancia
@@ -1545,8 +1557,14 @@ GameScene → coordina todos los subsistemas del frame
   índices con el nombre del material. La suite escribe el `.obj` y su `.mtl` en
   una carpeta temporal, los carga con el importador real y comprueba que las
   regiones salen en orden, sin huecos y cubriendo todos los índices.
+- `tests/MaterialesRegionesTests.cpp`: el componente `Materiales` (una region por
+  parte de la malla con su material) y el resolvedor que decide qué material se
+  dibuja en cada region: el de la region, el material único del objeto o
+  ninguno. La suite comprueba el alta y la baja de regiones, la sincronización
+  con las que declara el modelo, el round-trip binario (con el material de cada
+  region dentro) y las tres respuestas del resolvedor.
 - Las suites de prueba se ejecutan con `ctest`: el build con motor registra
-  **39** tests (37 habilitados y 2 deshabilitados) y el build headless
+  **40** tests (38 habilitados y 2 deshabilitados) y el build headless
   (`BUILD_ENGINE=OFF`) registra **21** (20 habilitados y 1 deshabilitado).
 - `.github/workflows/ci.yml` compila el engine completo en Ubuntu (Release, sin
   ASan) y ejecuta las pruebas; además ejecuta las headless en
@@ -1577,7 +1595,7 @@ GameScene → coordina todos los subsistemas del frame
   Windows usa el generador por defecto (multi-config), que es el mismo que
   comprueba el job multi-config de la CI.
 - La lista de targets que compila cada job tiene que cubrir todas las suites
-  registradas en ese modo de build (39 con `BUILD_ENGINE=ON`, 21 con
+  registradas en ese modo de build (40 con `BUILD_ENGINE=ON`, 21 con
   `BUILD_ENGINE=OFF`): `ctest` ejecuta todos los tests registrados en el build,
   no solo los compilados, y los que faltan quedan como `Not Run`, lo que hace
   fallar el job. Las suites con `DISABLED TRUE` se pueden omitir porque `ctest`

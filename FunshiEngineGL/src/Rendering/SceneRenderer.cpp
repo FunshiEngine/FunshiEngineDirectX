@@ -96,6 +96,11 @@ void SceneRenderer::setTextureManager(TextureManager* textureManager) noexcept {
     tilemapRenderer_.setTextureManager(textureManager);
 }
 
+void SceneRenderer::setResolvedorMateriales(
+    IResolutorMateriales* resolvedor) noexcept {
+    if (meshRenderer_) meshRenderer_->setResolvedorMateriales(resolvedor);
+}
+
 void SceneRenderer::setGestorShaders(Rendering::GestorShaders* gestorShaders) noexcept {
     gestorShaders_ = gestorShaders;
     if (meshRenderer_) meshRenderer_->setGestorShaders(gestorShaders);
@@ -552,7 +557,7 @@ bool SceneRenderer::dibujarSkyboxCubemap(const Skybox* skybox,
     skyboxProgram_->setInt("uSkybox", 0);
 
     backend.bindTextureCube(skyboxCubemap_, 0);
-    backend.drawMesh(skyboxCuboMalla_, 36);
+    backend.drawMesh(skyboxCuboMalla_, 0, 36);
 
     // Restaurar estado.
     backend.setDepthMask(true);

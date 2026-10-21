@@ -256,10 +256,16 @@ seleccion).
   a raíz" solo aparece cuando el objeto cuelga de un padre intermedio: un hijo directo de
   la raíz ya está al nivel superior, así que no hay nada que desenanidar. Clic derecho en
   espacio vacío del panel despliega "New GameObject".
-- **Componentes:** `Transform`, `Color`, `Model`, `Material`, `Light`,
+- **Componentes:** `Transform`, `Color`, `Model`, `Material`, `Materiales`, `Light`,
   `CameraComponent`, `Grid`, `Skybox`, `SpriteRenderer`, `Animador2D`, `Tilemap`,
   colliders (esfera / cubo / malla / tilemap), `RigidBody`, `AudioSource`,
   `InterfaceComponent`, `Sombras` y `Script`.
+- **Materiales por region (`Materiales`):** cada parte de la malla (la cara de
+  un cubo, la parte de un personaje) puede llevar su propio material y sus
+  texturas. El panel lista una entrada por region; "Sincronizar con el modelo"
+  agrega las regiones que declara el archivo del modelo, con el nombre del
+  material que trae. Si una region no tiene material propio, se dibuja con el
+  material único del objeto.
 - **Inspector:** boton "Agregar componente" abre el popup de componentes; cada
   uno tiene su panel propio (Transform, Luz con tipo/atenuacion/color, etc.).
   Cada componente se lista con su icono a la izquierda del nombre; el icono

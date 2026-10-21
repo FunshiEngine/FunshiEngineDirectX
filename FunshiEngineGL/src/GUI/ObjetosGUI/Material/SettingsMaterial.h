@@ -18,16 +18,23 @@
 */
 #ifndef SETTINGSMATERIAL_H
 #define SETTINGSMATERIAL_H
+
 #include "../SettingsComponent.h"
-#include "../../../Objetos/GameObject.h"
-#include "../../../Objetos/Componentes/Material.h"
+
+class GameObject;
+class Material;
 
 class SettingsMaterial : public SettingsComponent {
+private:
 	GameObject* gameObject;
 	int presetAplicado = -1;
+
 public:
-	explicit SettingsMaterial(GameObject* gameObject);
-	void showDataComponent() override;
-	Component* getComponent() override { return gameObject ? gameObject->getComponent<Material>() : nullptr; }
+	SettingsMaterial(GameObject* gameObject);
+	~SettingsMaterial();
+
+	virtual void showDataComponent() override;
+	virtual Component* getComponent() override;
 };
-#endif
+
+#endif // SETTINGSMATERIAL_H

@@ -30,6 +30,7 @@
 #include "InterfaceComponent.h"
 #include "Light.h"
 #include "Material.h"
+#include "Materiales.h"
 #include "Model.h"
 #include "Musica.h"
 #include "RigidBody/RigidBody.h"
@@ -57,6 +58,7 @@
 #include "../../GUI/ObjetosGUI/Interface/SettingsInterface.h"
 #include "../../GUI/ObjetosGUI/Light/SettingsLight.h"
 #include "../../GUI/ObjetosGUI/Material/SettingsMaterial.h"
+#include "../../GUI/ObjetosGUI/Materiales/SettingsMateriales.h"
 #include "../../GUI/ObjetosGUI/Model/SettingsModel.h"
 #include "../../GUI/ObjetosGUI/RigidBody/SettingsRigidBody.h"
 #include "../../GUI/ObjetosGUI/Script/SettingsScript.h"
@@ -171,6 +173,15 @@ CatalogoComponentes::CatalogoComponentes() {
         [](GameObject&) { return std::unique_ptr<Component>(new Material()); },
         [](Component*, GameObject* o, const ContextoPanel&) {
             return std::unique_ptr<SettingsComponent>(new SettingsMaterial(o));
+        });
+    // Materiales por region: cada parte de la malla (la cara de un cubo, la
+    // parte de un personaje) puede llevar su propio material.
+    add("Materiales", "Materiales por region", DimensionesComponente::TresD, "",
+        kIconoMaterial,
+        [](GameObject&) { return std::unique_ptr<Component>(new Materiales()); },
+        [](Component*, GameObject* o, const ContextoPanel& ctx) {
+            return std::unique_ptr<SettingsComponent>(
+                new SettingsMateriales(o, ctx.editor));
         });
     add("Light", "Light", DimensionesComponente::TresD, "",
         kIconoLuz,

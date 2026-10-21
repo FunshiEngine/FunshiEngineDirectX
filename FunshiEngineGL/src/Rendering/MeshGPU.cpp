@@ -81,5 +81,13 @@ void MeshGPU::upload(const float* vertices, std::size_t vertexCount,
 
 void MeshGPU::draw() const {
     if (buffer_ == kInvalidHandle || indexCount_ == 0) return;
-    backend_->drawMesh(buffer_, getIndexCount());
+    backend_->drawMesh(buffer_, 0, getIndexCount());
+}
+
+void MeshGPU::draw(unsigned int firstIndex, unsigned int indexCount) const {
+    if (buffer_ == kInvalidHandle || indexCount == 0) return;
+    // Un rango que no cabe en la malla se ignora: dibujar de mas leeria
+    // indices que no existen.
+    if (static_cast<std::size_t>(firstIndex) + indexCount > indexCount_) return;
+    backend_->drawMesh(buffer_, firstIndex, indexCount);
 }
