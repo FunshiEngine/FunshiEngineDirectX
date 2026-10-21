@@ -230,6 +230,11 @@ FunshiEngineGL/                          ← raíz del repo
         │   ├── GameExporter.h/.cpp      ← exporta el juego standalone: proyecto CMake temporal,
         │   │                              compila el runtime (sin editor), empaqueta ejecutable +
         │   │                              scenes/scripts/assets en estructura simplificada
+        │   ├── EstadoExportacion.h/.cpp ← estado de la exportación (fase, resultado, progreso,
+        │   │                              mensaje): reglas de dominio, sin ImGui, para que el
+        │   │                              resultado no se pierda y se pueda comprobar headless
+        │   ├── PrecondicionesExportacion.h/.cpp ← comprueba que la exportación se puede lanzar
+        │   │                              (proyecto elegido y con carpeta) y devuelve el motivo
         │   ├── ConfigJuegoExportado.h   ← manifiesto JuegoExportado.json (header-only)
         │   ├── RaizEngine.h             ← búsqueda de la raíz del engine para add_subdirectory
         │   └── RutasExportacion.h       ← helpers de rutas del proyecto (header-only)
@@ -325,7 +330,8 @@ FunshiEngineGL/                          ← raíz del repo
         │   │   └── Colliders/ (Esfera, Cubo, Malla, Tilemap) ← sync transform/shape con física
         │   ├── Export/
         │   │   └── ExportDialog.h/.cpp           ← diálogo de exportación del juego standalone
-        │   │                                      (arma `GameExporter::Config` y lo lanza)
+        │   │                                      (arma `GameExporter::Config` y lo lanza; el
+        │   │                                      estado vive en EstadoExportacion)
         │   └── SceneGUI/
         │       ├── SceneSelectedInterface.h/.cpp  ← jerarquía y selección; usa EditorController
         │       ├── SceneObjectTree.h/.cpp         ← árbol de objetos (con drag & drop)
@@ -1561,8 +1567,14 @@ GameScene → coordina todos los subsistemas del frame
   ninguno. La suite comprueba el alta y la baja de regiones, la sincronización
   con las que declara el modelo, el round-trip binario (con el material de cada
   region dentro) y las tres respuestas del resolvedor.
+- `tests/ExportacionTests.cpp`: el diálogo de exportación y el estado que lleva
+  (`EstadoExportacion`). La suite comprueba que las precondiciones digan el
+  motivo cuando no se puede exportar (sin proyecto, o con su carpeta
+  inexistente), que el resultado (éxito o error) se conserve al terminar la
+  exportación en vez de perderse, y que la barra de menú le pase al diálogo el
+  proyecto activo.
 - Las suites de prueba se ejecutan con `ctest`: el build con motor registra
-  **40** tests (38 habilitados y 2 deshabilitados) y el build headless
+  **41** tests (39 habilitados y 2 deshabilitados) y el build headless
   (`BUILD_ENGINE=OFF`) registra **21** (20 habilitados y 1 deshabilitado).
 - `.github/workflows/ci.yml` compila el engine completo en Ubuntu (Release, sin
   ASan) y ejecuta las pruebas; además ejecuta las headless en

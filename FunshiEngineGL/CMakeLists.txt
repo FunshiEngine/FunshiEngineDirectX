@@ -708,6 +708,27 @@ set_target_properties(materiales-regiones-tests PROPERTIES
 )
 add_test(NAME materiales-regiones-tests COMMAND materiales-regiones-tests)
 
+# --- Pruebas headless de la exportacion de juegos ---------------------------
+# El dialogo de exportacion y el estado que lleva (fase, resultado, mensaje)
+# son reglas de dominio: se comprueban sin ventana, con la barra de menu
+# reflejando el proyecto activo en el dialogo.
+add_executable(exportacion-tests
+    ${CMAKE_CURRENT_SOURCE_DIR}/../tests/ExportacionTests.cpp
+)
+target_include_directories(exportacion-tests PRIVATE
+    ${SRC_DIR}
+    ${SRC_DIR}/ImGui
+    ${CMAKE_SOURCE_DIR}/External
+    ${CMAKE_SOURCE_DIR}/External/imgui
+)
+target_link_libraries(exportacion-tests PRIVATE funshi_engine)
+set_target_properties(exportacion-tests PROPERTIES
+    CXX_STANDARD 17
+    CXX_STANDARD_REQUIRED ON
+    CXX_EXTENSIONS OFF
+)
+add_test(NAME exportacion-tests COMMAND exportacion-tests)
+
 if(WIN32)
     target_link_libraries(escena-serializacion-tests PRIVATE dbghelp)
     target_compile_definitions(escena-serializacion-tests PRIVATE _HAS_STD_BYTE=0)
@@ -719,6 +740,8 @@ if(WIN32)
     target_compile_definitions(malla-regiones-tests PRIVATE _HAS_STD_BYTE=0)
     target_link_libraries(materiales-regiones-tests PRIVATE dbghelp)
     target_compile_definitions(materiales-regiones-tests PRIVATE _HAS_STD_BYTE=0)
+    target_link_libraries(exportacion-tests PRIVATE dbghelp)
+    target_compile_definitions(exportacion-tests PRIVATE _HAS_STD_BYTE=0)
     target_link_libraries(serializacion-tests PRIVATE dbghelp)
     target_compile_definitions(serializacion-tests PRIVATE _HAS_STD_BYTE=0)
 endif()
