@@ -56,9 +56,19 @@ namespace Rendering {
 class GestorShaders;
 }  // namespace Rendering
 
+// El backend de render se inyecta en la escena: lo usan el renderer y el
+// gestor de shaders.
+namespace Rendering {
+namespace Backend {
+class IRenderBackend;
+} // namespace Backend
+} // namespace Rendering
+
 class GameScene {
 private:
     GUIManager* managerGUI;
+    // Backend de render de la escena: se inyecta al construirla.
+    Rendering::Backend::IRenderBackend& backend_;
     SceneSelectedInterface* selecteableGUI = nullptr;
     SceneMenuBarInterface* menuBarGUI = nullptr;
     CameraComponent* activeCamera = nullptr;
@@ -210,7 +220,9 @@ private:
     void limpiarColaCompilacion();
 
 public:
-    GameScene(GUIManager* managerGUI);
+    // El backend de render se inyecta: lo usan el renderer de la escena y el
+    // gestor de shaders (que crea los programas).
+    GameScene(GUIManager* managerGUI, Rendering::Backend::IRenderBackend& backend);
     ~GameScene();
 
     ListaDE<GameObject*>* getGameObjectsScene();

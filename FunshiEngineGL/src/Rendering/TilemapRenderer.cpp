@@ -37,7 +37,8 @@ TilemapRenderer::TilemapRenderer() = default;
 TilemapRenderer::~TilemapRenderer() = default;
 
 void TilemapRenderer::destruir() {
-    auto& backend = Backend::activeBackend();
+    if (!backend_) return;
+    auto& backend = *backend_;
     for (auto& entrada : mallas_) {
         if (entrada.second.malla != Backend::kInvalidHandle)
             backend.destroyMesh(entrada.second.malla);
@@ -51,7 +52,8 @@ void TilemapRenderer::destruir() {
 bool TilemapRenderer::inicializar() {
     if (shader_) return true;
     if (shaderFallado_) return false;
-    auto& backend = Backend::activeBackend();
+    if (!backend_) return false;
+    auto& backend = *backend_;
     if (!backend.init()) return false;
     // Sin gestor de shaders no hay de donde pedir el programa.
     if (!gestorShaders_) return false;
@@ -78,7 +80,8 @@ bool TilemapRenderer::enlazarTextura(const std::string& path) {
         std::shared_ptr<const Image> image = textureManager_->getTexture(path);
         auto it = gpuTexturas_.find(image.get());
         if (it == gpuTexturas_.end()) {
-            auto gpu = std::make_unique<TextureGL>();
+            if (!backend_) return false;
+            auto gpu = std::make_unique<TextureGL>(*backend_);
             gpu->upload(*image);
             it = gpuTexturas_.emplace(image.get(), std::move(gpu)).first;
         }
@@ -106,7 +109,8 @@ bool TilemapRenderer::asegurarMalla(const void* id, const Mesh& malla,
         return outMalla != Backend::kInvalidHandle && outIndices > 0;
     }
 
-    auto& backend = Backend::activeBackend();
+    if (!backend_) return false;
+    auto& backend = *backend_;
     if (it != mallas_.end()) {
         if (it->second.malla != Backend::kInvalidHandle)
             backend.destroyMesh(it->second.malla);
@@ -167,7 +171,8 @@ bool TilemapRenderer::dibujar(const TilemapDraw& draw) {
     shader_->setVec4("uTint", draw.tint ? draw.tint : tinteBlanco);
     shader_->setInt("uUseTexture", conTextura ? 1 : 0);
 
-    auto& backend = Backend::activeBackend();
+    if (!backend_) return false;
+    auto& backend = *backend_;
     backend.setBlendEnabled(true);
     backend.setDepthMask(false);
     backend.drawMesh(malla, indices);

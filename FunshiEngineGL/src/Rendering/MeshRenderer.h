@@ -61,6 +61,12 @@ public:
 
     bool available() const noexcept { return shader_ != nullptr; }
 
+    // Backend de render: con el se crean y destruyen los recursos GPU (mallas
+    // y texturas). Sin el, el renderer no dibuja.
+    void setBackend(Rendering::Backend::IRenderBackend& backend) noexcept {
+        backend_ = &backend;
+    }
+
     // Gestor de shaders del motor (dueno de los programas): sin el, el
     // renderer no tiene programa y no dibuja.
     void setGestorShaders(Rendering::GestorShaders* gestorShaders) noexcept {
@@ -124,6 +130,8 @@ private:
     std::shared_ptr<ShaderProgram> shaderSombra_;
     Rendering::GestorShaders* gestorShaders_ = nullptr;
     TextureManager* textureManager_ = nullptr;
+    // Backend de render inyectado (crea y destruye los recursos GPU).
+    Rendering::Backend::IRenderBackend* backend_ = nullptr;
     std::unordered_map<const Mesh*, std::unique_ptr<MeshGPU>> gpu_;
     std::unordered_map<const Image*, std::unique_ptr<TextureGL>> gpuTexturas_;
     // Paths de textura que ya fallaron al cargar: no se reintentan por frame.

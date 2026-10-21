@@ -46,6 +46,7 @@
 #include <memory>
 #include <sstream>
 #include <string>
+#include <type_traits>
 #include <vector>
 
 #include <imgui.h>
@@ -1777,6 +1778,11 @@ void elInspectorDibujaUnFrameSinArrastre() {
 // seguia en la pose vieja y se teletransportaba de vuelta en el siguiente paso
 // de simulacion. Ahora el local se reescribe como inverse(mundoPadre) *
 // mundoHijo y el cuerpo se reconstruye.
+// El contrato de fisicas no tiene comportamiento por defecto: un backend que
+// no declare los contactos ni la gravedad no compila.
+static_assert(std::is_abstract<IPhysicsBackend>::value,
+              "el contrato de fisicas exige implementar todos sus metodos");
+
 class BackendFisicoFalso : public IPhysicsBackend {
 public:
     int agregados = 0;
@@ -1789,6 +1795,14 @@ public:
         ultimo = body;
     }
     void removeRigidBody(RigidBody*) override { ++quitados; }
+
+    std::vector<EventoContacto> tomarEventosContacto() override { return {}; }
+    void fijarGravedad(float, float, float) override {}
+    void gravedad(float& x, float& y, float& z) const override {
+        x = 0.0f;
+        y = -1.0f;
+        z = 0.0f;
+    }
 };
 
 void reparentarPreservaLaPoseYRefrescaElCuerpo() {

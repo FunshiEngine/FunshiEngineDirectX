@@ -62,7 +62,9 @@ class AssetManager;
 
 class SceneRenderer {
 public:
-    SceneRenderer();
+    // El backend de render se inyecta: los recursos GPU (mallas, texturas,
+    // batches y objetivos de render) se crean y se destruyen con el.
+    explicit SceneRenderer(Rendering::Backend::IRenderBackend& backend);
     ~SceneRenderer();
 
     // Manager de imagenes compartidas: se inyecta al MeshRenderer para que
@@ -211,6 +213,8 @@ private:
     // apariencia.
     bool colorReferenciaGuia(const FrameContext& ctx, float out[3]) const;
 
+    // Backend de render de la pasada: se inyecta al construir el renderer.
+    Rendering::Backend::IRenderBackend& backend_;
     std::unique_ptr<class MeshRenderer> meshRenderer_;
     GrillaRenderer grillaRenderer_;
     // Mapas de sombra de la pasada: los objetivos de profundidad por luz que

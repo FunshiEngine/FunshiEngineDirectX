@@ -60,9 +60,6 @@ protected:
 public:
     Sombras();
 
-    void saveComponent(std::ofstream* file) override;
-    void loadComponent(std::ifstream* file) override;
-
     bool estaActivado() const { return activado; }
     void setActivado(bool valor) { activado = valor; }
 

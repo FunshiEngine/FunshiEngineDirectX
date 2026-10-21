@@ -34,8 +34,9 @@
 #include <string>
 #include <vector>
 
-#define STB_IMAGE_IMPLEMENTATION
-#include "stb_image.h"
+// Solo las declaraciones: la implementacion de stb_image vive en su propia
+// unidad (External/stb_image/stb_image_impl.cpp).
+#include <stb_image/stb_image.h>
 
 namespace {
 

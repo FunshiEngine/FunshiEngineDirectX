@@ -464,10 +464,3 @@ void Script::deserializeComponent(std::ifstream* f) {
     comportamiento_ = ComportamientoCargado{};
 }
 
-void Script::saveComponent(std::ofstream* fileNamePathContentObject) {
-    serializeComponent(fileNamePathContentObject);
-}
-
-void Script::loadComponent(std::ifstream* fileNamePathContentObject) {
-    deserializeComponent(fileNamePathContentObject);
-}

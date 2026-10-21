@@ -31,18 +31,13 @@ public:
     virtual void stepSimulation(float deltaTime) = 0;
     virtual void addRigidBody(RigidBody* body) = 0;
     virtual void removeRigidBody(RigidBody* body) = 0;
-    virtual std::vector<EventoContacto> tomarEventosContacto() { return {}; }
-    // Gravedad global del mundo (por defecto la historica del motor).
-    virtual void fijarGravedad(float x, float y, float z) {
-        (void)x;
-        (void)y;
-        (void)z;
-    }
-    virtual void gravedad(float& x, float& y, float& z) const {
-        x = 0.0f;
-        y = -1.0f;
-        z = 0.0f;
-    }
+    // Sin comportamiento por defecto: cada backend declara que hace con los
+    // contactos y con la gravedad global. Un backend que no implemente esto
+    // no compila, en vez de heredar un valor silencioso.
+    virtual std::vector<EventoContacto> tomarEventosContacto() = 0;
+    // Gravedad global del mundo (el backend fija su valor inicial).
+    virtual void fijarGravedad(float x, float y, float z) = 0;
+    virtual void gravedad(float& x, float& y, float& z) const = 0;
 };
 
 #endif

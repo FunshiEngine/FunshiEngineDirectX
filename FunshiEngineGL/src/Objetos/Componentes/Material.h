@@ -50,9 +50,6 @@ protected:
 public:
     Material();
 
-    void saveComponent(std::ofstream* file) override;
-    void loadComponent(std::ifstream* file) override;
-
     void setAmbient(float r, float g, float b);
     void setDiffuse(float r, float g, float b);
     void setSpecular(float r, float g, float b);

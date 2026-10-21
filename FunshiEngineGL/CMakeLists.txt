@@ -81,6 +81,11 @@ list(REMOVE_ITEM SOURCES
 # El backend CEF exige C++20 (headers de CEF) y el motor compila en C++17, asi
 # que vive en su propia unidad/target (funshi_webui_cef) y no entra en la GLOB.
 list(REMOVE_ITEM SOURCES ${SRC_DIR}/WebUI/BackendCef.cpp)
+# stb_image (vendoriado en External/stb_image): decodificador de imagenes. Su
+# implementacion va en una unidad propia (fuera de src/) para que ningun modulo
+# del motor sea dueno de la libreria de terceros.
+list(APPEND SOURCES
+    ${CMAKE_CURRENT_SOURCE_DIR}/External/stb_image/stb_image_impl.cpp)
 add_library(funshi_project_core STATIC
     ${SRC_DIR}/Configuracion/ProjectManager.cpp
     ${SRC_DIR}/Configuracion/ProjectPaths.cpp)
@@ -1216,14 +1221,18 @@ set_target_properties(assetmanager-tests PROPERTIES
 add_test(NAME assetmanager-tests COMMAND assetmanager-tests)
 
 # TextureManager (cache Flyweight de imagenes CPU) headless y portatil al
-# igual que assetmanager-tests: registro compartido + loader artificial, sin
-# stb_image (StbImageLoader es del engine, aqui no entra la pila grafica).
+# igual que assetmanager-tests: registro compartido + loader artificial. Incluye
+# tambien el cargador real (StbImageLoader) para comprobar el volteo vertical:
+# stb_image es CPU puro, no toca la pila grafica.
 add_executable(texturemanager-tests
     ${SRC_DIR}/Assets/TextureManager.cpp
+    ${SRC_DIR}/Assets/StbImageLoader.cpp
     ${SRC_DIR}/ExcepcionesCPP/RuntimeException.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/External/stb_image/stb_image_impl.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../tests/TextureManagerTests.cpp
 )
-target_include_directories(texturemanager-tests PRIVATE ${SRC_DIR})
+target_include_directories(texturemanager-tests PRIVATE
+    ${SRC_DIR} ${CMAKE_CURRENT_SOURCE_DIR}/External)
 set_target_properties(texturemanager-tests PROPERTIES
     CXX_STANDARD 17
     CXX_STANDARD_REQUIRED ON

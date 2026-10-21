@@ -37,11 +37,12 @@
 #include "CacheCubemap.h"
 #include "Cielo.h"
 #include "DibujoModelo.h"
+#include "../Objetos/Componentes/Model.h"
 #include "../Objetos/Componentes/Skybox.h"
 #include "../Objetos/Componentes/SpriteRenderer.h"
 #include "../Objetos/Componentes/Tilemap.h"
 
-#include "../Herramientas/IconosGUI/stb_image.h"
+#include <stb_image/stb_image.h>
 #include "LineBatch.h"
 #include "LineBuilder.h"
 #include "LineRenderer.h"
@@ -76,9 +77,16 @@ constexpr float kCieloTransicion = 0.35f;
 
 }  // namespace
 
-SceneRenderer::SceneRenderer()
-    : meshRenderer_(std::make_unique<MeshRenderer>()),
-      mapaSombras_(Rendering::Backend::activeBackend()) {}
+SceneRenderer::SceneRenderer(Rendering::Backend::IRenderBackend& backend)
+    : backend_(backend),
+      meshRenderer_(std::make_unique<MeshRenderer>()),
+      grillaRenderer_(backend),
+      mapaSombras_(backend),
+      marcadoresBatch_(backend) {
+    meshRenderer_->setBackend(backend);
+    spriteRenderer_.setBackend(backend);
+    tilemapRenderer_.setBackend(backend);
+}
 
 SceneRenderer::~SceneRenderer() = default;
 
@@ -104,7 +112,7 @@ void SceneRenderer::destruir() {
     // Se libera aca con el contexto vivo y se vacia la clave, para que si la
     // escena vuelve a dibujar la pasada suba el cubemap de nuevo en lugar de
     // dar por buena una textura ya borrada.
-    auto& backend = Rendering::Backend::activeBackend();
+    auto& backend = backend_;
     if (skyboxCubemap_ != Rendering::Backend::kInvalidHandle) {
         backend.destroyTextureCube(skyboxCubemap_);
         skyboxCubemap_ = Rendering::Backend::kInvalidHandle;
@@ -134,7 +142,7 @@ void SceneRenderer::render(const FrameContext& ctx, GameObject* activeCameraObje
 
     dibujarViewportsPrevios(ctx);
 
-    auto& backend = Rendering::Backend::activeBackend();
+    auto& backend = backend_;
 
     // Pass principal: vuelve al framebuffer de la ventana con su viewport.
     backend.bindDefaultFramebuffer();
@@ -223,7 +231,7 @@ void SceneRenderer::dibujarEscena(const FrameContext& ctx,
                                   const float projection[16],
                                   GameObject* camaraOjo, int viewportAncho,
                                   int viewportAlto, bool esPasadaPrincipal) {
-    auto& backend = Rendering::Backend::activeBackend();
+    auto& backend = backend_;
 
     // Estado de la pasada de lineas: el shader de lineas grosses necesita las
     // matrices de la camara y el tamano del viewport para pasar el ancho de
@@ -310,7 +318,7 @@ void SceneRenderer::dibujarCielo(const FrameContext& ctx, const float view[16],
                                  const float camaraMundo[3]) {
     if (!ctx.apariencia || !camaraMundo) return;
 
-    auto& backend = Rendering::Backend::activeBackend();
+    auto& backend = backend_;
 
     // Buscar el primer componente Skybox visible en la escena.
     Skybox* skybox = nullptr;
@@ -420,7 +428,7 @@ bool SceneRenderer::dibujarSkyboxCubemap(const Skybox* skybox,
                                          const float projection[16]) {
     if (!skybox) return false;
 
-    auto& backend = Rendering::Backend::activeBackend();
+    auto& backend = backend_;
 
     // Caras del cubemap en el orden del backend (+X, -X, +Y, -Y, +Z, -Z).
     // Se resuelven contra la raiz de assets antes de usarlas: al deserializar
@@ -564,7 +572,7 @@ bool SceneRenderer::dibujarSkyboxCubemap(const Skybox* skybox,
 // backend no puede crear la textura: la pasada cae al degradado. El aviso es
 // una sola vez por clave de caras, no por frame.
 bool SceneRenderer::cargarCubemap(const std::string rutas[6]) {
-    auto& backend = Rendering::Backend::activeBackend();
+    auto& backend = backend_;
 
     int width = 0, height = 0;
     unsigned char* facePixels[6] = {nullptr, nullptr, nullptr,
@@ -668,7 +676,7 @@ void SceneRenderer::prepararSombras(const FrameContext& ctx,
                                     CameraComponent* camara) {
     if (!meshRenderer_) return;
 
-    auto& backend = Rendering::Backend::activeBackend();
+    auto& backend = backend_;
 
     candidatosSombra_.clear();
     // Sin luces o sin duenos no hay nada que proyecte sombra. Se sigue igual
@@ -1179,7 +1187,7 @@ void SceneRenderer::dibujarViewportsPrevios(const FrameContext& ctx) {
     std::vector<std::unique_ptr<RenderTarget>> nuevos;
     std::vector<GameObject*> nuevosObjetos;
 
-    auto& backend = Rendering::Backend::activeBackend();
+    auto& backend = backend_;
     // Sin backend no hay nada que dibujar en la vista previa: se sale antes de
     // crear y enlazar ningun objetivo de render (enlazar uno sin backend
     // llamaria punteros de funcion nulos).
@@ -1208,7 +1216,7 @@ void SceneRenderer::dibujarViewportsPrevios(const FrameContext& ctx) {
                     break;
                 }
             }
-            if (!target) target = std::make_unique<RenderTarget>();
+            if (!target) target = std::make_unique<RenderTarget>(backend_);
 
             target->resize(kPreviewW, kPreviewH);
             target->bind();

@@ -67,10 +67,6 @@ void AudioSource::deserializeComponent(std::ifstream* file) {
     file->read(reinterpret_cast<char*>(&reproduccionAutomatica), sizeof(bool));
 }
 
-void AudioSource::saveComponent(std::ofstream* file) { serializeComponent(file); }
-
-void AudioSource::loadComponent(std::ifstream* file) { deserializeComponent(file); }
-
 void AudioSource::reproducir() {
     if (!motor) return;
     detener(); // no apilar probabilidades: un clip, una reproduccion

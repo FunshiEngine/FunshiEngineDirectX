@@ -31,13 +31,17 @@
 // 2 = UV (vec2), 3 = tangente (vec3), 4 = bitangente (vec3).
 class MeshGPU {
 private:
+    // Backend con el que se crean y destruyen los recursos: se inyecta, no se
+    // busca en un singleton.
+    Rendering::Backend::IRenderBackend* backend_ = nullptr;
     Rendering::Backend::Handle buffer_ = 0;
     std::size_t indexCount_ = 0;
 
     void destroy();
 
 public:
-    MeshGPU() = default;
+    explicit MeshGPU(Rendering::Backend::IRenderBackend& backend) noexcept
+        : backend_(&backend) {}
     ~MeshGPU();
     MeshGPU(const MeshGPU&) = delete;
     MeshGPU& operator=(const MeshGPU&) = delete;

@@ -43,7 +43,9 @@ headless viven en `tests/` y el CI en
 `funshi_diagnostics_core` es una biblioteca compartida dentro del motor; no
 depende de ImGui y puede consumirla cualquier frente que hable su formato.
 
-`RuntimeException` conserva la traza de pila y el tipo de excepción. Los límites
+`Throwable` guarda el mensaje con el que se lanza y lo devuelve en `what()`,
+también cuando la excepción se captura como `std::exception`; `RuntimeException`
+conserva la traza de pila y el tipo de excepción. Los límites
 que deciden que un fallo es reportable lo envían a `RegistroDiagnosticos`; el
 constructor de la excepción no registra automáticamente porque algunas
 excepciones se usan como control interno. El registro mantiene una ventana
@@ -135,6 +137,9 @@ FunshiEngineGL/                          ← raíz del repo
     ├── External/nlohmann/json.hpp       ← nlohmann/json vendoriado (EditorConfig)
     ├── External/miniz/                   ← miniz 3.0.2 vendoriado (módulos separados;
     │                                       lectura/escritura de ZIP de los .fmod)
+    ├── External/stb_image/              ← stb_image vendoriado (decodificador de
+    │                                       imágenes; su implementación va en una
+    │                                       unidad propia, no en un módulo del motor)
 
     └── src/
         ├── main.cpp                     ← composition root: ventanas, callbacks, bucle, config
@@ -151,7 +156,10 @@ FunshiEngineGL/                          ← raíz del repo
         │   ├── AssimpMeshLoader.*       ← loader Assimp→Mesh
         │   └── StbImageLoader.*         ← loader stb_image→Image (solo engine) +
         │                                   `dimensiones()`: lee la cabecera del
-        │                                   archivo sin decodificar
+        │                                   archivo sin decodificar; el volteo
+        │                                   vertical se hace sobre la imagen
+        │                                   decodificada (no con el estado global
+        │                                   de la librería)
         ├── Audio/                       ← audio del motor (backend inyectable)
         │   ├── AudioEngine.h/.cpp       ← fachada thread-safe (cola de comandos + hilo)
         │   ├── ExtensionesAudio.h       ← extensiones de audio comparadas normalizadas
@@ -190,7 +198,9 @@ FunshiEngineGL/                          ← raíz del repo
         │   ├── TerminalSession.h/.cpp      ← shell interactiva mediante ConPTY o pseudo-terminal POSIX
         │   └── TerminalEmulator.h/.cpp     ← cuadrícula VT y parser de secuencias ANSI
         ├── Entity/
-        │   ├── Entity.h                 ← base: lista de componentes, Transform, serialización
+        │   ├── Entity.h                 ← base real: componentes, jerarquía, transform y
+        │   │                              serialización común (el derivado aporta sus
+        │   │                              atributos propios)
         │   └── Entity.cpp
         ├── Estructuras/                 ← contenedores genéricos, header-only
         │   ├── Comparable.h / Ordenadora.h
@@ -306,13 +316,16 @@ FunshiEngineGL/                          ← raíz del repo
         │       ├── SceneObjectTree.h/.cpp         ← árbol de objetos (con drag & drop)
         │       └── SceneMenuBarInterface.h/.cpp   ← controles Depuración/Juego/Pausa/Reset/Terminar
         ├── GUIManager/
-        │   └── GUIManager.h/.cpp         ← fábrica y registro de ventanas; posee FileManager
+        │   └── GUIManager.h/.cpp         ← fábrica de ventanas y su registro (cada
+        │                                  ventana se registra al crearse); posee
+        │                                  FileManager
         ├── Herramientas/
         │   ├── TypeUtils.h/.cpp          ← nombres legibles de tipos
         │   ├── PathUtils.h               ← PATH_SEP + regla de cotejo de rutas (rutaBajo)
         │   ├── MaterialPresets.h         ← presets de Material como datos (reemplaza a materiales.h)
         │   ├── TreeGUI/TreeGUI.h         ← widget de árbol genérico para ImGui
-        │   └── IconosGUI/                ← carga de íconos con stb_image
+        │   └── IconosGUI/                ← carga de íconos (usa stb_image, que ya
+        │                                   vive en External/stb_image)
         ├── Iluminacion/
         │   ├── LightSystem.h/.cpp        ← dueño del estado GL de luces (GL_LIGHT0..7) por frame
         │   │                              (además devuelve el objeto dueño de cada luz)
@@ -524,7 +537,7 @@ FunshiEngineGL/                          ← raíz del repo
 main.cpp
   ├── Ventana (GLFW init: contexto 3.3 core + carga dura de GLFuncs)
   ├── ImGui init (backends glfw + opengl3; imgui.ini gestionado por el gestor)
-  ├── GUIManager (crea el menú y las ventanas; posee FileManager)
+  ├── GUIManager (crea el menú y las ventanas y las registra; posee FileManager)
   ├── GameScene(guiManager)
   │   ├── SceneRegistry            ← ownership de objetos
   │   ├── PhysicsEngine (PIMPL)    ← mundo Bullet vía BulletPhysicsAdapter
@@ -634,7 +647,12 @@ solo como orquestador de arranque y bucle.
 
 ### Entidades, objetos y componentes
 
-- `Entity` contiene una `ListaDE<Component*>` y un `Transform` base. Define la interfaz abstracta de serialización (métodos `serialize*`/`deserialize*`).
+- `Entity` es la base real de la escena: es duena de sus componentes
+  (`ListaDE<Component*>` más los propietarios), conoce su lugar en la jerarquía
+  y su transform de origen, e implementa la parte común de la serialización
+  (el orden de los bloques, el transform y la lista de componentes) y el
+  transform global. El derivado solo aporta los atributos que son suyos
+  (`serializeLocalAtributes`/`deserializeLocalAtributes`).
 - `GameObject` extiende `Entity` e implementa `Comparable<GameObject>`. Añade:
   id entero, nombre (`inputName[25]`), color auxiliar (`auxColor`), estado (`bool`),
   ciclo `update(dt)` y la lógica de serialización binaria concreta.
@@ -642,12 +660,21 @@ solo como orquestador de arranque y bucle.
   mediante Assimp y serializa adicionalmente la ruta del archivo del modelo. No
   tiene método de dibujado: la entidad no conoce la capa de Rendering, y es
   `SceneRenderer` quien la pinta vía `MeshRenderer`.
+- `GameObject` no incluye los componentes concretos: los declara y quien los
+  usa incluye su cabecera. Asi el dominio no arrastra el componente de fisica
+  (ni Bullet) ni el de modelo (ni Assimp). El tipo plano `color` (RGBA) vive en
+  `TypeUtils.h` para que el objeto no dependa del componente `Color`.
 - Los componentes concretos son: `Transform`, `Color`, `Model`, `Material`, `Light`,
   `AudioSource`, `Musica`, `InterfaceComponent`, `Grid`, `Script`,
   `EsfereCollider`, `CubeCollider`, `MallaCollider` y `RigidBody`. Todos heredan
   de `Component` y serializan sus datos binarios.
 - `ComponentFactory` centraliza la creación por nombre de tipo tanto desde la GUI
   como durante la deserialización (`"CameraComponent"` acepta el alias `"Camera"`).
+- `Component` declara dos hooks de serialización (`serializeComponent` y
+  `deserializeComponent`): son los dos métodos que implementa cada componente. La
+  base ofrece `saveComponent` y `loadComponent` como entrada del motor, que
+  reenvían a los hooks y no se reimplementan, así que la serialización de un
+  componente vive en un solo sitio.
 - `Component::onLoaded(GameObject&)` es el hook polimórfico de post-carga:
   `deserializeEntityComponents` aplica `loadComponent()` y luego el hook, sin
   despachar por nombre de tipo. `Color` lo usa para reflejar su valor en
@@ -911,7 +938,9 @@ el patrón Strategy + registro de los backends de audio y de scripts:
   estado JSON a la página), `leerSalida` (recoge `FunshiUI.salida`), `render`
   (que devuelve el handle de textura para ImGui), el input neutral (ratón con
   `BotonRatonWebUI`, rueda, teclado por código GLFW y foco), `descargar` y
-  `apagar`.
+  `apagar`. Ninguno de esos métodos tiene comportamiento por defecto: cada
+  backend los declara, de modo que un backend incompleto no compila en vez de
+  heredar un silencio que el motor no ve.
 - `WebUIRuntime` es la fachada de despacho: mantiene un registro de backends y
   selecciona el activo (por configuración, con fallback al nulo ante un nombre
   desconocido). Expone el ciclo global (`ejecutarSubproceso`, `inicializar`,
@@ -1023,8 +1052,10 @@ también con `BUILD_ENGINE=OFF`):
   `computeNormals` —incluido el modo `soloFaltantes` para assets que mezclan sub-mallas con
   y sin normales— y `computeTangents`; registro compartido con un loader artificial.
 - `texturemanager-tests` (15): caché Flyweight de imágenes CPU (sin entrar la pila gráfica).
-- `estructuras-tests` (87): `ListaDE`, `ArbolEnlazado`, `PriorityListaDE`,
-  `MinHeap`/`MaxHeap`, `ListMergeSort` y `ArbolBinarioEnlazado`.
+- `estructuras-tests` (91): `ListaDE`, `ArbolEnlazado`, `PriorityListaDE`,
+  `MinHeap`/`MaxHeap`, `ListMergeSort` y `ArbolBinarioEnlazado`; más el
+  contrato de `Throwable` (el mensaje llega intacto a quien captura la
+  excepción como `std::exception`).
 - `rendering-tests` (178): geometría de las líneas del pipeline moderno
   (`LineBuilder`): expansión de cada segmento al quad que ensancha el shader,
   color por extremo (difuminado de la grilla), polilíneas, aristas con índices
@@ -1273,6 +1304,15 @@ main.cpp
 | Flyweight / Cache | `AssetManager` (meshes) y `TextureManager` (imágenes) | Recursos CPU compartidos por ruta (`AssetPath`) con loader inyectable y liberación por refcount. |
 | Service (inyección) | `GestorShaders` (dueño de los programas) y `TextureManager` | Los renderers reciben los recursos por setter en vez de buscarlos por su cuenta: un programa por nombre, compilado una vez y compartido, y el backend de render se inyecta en lugar de localizarlo por un global. |
 
+El backend de render (`IRenderBackend`) llega **inyectado** por el camino que
+va de `main` a la escena: `main` lo pasa a `GameScene`, esta al
+`SceneRenderer` y de ahí a los renderers y a los recursos de GPU
+(`MeshGPU`, `TextureGL`, `LineBatch` y `RenderTarget`, que lo reciben al
+construirse). Así esos recursos no dependen de un global y se pueden probar
+con un backend falso. El global `activeBackend()` queda solo en los puntos
+que aun no están migrados (la ventana, el arranque, los iconos de la GUI, el
+backend web y el dibujado del wireframe de los colliders).
+
 No están implementados todavía:
 - `Command` para undo/redo.
 - `Prototype` para duplicación y prefabs.
@@ -1326,7 +1366,9 @@ cargar, así que mover la raíz no invalida las escenas existentes.
   GUI, selección, física y vistas lineales solo mantienen referencias raw no propietarias.
 - `PhysicsEngine` es una fachada PIMPL con el backend inyectado (`IPhysicsBackend`):
   el header no expone Bullet y la fachada puede existir sin mundo (útil para pruebas
-  y para el editor sin simulación).
+  y para el editor sin simulación). El contrato no tiene comportamiento por
+  defecto: el backend declara los contactos que entrega y la gravedad global que
+  maneja, así que uno incompleto no compila.
 - `GameScene` sigue siendo un coordinador amplio: mezcla ciclo de frame, render,
   GUI, física, gizmo y vistas previas. La extracción de `SceneRenderer`,
   `PhysicsSystem` y `ScriptSystem` aliviaría esa responsabilidad.

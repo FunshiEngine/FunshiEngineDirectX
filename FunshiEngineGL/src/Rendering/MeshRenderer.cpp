@@ -63,7 +63,7 @@ MeshRenderer::~MeshRenderer() = default;
 
 bool MeshRenderer::inicializar() {
     if (shader_) return true;
-    if (!Rendering::Backend::activeBackend().init()) return false;
+    if (!backend_ || !backend_->init()) return false;
     // Sin gestor de shaders no hay de donde pedir el programa.
     if (!gestorShaders_) return false;
     try {
@@ -263,7 +263,8 @@ bool MeshRenderer::enlazarSlotTextura(const std::string& path, int unit,
         std::shared_ptr<const Image> image = textureManager_->getTexture(path);
         auto it = gpuTexturas_.find(image.get());
         if (it == gpuTexturas_.end()) {
-            auto gpu = std::make_unique<TextureGL>();
+            if (!backend_) return false;
+            auto gpu = std::make_unique<TextureGL>(*backend_);
             gpu->upload(*image);
             it = gpuTexturas_.emplace(image.get(), std::move(gpu)).first;
         }
@@ -400,7 +401,8 @@ bool MeshRenderer::intentarRenderMesh(GameObject* contexto, const Mesh* mesh,
 
     // El relleno de poligonos es el unico estado valido en un contexto core
     // (no hay glPolygonMode) y el depth test ya lo activa applyBaseState().
-    auto& backend = Rendering::Backend::activeBackend();
+    if (!backend_) return false;
+    auto& backend = *backend_;
     backend.setBlendEnabled(true);
     gpu->draw();
     backend.setBlendEnabled(false);
@@ -416,7 +418,8 @@ const MeshGPU* MeshRenderer::obtenerGpu(const Mesh* mesh) {
     auto it = gpu_.find(mesh);
     if (it != gpu_.end()) return it->second.get();
 
-    auto gpu = std::make_unique<MeshGPU>();
+    if (!backend_) return nullptr;
+    auto gpu = std::make_unique<MeshGPU>(*backend_);
     gpu->upload(&mesh->vertices[0].x, mesh->vertices.size(),
                 mesh->hasNormals() ? &mesh->normals[0].x : nullptr,
                 mesh->normals.size(),
@@ -434,7 +437,8 @@ const MeshGPU* MeshRenderer::obtenerGpu(const Mesh* mesh) {
 
 void MeshRenderer::enlazarTexturasSombra() {
     if (!shader_) return;
-    auto& backend = Rendering::Backend::activeBackend();
+    if (!backend_) return;
+    auto& backend = *backend_;
     const int count =
         std::min(Rendering::kMaxProyectoresSombra,
                  static_cast<int>(sombras_.size()));
@@ -465,7 +469,8 @@ bool MeshRenderer::intentarRenderSombra(const Mesh* mesh, const float modelo[16]
     shaderSombra_->setMat4("uLightMatrix", matrizLuz);
 
     // El pase de profundidad no escribe color: el blend se apaga.
-    auto& backend = Rendering::Backend::activeBackend();
+    if (!backend_) return false;
+    auto& backend = *backend_;
     backend.setBlendEnabled(false);
     gpu->draw();
     ShaderProgram::unbind(backend);

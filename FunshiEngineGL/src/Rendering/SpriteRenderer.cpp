@@ -39,7 +39,7 @@ SpriteRenderer::~SpriteRenderer() = default;
 
 void SpriteRenderer::destruir() {
     if (quadMalla_ != Backend::kInvalidHandle) {
-        Backend::activeBackend().destroyMesh(quadMalla_);
+        backend_->destroyMesh(quadMalla_);
         quadMalla_ = Backend::kInvalidHandle;
     }
     // Los TextureGL son RAII: al vaciar el mapa se liberan sus handles.
@@ -51,7 +51,8 @@ void SpriteRenderer::destruir() {
 bool SpriteRenderer::inicializar() {
     if (shader_) return true;
     if (shaderFallado_) return false;
-    auto& backend = Backend::activeBackend();
+    if (!backend_) return false;
+    auto& backend = *backend_;
     if (!backend.init()) return false;
     // Sin gestor de shaders no hay de donde pedir el programa.
     if (!gestorShaders_) return false;
@@ -95,7 +96,8 @@ bool SpriteRenderer::enlazarTextura(const std::string& path) {
         std::shared_ptr<const Image> image = textureManager_->getTexture(path);
         auto it = gpuTexturas_.find(image.get());
         if (it == gpuTexturas_.end()) {
-            auto gpu = std::make_unique<TextureGL>();
+            if (!backend_) return false;
+            auto gpu = std::make_unique<TextureGL>(*backend_);
             gpu->upload(*image);
             it = gpuTexturas_.emplace(image.get(), std::move(gpu)).first;
         }
@@ -144,7 +146,8 @@ bool SpriteRenderer::dibujar(const SpriteDraw& sprite) {
     shader_->setVec4("uTint", sprite.tint ? sprite.tint : tinteBlanco);
     shader_->setInt("uUseTexture", conTextura ? 1 : 0);
 
-    auto& backend = Backend::activeBackend();
+    if (!backend_) return false;
+    auto& backend = *backend_;
     backend.setBlendEnabled(true);
     // Depth test on (de applyBaseState) + depth mask off: los sprites no
     // escriben z-buffer, asi el orden de dibujo (Z creciente, atras->adelante)

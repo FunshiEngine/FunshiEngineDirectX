@@ -77,17 +77,17 @@
 static constexpr float kOverlayProgresoMin = 0.7f;
 static constexpr float kOverlayResultadoSeg = 2.2f;
 
-GameScene::GameScene(GUIManager* manager)
+GameScene::GameScene(GUIManager* manager, Rendering::Backend::IRenderBackend& backend)
     : managerGUI(manager),
+      backend_(backend),
       sceneRegistry(std::make_unique<SceneRegistry>()),
       phisics(std::make_unique<PhysicsEngine>()),
       assetManager(
           std::make_unique<AssetManager>(std::make_unique<AssimpMeshLoader>())),
       // El gestor de shaders es el dueno de los programas: el renderer de la
       // escena y los demas renderers le piden el programa por nombre.
-      gestorShaders(std::make_unique<Rendering::GestorShaders>(
-          Rendering::Backend::activeBackend())),
-      sceneRenderer(std::make_unique<SceneRenderer>()),
+      gestorShaders(std::make_unique<Rendering::GestorShaders>(backend)),
+      sceneRenderer(std::make_unique<SceneRenderer>(backend)),
       textureManager(std::make_unique<TextureManager>(
           std::make_unique<StbImageLoader>())),
       editorController(
@@ -933,8 +933,8 @@ void GameScene::pintarViewportsGUI() {
         // vertical ("v" invertida) para que la vista previa no quede dada
         // vuelta. La GUI no ve handles concretos: pide al backend el descriptor
         // opaco (en GL el GLuint viaja como puntero = ImTextureID).
-        const void* imguiTex = Rendering::Backend::activeBackend()
-                                   .imguiTextureId(target->getColorTexture());
+        const void* imguiTex =
+            backend_.imguiTextureId(target->getColorTexture());
         ImGui::Image(
             static_cast<ImTextureID>(reinterpret_cast<std::intptr_t>(imguiTex)),
             ImVec2(static_cast<float>(target->getWidth()),
