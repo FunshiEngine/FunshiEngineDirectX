@@ -1506,6 +1506,20 @@ set_target_properties(rendering-tests PROPERTIES
 )
 add_test(NAME rendering-tests COMMAND rendering-tests)
 
+# Simulación de partículas (CPU pura): emision, cono de dispersion, integracion,
+# muerte y presupuesto de particulas vivas. No toca OpenGL ni glm, asi que
+# compila y corre tambien en el build sin motor.
+add_executable(particulas-tests
+    ${SRC_DIR}/Particulas/SistemaParticulas.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../tests/ParticulasTests.cpp
+)
+set_target_properties(particulas-tests PROPERTIES
+    CXX_STANDARD 17
+    CXX_STANDARD_REQUIRED ON
+    CXX_EXTENSIONS OFF
+)
+add_test(NAME particulas-tests COMMAND particulas-tests)
+
 # Reflexion de comportamiento (motor de SerializeField): headless y portatil.
 # Cubre las macros REFLECT_*, la lectura/escritura de campos (incl. grupos
 # anidados y vectores de grupos) y el round-trip binario del arbol de valores.
