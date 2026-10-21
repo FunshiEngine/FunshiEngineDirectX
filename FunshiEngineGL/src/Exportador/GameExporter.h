@@ -104,6 +104,10 @@ public:
     // escribe ahi, y no mezclada con el log general del motor. Vacia si no
     // se pudo crear la carpeta.
     static std::string rutaLogExportacion();
+    // Directorio de compilacion de esta exportacion: uno propio, en la
+    // carpeta temporal del sistema, para que dos exportaciones simultaneas
+    // no compartan el mismo directorio de build.
+    static std::string directorioBuildTemporal();
 
 private:
     Config cfg_;

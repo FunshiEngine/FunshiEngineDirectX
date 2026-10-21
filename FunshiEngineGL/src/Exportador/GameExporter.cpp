@@ -183,10 +183,13 @@ void GameExporter::runExportacionInterna() {
         " (proyecto: " + cfg_.nombreProyecto + ")");
     progreso(0.05f, "Preparando directorio de build");
 
-    // Directorio temporal de build
-    std::string buildDir = cfg_.directorioSalida + "_build";
+    // Directorio temporal de build: uno propio por exportacion, en la carpeta
+    // temporal del sistema. Con un nombre fijo, dos exportaciones (del mismo
+    // proyecto o de distintos) compartian el directorio de compilacion: la
+    // segunda lo vaciaba mientras la primera compilaba, y esta fallaba con
+    // errores de "opening dependency file ... No such file or directory".
+    std::string buildDir = directorioBuildTemporal();
     std::error_code ec;
-    fs::remove_all(buildDir, ec);
     fs::create_directories(buildDir, ec);
 
     if (!generarProyectoCMake(buildDir)) {
@@ -483,6 +486,42 @@ const char* GameExporter::etiquetaPlataforma(Plataforma plataforma) {
     return plataforma == Plataforma::Windows ? "Windows (cross-compile MinGW)"
                                              : "Linux (nativo)";
 #endif
+}
+
+std::string GameExporter::directorioBuildTemporal() {
+    // Carpeta temporal del sistema: el directorio de compilacion es de
+    // usar y tirar, y ahi no se acumulan restos de exportaciones fallidas.
+    std::error_code ec;
+    fs::path base = fs::temp_directory_path(ec);
+    if (ec || base.empty())
+        base = fs::path(".");
+
+    const std::time_t ahora = std::time(nullptr);
+    std::tm utc{};
+#if defined(_WIN32)
+    gmtime_s(&utc, &ahora);
+#else
+    gmtime_r(&ahora, &utc);
+#endif
+    char sufijo[32] = {0};
+    std::strftime(sufijo, sizeof(sufijo), "%Y%m%d_%H%M%S", &utc);
+    const std::string nombre = std::string("funshi_export_") + sufijo;
+
+    // El nombre se reserva creando el directorio: la creacion es atomica,
+    // asi que dos procesos que exporting a la vez no obtienen el mismo
+    // (el que llega segundo prueba el siguiente).
+    for (int intento = 0; intento < 1000; ++intento) {
+        const fs::path candidata =
+            base / (nombre + "_" + std::to_string(intento));
+        std::error_code ec2;
+        if (fs::create_directory(candidata, ec2))
+            return candidata.string();
+        if (ec2 && ec2 != std::errc::file_exists)
+            break; // la carpeta temporal no es utilizable
+    }
+    // Sin carpeta temporal utilizable: se cae al directorio del sistema
+    // (el nombre lleva el instante, asi que es practicamente unico).
+    return (base / (nombre + "_" + std::to_string(std::time(nullptr)))).string();
 }
 
 std::string GameExporter::rutaLogExportacion() {

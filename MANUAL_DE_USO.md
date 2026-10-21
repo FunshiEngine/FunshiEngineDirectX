@@ -841,6 +841,10 @@ las etapas se agregan al final unas de otras (el configure no borra lo que
 escribio la compilacion). Es el sitio donde mirar cuando la exportacion falla
 o cuando el compilador avisa de algo.
 
+> La compilacion ocurre en un directorio propio, en la carpeta temporal del
+> sistema: dos exportaciones simultaneas no se pisan (cada una compila en el
+> suyo) y ahi no quedan restos de las exportaciones fallidas.
+
 > Los scripts C++ del proyecto viajan como fuentes y se compilan en la
 > **primera ejecucion** del juego en la maquina que lo corre: hace falta un
 > compilador C++ ahi (`g++`/`cl` en el PATH o la variable `FUNSHI_CXX`).
