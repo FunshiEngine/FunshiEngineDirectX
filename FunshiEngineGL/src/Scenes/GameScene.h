@@ -32,6 +32,7 @@
 #include "../Configuracion/Apariencia.h"
 #include "../Configuracion/DimensionProyecto.h"
 #include "../Objetos/Componentes/ResolvedorMateriales.h"
+#include "../Particulas/SistemaParticulas.h"
 #include "OperacionGizmo.h"
 #include "../WebUI/VistasWebUI.h"
 #include "../WebUI/EstadoInterfaces.h"
@@ -127,6 +128,10 @@ private:
     // que se alimenta de los mismos callbacks.
     InputScripts inputScripts;
     float deltaTime = 0.0f;
+    // Sistema de particulas de la escena: lo avanzan los emisores y lo dibuja
+    // el renderer. Vive en la escena (no es un singleton) para que cada
+    // escena tenga el suyo.
+    SistemaParticulas sistemaParticulas;
     bool start = false;
     // version anterior de start: detecta la transicion false->true para
     // sincronizar los cuerpos a la pose VISUAL del editor ANTES de que el
@@ -256,6 +261,10 @@ public:
     void GUI();
     void pintarVentanaCamaras();
     void update(float deltaTime);
+
+    // Recorre la escena y pide a cada emisor de particulas que suelte las
+    // suyas. Las particulas nacen en la posicion global del objeto dueno.
+    void emitirParticulas(float deltaTime);
     void registrarTeclaScript(int key, int action);
     void registrarMouseScript(double x, double y);
     void gameScene();
@@ -321,6 +330,14 @@ public:
     void clearSelection();
 
     // Acceso al controlador del editor para comandos (undo/redo)
+    // Sistema de particulas de la escena.
+    SistemaParticulas& getSistemaParticulas() noexcept {
+        return sistemaParticulas;
+    }
+    const SistemaParticulas& getSistemaParticulas() const noexcept {
+        return sistemaParticulas;
+    }
+
     EditorController* getEditorController() noexcept { return editorController.get(); }
     const EditorController* getEditorController() const noexcept { return editorController.get(); }
 

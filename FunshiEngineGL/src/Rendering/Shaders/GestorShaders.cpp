@@ -36,6 +36,7 @@ void GestorShaders::registrarIncorporados() {
     registrarShader("malla", kDefaultVertexShader, kDefaultFragmentShader);
     registrarShader("linea", kLineVertexShader, kLineFragmentShader);
     registrarShader("sprite", kSpriteVertexShader, kSpriteFragmentShader);
+    registrarShader("particulas", kParticulasVertexShader, kParticulasFragmentShader);
     registrarShader("cielo", kSkyVertexShader, kSkyFragmentShader);
     registrarShader("cubemap", kCubemapVertexShader, kCubemapFragmentShader);
     // Pases de profundidad del mapa de sombras: no colorea, solo deja la

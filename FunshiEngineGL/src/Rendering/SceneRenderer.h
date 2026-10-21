@@ -29,6 +29,7 @@
 #include "GuiaEje.h"
 #include "Sombras/MapaSombras.h"
 #include "SpriteRenderer.h"
+#include "ParticulasRenderer.h"
 #include "TilemapRenderer.h"
 
 // Clases de otras capas que la pasada de render necesita (solo data CPU).
@@ -117,6 +118,9 @@ class AssetManager;
         // difuminado por distancia (en ortografica el horizonte de la grilla no
         // aplica: la vista no converge).
         bool modo2D = false;
+        // Sistema de particulas de la escena: el renderer dibuja lo que hay
+        // sin saber de donde viene (el emisor es de la capa de entidades).
+        const SistemaParticulas* sistemaParticulas = nullptr;
     };
 
     // Renderiza las vistas previas y la pasada principal de la escena desde la
@@ -167,6 +171,10 @@ private:
     // los ordena por la Z de su Transform (atras->adelante) y los dibuja con
     // blend activo y sin escritura de profundidad. Va despues de las mallas 3D
     // para que un sprite no quede tapado por el estado del pipeline anterior.
+    // Particululas: se dibujan despues de los sprites, con el mismo criterio
+    // (no escriben profundidad; el orden de dibujo decide el solapamiento).
+    void dibujarParticulas(const FrameContext& ctx, const float view[16],
+                           const float projection[16]);
     void dibujarSprites(const FrameContext& ctx, const float view[16],
                         const float projection[16]);
     // Pasada de tilemaps 2D: recoge los objetos con componente Tilemap, ordena
@@ -236,6 +244,7 @@ private:
     // Pasada de tilemaps 2D (componente Tilemap): sube una malla horneada por
     // tilemap y la reutiliza hasta que cambia su revision.
     Rendering::TilemapRenderer tilemapRenderer_;
+    Rendering::ParticulasRenderer particulasRenderer_;
     // Programas del cielo: el del degradado (triangulo a pantalla completa) y el
     // del cubemap del componente Skybox. Se crean en la primera pasada que los
     // necesita y se reusan: ShaderProgram cachea las locations de los uniforms
