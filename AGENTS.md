@@ -238,6 +238,14 @@ cd FunshiEngineGL && ./build/FunshiEngineGL.exe   # Windows
   headless. El módulo no depende del motor; el componente `EmisorParticulas`
   (en `Objetos/Componentes/`) es quien usa el motor, y el renderer recibe el
   sistema con datos planos, sin conocer el emisor.
+- **Interfaz de juego nativa** (`src/UI/`): el módulo es CPU puro y no toca ni
+  OpenGL ni glm ni ImGui, para que se pueda probar entero en los targets
+  headless. El componente `UIComponent` (en `Objetos/Componentes/`) y el
+  renderer `UIRenderer` (en `Rendering/`) son los que usan el motor, y el
+  renderer es el único que sabe de ImGui. El nombre del tipo persistido **es**
+  el formato de datos: ampliar un componente obliga a versionar su payload, así
+  que un sistema nuevo que cambie un componente existente se vuelve un
+  componente nuevo.
 - **Compatibilidad multiplataforma**: el motor es compatible con **Linux y Windows**,
   sin excepción. Al usar APIs nativas del sistema operativo (Windows API, POSIX,
   filesystem, threading, dynamic loading, etc.), SIEMPRE verificar y mantener las

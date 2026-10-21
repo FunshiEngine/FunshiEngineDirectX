@@ -261,7 +261,7 @@ seleccion).
 - **Componentes:** `Transform`, `Color`, `Model`, `Material`, `Materiales`, `Light`,
   `CameraComponent`, `Grid`, `Skybox`, `SpriteRenderer`, `Animador2D`, `Tilemap`,
   colliders (esfera / cubo / malla / tilemap), `RigidBody`, `AudioSource`,
-  `InterfaceComponent`, `Sombras` y `Script`.
+  `InterfaceComponent`, `UIComponent`, `EmisorParticulas`, `Sombras` y `Script`.
 - **Materiales por region (`Materiales`):** cada parte de la malla (la cara de
   un cubo, la parte de un personaje) puede llevar su propio material y sus
   texturas. El panel lista una entrada por region; "Sincronizar con el modelo"
@@ -755,6 +755,10 @@ Detalles que conviene saber:
 
 ## 9. Interfaces de juego (HUD)
 
+Esta seccion describe la interfaz **web** (una pagina `.html` dentro del
+juego). La interfaz **nativa**, que dibuja el motor sin navegador de por medio,
+esta en la seccion 21.
+
 - Agrega `InterfaceComponent` a un GameObject y arrastra un archivo `.html` al
   campo del inspector. El `.html` referencia su CSS y su JS por rutas relativas,
   como cualquier otro asset del proyecto.
@@ -1094,7 +1098,7 @@ Declaralos entre `REFLECT_INICIO(<Clase>)` y `REFLECT_FIN` (pueden ir en zona
 |---|---|---|
 | `REFLECT_CAMPO(nombre)` | `int`, `float`, `double`, `bool`, `std::string`, `vec3` | `int vidas = 3;` |
 | `REFLECT_CAMPO(objetivo)` | `GameObject*` | referencia asignable arrastrando un objeto desde la jerarquia |
-| `REFLECT_COMPONENTE(hud, "InterfaceComponent")` | `T*` de un componente | referencia a un componente de otro objeto; se asigna arrastrando el componente desde su inspector. El tipo se escribe como texto |
+| `REFLECT_COMPONENTE(hud, "InterfaceComponent")` | `T*` de un componente | referencia a un componente de otro objeto; se asigna arrastrando el componente desde su inspector. El tipo se escribe como texto (`"InterfaceComponent"` para la interfaz web o `"UIComponent"` para la nativa) |
 | `REFLECT_ARRAY(puntos)` | `std::vector<T>` de primitivas / `vec3` / `std::vector<GameObject*>` | `std::vector<float> ratios;` |
 | `REFLECT_GRUPO(misil)` | struct anidado con su propio bloque `REFLECT_*` | `Misil misil;` |
 | `REFLECT_GRUPOS(oleadas)` | `std::vector<S>` de structs reflejados | `std::vector<Oleada> oleadas;` |
@@ -1249,7 +1253,7 @@ void onUpdate(GameObject* owner, float deltaTime) override {
 }
 ```
 
-### 13.4 Servicios de escena: tabla `servicios` (v8)
+### 13.4 Servicios de escena: tabla `servicios` (v9)
 
 Ademas de `api`, `IScriptBehaviour` expone `this->servicios`: acceso a los
 servicios del motor que **no son del objeto** sino de la escena (audio,
@@ -1292,6 +1296,12 @@ Misma convencion APPEND-ONLY con `servicios->version` al final.
 | `servicios->reproducirMusica(ruta,vol,fundido)` (v8) | `bool (const char*, float, float)` | reproduce una pista de musica por **ruta** (relativa a `src<proyecto>/` o absoluta); `false` si el archivo no existe. Si la pista no esta en la lista del componente `Musica`, suena sola |
 | `servicios->detenerMusica(fundido)` (v8) | `void (float)` | detiene la musica (con fundido de salida opcional) |
 | `servicios->volumenMusica(vol)` (v8) | `void (float)` | volumen del bus de musica (todas las pistas juntas, de 0 a 1) |
+| `servicios->interfazNativaDeObjeto(nombre)` (v9) | `void* (const char*)` | handle de la interfaz **nativa** (HUD que dibuja el motor) del objeto con ese nombre, o `nullptr` si no existe o no tiene `UIComponent`. El handle es opaco: identifica el componente |
+| `servicios->interfazNativaVisible(iface)` (v9) | `bool (const void*)` | si la interfaz nativa esta activa (visible) |
+| `servicios->interfazNativaEstablecerVisible(iface,visible)` (v9) | `void (void*, bool)` | muestra u oculta la interfaz nativa |
+| `servicios->interfazNativaEstablecerTexto(iface,id,texto)` (v9) | `bool (void*, const char*, const char*)` | cambia el texto del widget con ese identificador; `false` si no hay ningun widget con ese identificador |
+| `servicios->interfazNativaEstablecerVisibleWidget(iface,id,visible)` (v9) | `bool (void*, const char*, bool)` | muestra u oculta un widget; `false` si no hay ningun widget con ese identificador |
+| `servicios->interfazNativaBotonPulsado(iface,id)` (v9) | `bool (void*, const char*)` | si ese boton recibio el clic en el frame actual (flanco de pulsacion) |
 
 Los deltas del mouse se acumulan durante el frame y se reinician al avanzar al
 siguiente. Se capturan en Juego y cuando el cursor esta bloqueado durante
@@ -1483,6 +1493,7 @@ Las posiciones consultadas o fijadas por `Nativo.posicionX/Y/Z` y
 | Gestion de objetos | `Nativo.crearObjeto(nombre, padre)`, `Nativo.destruirObjeto(objeto)`, `Nativo.clonarObjeto(original, padre)`, `Nativo.agregarColliderEsfera/cubo(objeto, radio)`, `Nativo.agregarRigidBody(objeto, masa)` |
 | Prefabs | `Nativo.instanciarPrefab(nombre, padre)`, `Nativo.listarPrefabs()` (devuelve `String[]`) |
 | Interfaces web (HUD) | `Nativo.interfazDeObjeto(nombre)` (handle opaco, `0` si no existe), `Nativo.interfazActiva(iface)`, `Nativo.interfazEstablecerActiva(iface, activa)`, `Nativo.interfazEstablecerEstado(iface, json)`, `Nativo.interfazEstablecerValor(iface, ruta, valorJson)`, `Nativo.interfazValor(iface, ruta)` (texto JSON o `null`) |
+| Interfaz nativa (HUD del motor) | `Nativo.interfazNativaDeObjeto(nombre)` (handle opaco, `0` si no existe), `Nativo.interfazNativaVisible(iface)`, `Nativo.interfazNativaEstablecerVisible(iface, visible)`, `Nativo.interfazNativaEstablecerTexto(iface, id, texto)`, `Nativo.interfazNativaEstablecerVisibleWidget(iface, id, visible)`, `Nativo.interfazNativaBotonPulsado(iface, id)` (`true` si ese boton se pulso en este frame) |
 | Teclado | `Nativo.teclaSostiene`, `teclaPresionada`, `teclaSoltada` |
 | Mouse | `Nativo.deltaMouseX`, `Nativo.deltaMouseY` (pixeles por frame) |
 
@@ -1901,6 +1912,7 @@ Las variables disponibles por tipo de componente:
 | `AudioSource` | `clipPath`, `volume`, `loop`, `autoplay` |
 | `Musica` | `volume`, `fadeDuration`, `autoplay`, `repeatList` |
 | `InterfaceComponent` | `htmlPath`, `active`, `anchor`, `offset`, `autoSize`, `size`, `z` |
+| `UIComponent` | `active`, `z` |
 | `EsfereCollider`, `CubeCollider` | `radius`, `visibleInScene` |
 | `MallaCollider`, `TilemapCollider` | `visibleInScene` |
 | `Skybox` | `visible`, `facePositiveX/NegativeX/PositiveY/NegativeY/PositiveZ/NegativeZ` |
@@ -2010,5 +2022,113 @@ altera como a cualquier otro: `scene.component.create` con el tipo
 `lifeMin`, `lifeMax`, `speedMin`, `speedMax`, `sizeMin`, `sizeMax`, `color`,
 `direction`, `dispersion`, `gravity`, `drag`, `rotation`, `rotationSpeed`,
 `profilePath` y `active`).
+
+---
+
+## 21. Interfaz de juego nativa (HUD del motor)
+
+La seccion 9 describe la interfaz **web** (una pagina `.html` que se muestra
+dentro del juego). Esta describe la interfaz **nativa**: un conjunto de widgets
+(etiquetas, botones, imagenes y paneles) que dibuja el motor, sin navegador de
+por medio y sin que el usuario tenga que saber HTML.
+
+Las dos conviven: una escena puede tener una interfaz web y una nativa, o
+varias nativas.
+
+### 21.1 Que se puede editar
+
+- Agrega `UIComponent` a un GameObject desde el inspector (pestaña "Agregar
+  componente", entrada "Interfaz de juego (nativa)").
+- El panel del componente tiene:
+  - **Activa**: apaga o enciende el HUD sin quitar el componente.
+  - **Z**: el orden de apilado entre varias interfaces nativas (la de mayor z
+    queda encima).
+  - **Anadir widget**: el menu para agregar un widget del tipo que corresponda.
+- Cada widget se edita en su propia entrada de la lista (la flecha del titulo
+  la abre):
+  - **Identificador**: el nombre con el que un script consulta el widget. Es
+    lo que permite referirse a "vida" o "botonStart" sin conocer el orden de la
+    lista. No tiene que ser unico, pero conviene que lo sea.
+  - **Tipo**: `Panel`, `Etiqueta`, `Imagen` o `Boton`.
+  - **Ancla**: la posicion de la pantalla a la que se pega (las nueve
+    posiciones, como la interfaz web).
+  - **Desplazamiento**: pixeles de separacion respecto al ancla.
+  - **Tamano**: ancho y alto del widget, en pixeles.
+  - **Color**: el color de fondo (panel y boton) o del texto (etiqueta).
+  - **Color del texto**: el color del texto (boton y etiqueta).
+  - **Texto**: lo que escribe la etiqueta o el boton.
+  - **Tamano del texto**: el cuerpo con el que se dibuja.
+  - **Ruta de la imagen** (solo en las imagenes): se arrastra un archivo del
+    proyecto; la ruta se guarda relativa a la carpeta de assets.
+  - **Visible**: apaga el widget sin quitarlo de la lista.
+  - **Subir** / **Bajar**: cambian el orden de apilado (el ultimo de la lista se
+    dibuja encima).
+  - **Quitar widget**: lo saca de la lista.
+
+### 21.2 Colocacion
+
+Cada widget se ancla a una de las nueve posiciones de la pantalla y crece desde
+ahi hacia el lado que le corresponde: el de arriba centro queda centrado en
+horizontal, el de abajo derecha pegado a la esquina, y asi con los demas. El
+desplazamiento lo separa del punto de anclaje y el tamano decide cuanto
+ocupa.
+
+La colocacion se recalcula sola cuando cambia el tamano de la ventana.
+
+### 21.3 El raton
+
+El boton es el unico widget interactivo: es el que recibe el clic. Cuando el
+puntero esta encima de un boton, el boton se aclara y **el juego deja de girar
+la camara con el raton** (el boton se queda el raton).
+
+El clic se entrega **por consulta**, no por callback: un script pregunta en su
+actualizacion si el boton se pulso en este frame. El estado se borra al
+terminar el frame, asi que un clic no se repite.
+
+### 21.4 Desde los scripts
+
+La interfaz nativa se maneja con el handle del objeto. En C++ se puede
+declarar el campo y **arrastrar la interfaz** desde su inspector al campo
+(igual que con la interfaz web):
+
+```cpp
+// El campo apunta al UIComponent del objeto arrastrado.
+REFLECT_COMPONENTE(hud, "UIComponent")
+```
+
+Y tambien se puede obtener por el nombre del objeto:
+
+```cpp
+// C++
+void* hud = servicios->interfazNativaDeObjeto("HUD");
+servicios->interfazNativaEstablecerTexto(hud, "vida", "80");
+if (servicios->interfazNativaBotonPulsado(hud, "botonStart")) {
+    servicios->interfazNativaEstablecerVisible(hud, false);
+}
+```
+
+```java
+// Java
+long hud = Nativo.interfazNativaDeObjeto("HUD");
+Nativo.interfazNativaEstablecerTexto(hud, "vida", "80");
+if (Nativo.interfazNativaBotonPulsado(hud, "botonStart")) {
+    Nativo.interfazNativaEstablecerVisible(hud, false);
+}
+```
+
+Las seis funciones estan en la tabla de servicios de la seccion 13.4 (C++) y
+en la tabla de la seccion 15.2 (Java). Todas toleran un handle nulo (no hace
+nada) y devuelven `false` si no hay ningun widget con ese identificador.
+
+### 21.5 Diferencias con la interfaz web
+
+- La nativa no necesita ningun motor de navegador: el motor dibuja los widgets
+  con su propio dibujado de pantalla.
+- La tipografia es la de la fuente que trae el motor, escalada por widget. No
+  hay TTF propia todavia.
+- La colocacion es respecto a la **ventana**, no respecto al viewport 3D: en el
+  editor, con los paneles visibles, el HUD se ve encima de ellos.
+- El texto y la visibilidad de un widget se cambian por su identificador; no
+  hay un arbol de estado con JSON como en la interfaz web.
 
 ---
