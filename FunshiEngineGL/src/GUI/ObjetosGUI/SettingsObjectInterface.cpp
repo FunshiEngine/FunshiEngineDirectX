@@ -230,6 +230,7 @@ void SettingsObjectInterface::crearSettingsFaltantes() {
 	contexto.editor = editor;
 	contexto.audio = audioMotor;
 	contexto.dimension = dimensionProyecto();
+	contexto.preview = previewMaterial_;
 
 	ListaDE<Component*>* componentes = object->getComponents();
 	if (componentes && !componentes->isEmpty()) {

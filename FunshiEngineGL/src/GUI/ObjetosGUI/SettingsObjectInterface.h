@@ -32,6 +32,7 @@ class Component;
 class EditorController;
 class AudioEngine;
 class EventBus;
+class IPreviewMaterial;
 
 class SettingsObjectInterface : public GeneralUserInterface {
 private:
@@ -44,6 +45,9 @@ private:
 	EventBus* events = nullptr;
 	// Iconos de componente (inyectado por la escena via GUIManager).
 	IResolutorIconos* resolutorIconos_ = nullptr;
+	// Vista previa de material (inyectado por la escena via GUIManager): la
+	// esfera de muestra del panel del material. Puede ser nullptr.
+	IPreviewMaterial* previewMaterial_ = nullptr;
 	// Proveedor de la dimension del proyecto (2D/3D), inyectado por la escena
 	// via GUIManager. Se consulta al armar el menu "agregar componente" para
 	// ofrecer solo los que aplican. Sin proveedor se asume 3D.
@@ -99,6 +103,11 @@ public:
 	// nombre). Puede ser nullptr: entonces los componentes se listan sin icono.
 	void setResolutorIconos(IResolutorIconos* resolutor) {
 		resolutorIconos_ = resolutor;
+	}
+	// Vista previa de material (la esfera de muestra). Puede ser nullptr:
+	// entonces los paneles de material se dibujan sin vista previa.
+	void setPreviewMaterial(IPreviewMaterial* preview) {
+		previewMaterial_ = preview;
 	}
 	void loadComponents();
 
