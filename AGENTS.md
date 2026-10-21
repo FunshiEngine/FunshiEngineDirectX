@@ -206,6 +206,23 @@ cd FunshiEngineGL && ./build/FunshiEngineGL.exe   # Windows
   estrictamente APPEND-ONLY. Los campos nuevos van SIEMPRE al final, antes del
   campo `int version`; nunca reordenar ni borrar entradas. El campo `version`
   se incrementa al agregar funcionalidad.
+- **API de inspección de escena (`src/Inspeccion/`)**: es el contrato público
+  del motor para herramientas externas. La **CLI es un proyecto aparte**
+  (`FunshiEngineCLI`) que consume este contrato: el motor publica la API y la
+  CLI la usa, no hay un ejecutable de línea de comandos en este repositorio.
+  - El contrato tiene **versión propia** (`versionApiEscena`), independiente de
+    `versionRuntimeScript`: cambiar uno no invalida el otro ni recompila los
+    scripts de los proyectos.
+  - `src/Comandos/` **no** depende de `src/Inspeccion/` (para no crear un
+    ciclo de módulos): `AjustarVariableComando` recibe los accesores por
+    inyección. La dependencia va en un solo sentido: `Inspeccion` → `Comandos`.
+  - Toda mutación de la API pasa por el `GestorComandos`. Como
+    `GestorComandos::ejecutar` no puede fallar, la API valida antes de
+    encolar (objeto existente, tipo conocido, prerrequisito cumplido, valor
+    interpretable) y devuelve el motivo del rechazo.
+  - Las variables de los componentes se acceden por sus getters y setters
+    públicos, nunca por el dato interno: `Transform` guarda dos copias de su
+    estado y solo los setters las sincronizan.
 - **Modularidad**: los módulos se comunican por tablas de punteros a función
   (patrón de `ScriptGameObject.cpp`, implementado en una TU del ejecutable) o
   por inyección explícita (`GameScene::inyectarServiciosScript`). No acoplar

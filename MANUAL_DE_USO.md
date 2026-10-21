@@ -37,6 +37,7 @@ por arrastre y escribir scripts con la API exacta que expone el motor.
 
 17. [Terminal integrada](#17-terminal-integrada)
 18. [Mods del editor (.fmod)](#18-mods-del-editor-fmod)
+19. [API de inspeccion de escena](#19-api-de-inspeccion-de-escena)
 
 ---
 
@@ -522,6 +523,8 @@ entradas; cada nueva accion invalida la pila de redo.
 | Modificar transform (posicion/rotacion/escala) | `TransformComando` |
 | Agregar componente | `AgregarComponenteComando` |
 | Quitar componente | `QuitarComponenteComando` |
+| Ajustar una variable de un componente | `AjustarVariableComando` |
+| Cambiar la etiqueta (tag) de un objeto | `EstablecerTagComando` |
 | Limpiar escena (borrar todos los objetos no-raiz) | `LimpiarEscenaComando` |
 
 **Atributos de los comandos:** cada comando captura el estado antes de mutar
@@ -1797,5 +1800,124 @@ cubre el **envase, la carga y los paneles**: descubre, valida y ordena los
 paquetes, extrae el binario de cada uno a la caché, lo abre y lo inicializa; el
 mod recibe la tabla de servicios, se actualiza una vez por frame y puede
 registrar paneles de GUI propios.
+
+---
+
+---
+
+## 19. API de inspeccion de escena
+
+El motor publica un contrato para que una herramienta externa pueda leer y
+modificar una escena sin abrir el editor. La herramienta que lo consume hoy es
+la **CLI** (`FunshiEngineCLI`), que es un **proyecto aparte**: el motor
+publica la API y la CLI la usa; no hay ningun ejecutable de linea de comandos
+dentro de este repositorio.
+
+El contrato vive en `FunshiEngineGL/src/Inspeccion/`:
+
+| Archivo | Que aporta |
+|---|---|
+| `ApiEscena.h` | El contrato `IApiEscena`, las vistas y `versionApiEscena` |
+| `PropiedadesComponentes.h/.cpp` | Las variables de cada tipo de componente |
+| `TextoValor.h/.cpp` | Las conversiones entre texto y valor |
+| `InspeccionEscena.h/.cpp` | La implementacion sobre la escena y el editor |
+
+### 19.1 Version del contrato
+
+`versionApiEscena` versiona el contrato de inspeccion. Es **independiente** de
+la version de los scripts (`versionRuntimeScript`): subir una no recompila los
+scripts de los proyectos ni invalida su cache. Una herramienta comprueba el
+numero al arrancar y avisa si no coincide con el que espera.
+
+### 19.2 Consultar la escena
+
+`listarObjetos(filtro)` devuelve los objetos de la escena que cumplen el
+filtro. Los filtros se acumulan (se combinan entre si):
+
+| Filtro | Que selecciona |
+|---|---|
+| `componente` | Objetos que tienen ese componente (se acepta el nombre canonico y los alias, como `Camera` por `CameraComponent`) |
+| `etiqueta` | Objetos con esa etiqueta (tag) exacta |
+| `nombre` | Por nombre exacto, o parcial si `nombreParcial` esta activo (no distingue mayusculas) |
+| `id` | Un objeto concreto |
+| `tipoObjeto` | Por tipo: `SimpleObject`, `Modelos3D`, `GameObject`... |
+| `limite` | Maximo de objetos devueltos (0 = sin limite) |
+
+De cada objeto se devuelve su id, nombre, etiqueta, tipo, id del padre,
+posicion local, posicion global (compuesta con la de sus padres), cantidad de
+componentes y el numero de componentes que tiene.
+
+`componentesDe(id)` devuelve los componentes del objeto con sus variables y el
+valor actual de cada una. `objetoPorId(id)` devuelve el objeto, o nada si no
+existe.
+
+### 19.3 Modificar la escena
+
+Toda mutacion pasa por el gestor de comandos del editor, asi que se deshace
+igual que en el editor. Las operaciones que fallan no dejan la escena a medias:
+devuelven `false` y el motivo.
+
+| Operacion | Que hace |
+|---|---|
+| `crearObjeto(nombre, idPadre)` | Crea un objeto simple. Si el nombre ya esta en uso, recibe un sufijo numerico (`Enemigo 2`) |
+| `establecerEtiqueta(id, etiqueta)` | Fija la etiqueta (tag) |
+| `crearComponente(id, tipo)` | Agrega un componente. Respeta los prerrequisitos del catalogo (un `RigidBody` necesita un `Collider`) y no admite dos componentes del mismo tipo |
+| `quitarComponente(id, tipo)` | Quita un componente |
+| `asignarVariable(id, tipoComponente, variable, valor)` | Escribe una variable de un componente |
+| `guardarEscena(prefijo)` / `cargarEscena(prefijo)` | Guarda y carga la escena |
+
+La escena se guarda con un **prefijo** de ruta, igual que el motor al guardar
+un proyecto: el indice queda en `<prefijo>BBDDObjetos.txt` y los binarios de
+cada objeto en la carpeta `<prefijo>/`.
+
+### 19.4 Variables y su formato
+
+El valor de una variable es texto, y el motor lo interpreta segun el tipo de
+la variable:
+
+| Tipo | Como se escribe | Ejemplo |
+|---|---|---|
+| `Entero` | Un entero | `12` |
+| `Flotante` | Un numero (se rechazan `nan` e infinitos) | `1.5` |
+| `Booleano` | `true`/`false` (o `1`/`0`) | `true` |
+| `Texto` | El texto tal cual | `assets/sonido.ogg` |
+| `Vec2`, `Vec3`, `Vec4` | Los numeros separados por espacios o comas | `1 2 3` |
+| `Enumeracion` | Uno de los valores admitidos | `Puntual` |
+
+Las variables disponibles por tipo de componente:
+
+| Componente | Variables |
+|---|---|
+| `Transform` | `position`, `scale`, `rotationAngle`, `rotationAxis` |
+| `RigidBody` | `mass`, `active`, `useGravity`, `gravityScale`, `friction`, `sensor`, `freezePositionX/Y/Z`, `freezeRotationX/Y/Z` |
+| `Light` | `type` (`Direccional`, `Puntual`, `Spot`), `ambient`, `diffuse`, `specular`, `attenuationConstant`, `attenuationLinear`, `attenuationQuadratic`, `spotCutOff` |
+| `CameraComponent` | `fov`, `projection` (`Perspectiva`, `Ortografica`), `orthoSize`, `nearPlane`, `farPlane`, `speed` |
+| `Material` | `ambient`, `diffuse`, `specular`, `emission`, `shininess`, `diffuseMap`, `specularMap`, `normalMap`, `emissionMap` |
+| `Materiales` | `selectedRegion` |
+| `Color` | `color` |
+| `Grid` | `visible`, `color`, `size`, `separation` |
+| `SpriteRenderer` | `texturePath`, `tint`, `size`, `uvRect` |
+| `AudioSource` | `clipPath`, `volume`, `loop`, `autoplay` |
+| `Musica` | `volume`, `fadeDuration`, `autoplay`, `repeatList` |
+| `InterfaceComponent` | `htmlPath`, `active`, `anchor`, `offset`, `autoSize`, `size`, `z` |
+| `EsfereCollider`, `CubeCollider` | `radius`, `visibleInScene` |
+| `MallaCollider`, `TilemapCollider` | `visibleInScene` |
+| `Skybox` | `visible`, `facePositiveX/NegativeX/PositiveY/NegativeY/PositiveZ/NegativeZ` |
+| `Animador2D` | `columns`, `rows`, `firstFrame`, `lastFrame`, `fps`, `loop`, `playing` |
+| `Model` | `path` |
+| `Script` | `sourcePath`, `componentName`, `deferredLoad` |
+| `Tilemap` | `tilesetPath` |
+
+Notas:
+
+- La rotacion del motor es un angulo global mas un eje: por eso se expone en
+  dos variables (`rotationAngle` en grados y `rotationAxis`) en vez de una
+  sola.
+- Los colores del material son RGB: el motor fuerza el canal alfa a 1.
+- Cambiar la variable `sourcePath` de un `Script` descarta el comportamiento
+  cargado, asi que el motor lo vuelve a compilar.
+- Los valores se **validan antes** de aplicarse: un texto que no encaja con
+  el tipo (por ejemplo `abc` en una variable numerica) se rechaza con su
+  motivo y la escena no cambia.
 
 ---

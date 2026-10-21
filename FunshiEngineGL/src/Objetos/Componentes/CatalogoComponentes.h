@@ -89,6 +89,10 @@ struct DescriptorComponente {
     std::string icono;
     // Requisito para poder agregarlo (p. ej. colisionador exige Transform).
     std::function<bool(GameObject&)> prerequisito;
+    // Texto que explica que falta para poder agregarlo ("necesita un
+    // Transform"). Vacio si el componente no tiene requisitos. La API de
+    // inspeccion lo usa para explicar por que no se pudo agregar.
+    std::string requisito;
     // Crea el componente; nullptr si el requisito no se cumple.
     std::function<std::unique_ptr<Component>(GameObject&)> crear;
     // Crea el panel del inspector para un componente ya presente; vacio si el
