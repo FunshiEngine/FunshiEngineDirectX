@@ -96,18 +96,17 @@ dependencias de terceros.
 
 ```text
 FunshiEngineGL/                          ← raíz del repo
-├── README.md                            ← visión general, build, controles y pendientes
+├── README.md                            ← visión general, build, ejecución y enlaces a la documentación
 ├── PROJECT_STRUCTURE.md                 ← este documento
 ├── MANUAL_DE_USO.md                     ← manual de usuario (editor + scripting C++/Java)
 ├── CAMARAS_VISTAS_PREVIAS.md            ← Fase 2: cámaras componente + vistas previas
 ├── ARQUITECTURA_ESTADOS_GUI.md          ← estados/menú/GUI internas (diseño + Fases 1-3)
-├── MANUAL_DE_USO.md                     ← manual de usuario (editor + scripting C++/Java)
 ├── FLUJO_DE_RAMAS.md                    ← convención de ramas (develop/test/staging/release)
 ├── .github/workflows/ci.yml             ← CI: engine en Ubuntu y en Windows (MSVC) + pruebas headless
 ├── .github/workflows/release.yml        ← instaladores Qt IFW (.run) e Inno (.exe) por tag
 ├── .github/workflows/windows-release.yml← build+release específico de Windows
 ├── .gitignore / .gitattributes
-├── tests/
+├── tests/                               ← suites headless (CTest), una por sistema
 │   ├── FileManagerTests.cpp             ← headless del explorador de archivos
 │   ├── EditorConfigTests.cpp            ← headless de la configuración JSON
 │   ├── EditorEventBusTests.cpp          ← headless del canal tipado de GUI (Fase 2)
@@ -119,8 +118,40 @@ FunshiEngineGL/                          ← raíz del repo
 │   ├── ScriptsRuntimeTests.cpp          ← BackendCpp end-to-end (compila y dlopen un .so)
 │   ├── ScriptsJavaTests.cpp             ← BackendJava end-to-end (solo con FUNSHI_JAVA)
 │   ├── AudioEngineTests.cpp             ← AudioEngine con NullAudioBackend (por ruta)
+│   ├── MusicaTests.cpp                  ← GestorMusica: lista ordenada, fundido y repetición
 │   ├── SceneSerializationTests.cpp      ← round-trip de escena + nombres por defecto
-│   └── UserInterfaceTests.cpp           ← modelo del Creador de interfaces (round-trip JSON)
+│   ├── SerializacionTests.cpp           ← lectura de datos serializados (formatos y tamaños)
+│   ├── ModelSerializationTests.cpp      ← round-trip binario del componente Model
+│   ├── RenderingTests.cpp               ← geometría de líneas (LineBuilder) y guía de eje
+│   ├── EditorInputTests.cpp             ← separación entre el input del editor y la interfaz
+│   ├── ProcesoTests.cpp                 ← runner de procesos sin shell (argv, log, entorno)
+│   ├── HilosTests.cpp                   ← pool de hilos del motor
+│   ├── BarraProgresoTextoTests.cpp      ← formato de la barra de progreso en texto
+│   ├── DiagnosticRegistryTests.cpp       ← registro de diagnósticos del motor
+│   ├── ComandosTests.cpp                ← undo/redo del patrón Command
+│   ├── CatalogoComponentesTests.cpp     ← catálogo declarativo de componentes
+│   ├── IconosComponentesTests.cpp       ← iconos de componente (regla y catálogo)
+│   ├── MallaRegionesTests.cpp           ← regiones con material propio de una malla
+│   ├── MaterialesRegionesTests.cpp      ← materiales por región
+│   ├── Primitivas3DTests.cpp            ← primitivas 3D generadas en CPU
+│   ├── PreviewMaterialTests.cpp         ← vista previa de un material
+│   ├── IluminacionTests.cpp             ← recogida y estado de las luces de la escena
+│   ├── SombrasTests.cpp                 ← mapas de sombras
+│   ├── ShadersTests.cpp                 ← sistema de shaders
+│   ├── TemaEditorTests.cpp              ← TemaEditor (perfil de apariencia del editor)
+│   ├── PrefabTests.cpp                  ← prefabs: guardar → instanciar → round-trip
+│   ├── TilemapTests.cpp                 ← tileset (JSON estilo Tiled) y componente Tilemap
+│   ├── InterfaceComponentTests.cpp      ← round-trip binario del InterfaceComponent
+│   ├── InterfacesJuegoTests.cpp         ← recolección de interfaces (HUD) de la escena
+│   ├── WebUIRuntimeTests.cpp            ← runtime de interfaces web
+│   ├── ManifiestoAssetsTests.cpp        ← núcleo del manifiesto de assets de la escena
+│   ├── OrquestadorEstadoTests.cpp       ← orquestador de estados de la GUI
+│   ├── ExportacionTests.cpp             ← exportación del juego standalone
+│   ├── TerminalEmulatorTests.cpp        ← emulador de terminal (ANSI, rejilla, scrollback)
+│   ├── TerminalSessionTests.cpp         ← E/S real del pseudo-terminal
+│   ├── ModsTests.cpp                    ← núcleo del sistema de mods (semver, manifiesto, ZIP)
+│   ├── ModsTestPlugin.cpp               ← plugin binario de prueba que carga ModsTests
+│   └── TempPruebas.h                    ← carpeta temporal por prueba (limpieza al salir)
 └── FunshiEngineGL/                      ← proyecto CMake principal
     ├── CMakeLists.txt                   ← GLOB de fuentes, dependencias, sanitizers,
     │                                      pruebas (CTest), opción BUILD_ENGINE y la
@@ -324,9 +355,9 @@ FunshiEngineGL/                          ← raíz del repo
         │   │   ├── Camera/SettingsCamera.*       ← FOV, planos, velocidad, vista previa
         │   │   ├── Grid/SettingsGrid.*           ← visible y color de la grilla (infinita,
         │   │   │                                 densidad fija: no hay tamaño/separación)
-        │   │   ├── AudioSource/SettingsAudioSource.* ← ruta del archivo de audio
+        │   │   ├── Audio/SettingsAudioSource.*    ← ruta del archivo de audio
         │   │   │                                 (drag & drop), volumen, loop
-        │   │   ├── Musica/SettingsMusica.*     ← lista ordenada de pistas de música
+        │   │   ├── Audio/SettingsMusica.*        ← lista ordenada de pistas de música
         │   │   │                                 (drag & drop), volumen, fundido, repetición
         │   │   ├── Interface/SettingsInterface.* ← ruta del .html de la interfaz
         │   │   │                                 (drag & drop) + activa, ancla, tamaño y z
@@ -337,6 +368,10 @@ FunshiEngineGL/                          ← raíz del repo
         │   │   │                                `inline` puras fuera del dibujo, para que
         │   │   │                                las ejercite un target headless sin ImGui
         │   │   ├── RigidBody/SettingsRigidBody.*
+        │   │   ├── Prefab/SettingsPrefab.*      ← alta de prefabs desde el inspector
+        │   │   ├── Sprite/SettingsSpriteRenderer.* ← tile del sprite: color, mezcla, z
+        │   │   ├── Tilemap/SettingsTilemap.*    ← tileset y tamaño del tilemap
+        │   │   ├── Animador2D/SettingsAnimador2D.* ← fotogramas, velocidad y loop
         │   │   ├── Sombras/SettingsSombras.*   ← resolución del mapa, sesbio, fuerza, radio
         │   │   │                                y distancia de la sombra de la luz
         │   │   └── Colliders/ (Esfera, Cubo, Malla, Tilemap) ← sync transform/shape con física
@@ -421,12 +456,14 @@ FunshiEngineGL/                          ← raíz del repo
         │   │                                  y el pase de profundidad del mapa de sombras
         │   ├── TilemapRenderer.h/.cpp      ← sube la malla horneada del Tilemap a GPU (caché
         │   │                                  por revisión) y la dibuja con el shader de sprites
-        │   ├── LineRenderer.h/.cpp         ← líneas, wireframes y gizmos recortados al mismo horizonte
         │   ├── MeshGPU.h/.cpp              ← wrapper RAII de VBO/VAO/EBO
         │   ├── DibujoModelo.h/.cpp         ← helpers de render por modelo
         │   ├── LineBatch.h/.cpp            ← batch GPU de líneas expandidas
         │   ├── LineBuilder.h/.cpp          ← expansión de segmentos a quads
-        │   ├── LineRenderer.h/.cpp         ← API de dibujo de líneas (grilla, ejes, gizmos)
+        │   ├── LineRenderer.h/.cpp         ← API de dibujo de líneas (grilla, ejes, gizmos,
+        │   │                                wireframes de los colliders): es la única vía de
+        │   │                                dibujo de líneas (VBO/VAO + shader de líneas
+        │   │                                gruesas; el glLineWidth quedó eliminado)
         │   ├── GrillaRenderer.h/.cpp       ← geometría/lógica de grilla infinita
         │   ├── GuiaEje.h/.cpp              ← guía de eje con contraste
         │   ├── TextureGL.h/.cpp            ← wrapper de textura 2D + cubemap
@@ -504,7 +541,7 @@ FunshiEngineGL/                          ← raíz del repo
         │       ├── AudioSource.h/.cpp    ← fuente de sonido: ruta del archivo, volumen y loop
         │       ├── Musica.h/.cpp        ← reproductor de música: lista ordenada de pistas
         │       │                            (rutas), volumen, fundido y repetición de la lista
-        │       ├── RigidBody/RigidBody.h/.cpp ← cuerpo Bullet sincronizado, habilitable, con detección de apoyo (RAII); masa, gravedad por cuerpo (uso+escala), friccion y freeze por ejes via setGravity/setFriction/setLinearFactor/setAngularFactor, serial v2 con lectura v1
+        │       ├── RigidBody/RigidBody.h/.cpp ← cuerpo Bullet sincronizado, habilitable, con detección de apoyo (RAII); masa, gravedad por cuerpo (uso+escala), friccion y freeze por ejes via setGravity/setFriction/setLinearFactor/setAngularFactor, serial v3 con lectura de v1 y v2
         │       └── Colliders/
         │           ├── Collider.h/.cpp   ← base abstracta; radio; visibilidad persistente y gizmo
         │           │                        con wireframe por el batch de líneas
@@ -915,8 +952,11 @@ solo como orquestador de arranque y bucle.
   `Mods/`: las carpetas de assets (`Sonidos/`, `Scripts/`, los `Mods/` del
   proyecto) las crea el usuario desde el explorador. Los assets se referencian
   por ruta, así que ninguno depende de una carpeta en concreto.
-- Limitación conocida: la serialización binaria no tiene versionado ni validación
-  de tamaños; un cambio en la estructura de atributos invalida escenas guardadas.
+- Limitación conocida: la serialización binaria tiene versionado **parcial**
+  (varios componentes llevan magic y versión y la escena valida el índice de
+  forma estricta, pero no hay versionado global por tipo de componente ni
+  validación formal de tamaños): un cambio en la estructura de atributos de un
+  componente sin versión sigue invalidando escenas guardadas.
 
 ### Scripts dinámicos
 
@@ -1093,15 +1133,17 @@ La convención general es un par `.h`/`.cpp` por clase. Las excepciones son:
 al build sin enumerarlos manualmente. Los archivos de ImGui se recopilan por separado
 desde `src/ImGui/` y los de ImGuizmo desde `ImGuizmo/` (fuera de `src/`).
 
-Además del ejecutable, el proyecto define **treinta y seis targets de prueba
+Además del ejecutable, el proyecto define **cuarenta y tres targets de prueba
 headless** registrados en CTest (`scripts-java-tests` solo se registra con
-`-DFUNSHI_JAVA=ON`; quince de ellos viven bajo `BUILD_ENGINE=ON`
+`-DFUNSHI_JAVA=ON`; veintiuno de ellos solo existen con `BUILD_ENGINE=ON`
 —`catalogo-componentes-tests`, `comandos-tests`, `escena-serializacion-tests`,
-`iluminacion-tests`, `interface-component-tests`, `interfaces-juego-tests`,
-`manifiesto-assets-tests`, `orquestador-estado-tests`, `prefab-tests`,
-`serializacion-tests`, `shaders-tests`, `sombras-tests`, `tema-tests`,
-`tilemap-tests` y `webui-runtime-tests`—; los veinte restantes compilan
-también con `BUILD_ENGINE=OFF`):
+`exportacion-tests`, `iconos-componentes-tests`, `iluminacion-tests`,
+`interface-component-tests`, `interfaces-juego-tests`, `malla-regiones-tests`,
+`materiales-regiones-tests`, `manifiesto-assets-tests`,
+`orquestador-estado-tests`, `prefab-tests`, `preview-material-tests`,
+`primitivas3d-tests`, `serializacion-tests`, `shaders-tests`, `sombras-tests`,
+`tema-tests`, `tilemap-tests` y `webui-runtime-tests`—; los veintidós
+restantes compilan también con `BUILD_ENGINE=OFF`):
 
 - `filemanager-tests` (190 en Linux; 181 en Windows con MinGW, 183 con MSVC): ejercita `GestorDeArchivos`/`FileManager`/`FileSystemWatcher`
   contra un proyecto temporal, sin ventanas ni pila gráfica; incluye el arrastre
@@ -1310,16 +1352,18 @@ también con `BUILD_ENGINE=OFF`):
   su salida por el PTY, y que `detener()` no se cuelga ni pierde la salida
   emitida durante el cierre (SKIP 77 si ConPTY no está disponible).
 
-Los **quince** targets que solo existen con `BUILD_ENGINE=ON` son los que
+Los **veintiuno** targets que solo existen con `BUILD_ENGINE=ON` son los que
 enlazan `funshi_engine` (`comandos-tests`, `escena-serializacion-tests`,
 `serializacion-tests`, `catalogo-componentes-tests`, `tilemap-tests`,
-`interfaces-juego-tests`, `prefab-tests` e `iluminacion-tests`), los que
-necesitan glm (`interface-component-tests`, `webui-runtime-tests`,
+`interfaces-juego-tests`, `prefab-tests`, `iluminacion-tests`,
+`exportacion-tests`, `iconos-componentes-tests`, `malla-regiones-tests`,
+`materiales-regiones-tests`, `preview-material-tests` y `primitivas3d-tests`),
+los que necesitan glm (`interface-component-tests`, `webui-runtime-tests`,
 `shaders-tests` y `sombras-tests`), los que compilan las fuentes de ImGui
 (`tema-tests`) y los que usan solo el core de diagnóstico
 (`manifiesto-assets-tests` y `orquestador-estado-tests`). El resto compila sus
 fuentes directamente (`barra-progreso-tests` entre ellas) y corre también con
-`BUILD_ENGINE=OFF`: con el motor hay 34 suites que se ejecutan (36
+`BUILD_ENGINE=OFF`: con el motor hay 41 suites que se ejecutan (43
 registradas, dos deshabilitadas) y sin él 20.
 
 La opción `BUILD_ENGINE=OFF` compila solo las pruebas (útil en CI y plataformas
@@ -1402,9 +1446,9 @@ que aun no están migrados (la ventana, el arranque, los iconos de la GUI, el
 backend web y el dibujado del wireframe de los colliders).
 
 No están implementados todavía:
-- `Command` para undo/redo.
-- `Prototype` para duplicación y prefabs.
-- `Visitor` para inspectores extensibles.
+- `Visitor` para inspectores extensibles (hoy los paneles del inspector se
+  construyen con `dynamic_cast` sobre cada tipo de componente, y el catálogo
+  declarativo `CatalogoComponentes` cubre lo demás).
 
 ### 8.1 Resolución de la raíz de datos
 
@@ -1457,11 +1501,14 @@ cargar, así que mover la raíz no invalida las escenas existentes.
   y para el editor sin simulación). El contrato no tiene comportamiento por
   defecto: el backend declara los contactos que entrega y la gravedad global que
   maneja, así que uno incompleto no compila.
-- `GameScene` sigue siendo un coordinador amplio: mezcla ciclo de frame, render,
-  GUI, física, gizmo y vistas previas. La extracción de `SceneRenderer`,
-  `PhysicsSystem` y `ScriptSystem` aliviaría esa responsabilidad.
-- `ApplicationStateMachine` explicita los estados, pero las transiciones se realizan
-  desde `main.cpp` y conviven con flags de UI legados (`menuActivo`, `start`).
+- `GameScene` sigue siendo un coordinador amplio: mezcla ciclo de frame, GUI,
+  física, gizmo y estado de la simulación. El render ya está extraído en
+  `SceneRenderer` (que también dibuja las vistas previas); la extracción de
+  `PhysicsSystem` y `ScriptSystem` aliviaría el resto.
+- `ApplicationStateMachine` explicita los estados y las transiciones pasan por
+  `OrquestadorEstadoGUI`, que decide en que modo se está (`main.cpp` solo
+  refleja la decisión en la escena); los flags de UI legados (`menuActivo`)
+  viven en `GameScene`.
 - `EventBus` transporta `GameObject*` crudos. Un consumidor no debe conservar esos
   punteros después de recibir `ObjectDeleted`. `EditorController::deleteGameObject`
   publica el evento **antes** de destruir el objeto, para que los observadores
@@ -1470,14 +1517,19 @@ cargar, así que mover la raíz no invalida las escenas existentes.
   la física solo corre en Depuración o Juego; el sync collider↔rigidbody↔objeto usa la matriz
   global compuesta del dueño, de modo que mover un collider no desincroniza el cuerpo.
 - Las rutas de usuario (`<directorioEjecutable>/MotorGrafico`) están
-  centralizadas en `EditorConfig` para la configuración y el layout, pero los assets
-  del proyecto todavía se resuelven a mano; `PathUtils.h` comparte el separador
+  centralizadas en `EditorConfig` para la configuración y el layout, y las del
+  proyecto en `ProjectPaths` (que es la única fuente de verdad: `directorioSrc`,
+  `directorioScripts` y el resto); `PathUtils.h` comparte el separador
   (`PATH_SEP`) y la regla única de cotejo de rutas (`rutaBajo`/`esSeparadorPath`):
   en Windows `/` y `\` equivalen, que es lo que permite reescribir las
   referencias de la escena cuando el explorador trae rutas con `\` y
   `ProjectPaths` arma las suyas con `/`.
-- La serialización binaria no tiene versionado ni validación formal de tamaños. Un
-  cambio en la estructura de atributos invalida escenas guardadas.
+- La serialización binaria tiene versionado **parcial**: varios componentes
+  llevan magic y versión (`RigidBody` v1/v2/v3, `InterfaceComponent`,
+  `Animador2D`, `Tilemap`, `Prefab`) y la escena valida el índice de forma
+  estricta, pero no hay versionado global por tipo de componente ni validación
+  formal de tamaños: un cambio en la estructura de atributos de un componente
+  sin versión sigue invalidando escenas guardadas.
 - `SettingsObjectInterface` y algunos componentes todavía incluyen y construyen
   detalles concretos; el siguiente paso de desacoplamiento es completar el uso de
   `EditorController` y descriptors de componentes.
@@ -1658,15 +1710,18 @@ Los bugs de la Fase 2 (cámaras/vistas previas) y sus fixes están documentados 
 
 ## 12. Pendientes conocidos
 
-- [ ] Sistema de animaciones.
-- [ ] `CommandManager` para undo/redo.
+- [ ] Animación 3D: máquina de estados, esquelética y por interpolación (la
+      animación 2D por fotogramas, con su panel, ya está hecha:
+      `Animador2D`).
 - [ ] Filtros y navegación avanzada del historial de diagnósticos en el editor.
-- [ ] Resolver IDs duplicados al crear objetos; limpiar binarios huérfanos al eliminar.
+- [ ] Limpiar los binarios huérfanos al eliminar un objeto (al crear, los ids
+      duplicados ya se evitan: se asigna el siguiente libre).
 - [ ] Terminar los popups del inspector.
-- [x] Prefabs y duplicación de objetos.
-- [ ] Portabilidad de rutas de assets (centralizar `HOME` / rutas de Windows).
-- [ ] Versionado y validación de la serialización binaria.
-- [ ] Extraer `SceneRenderer`, `PhysicsSystem` y `ScriptSystem` de `GameScene`.
+- [ ] Versionado global por componente en la serialización binaria (varios
+      componentes ya llevan magic y versión, y la escena valida el índice de
+      forma estricta).
+- [ ] Extraer `PhysicsSystem` y `ScriptSystem` de `GameScene` (el render ya
+      está extraído en `SceneRenderer`).
 - [ ] Encapsular las estructuras internas de `SceneRegistry` (eliminar getters raw de compatibilidad).
 - [ ] Vistas previas de cámara seleccionables con clic (hoy son pasivas).
 

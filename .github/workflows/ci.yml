@@ -54,9 +54,11 @@ jobs:
   # build hasta que el sistema multiplataforma este mas maduro.
   # NOTA: los targets que exigen el motor (BUILD_ENGINE=ON) NO se incluyen
   # aqui: catalogo-componentes-tests, comandos-tests, escena-serializacion-tests,
-  # iluminacion-tests, interfaces-juego-tests, manifiesto-assets-tests,
-  # orquestador-estado-tests, prefab-tests, serializacion-tests, tema-tests y
-  # tilemap-tests.
+  # exportacion-tests, iconos-componentes-tests, iluminacion-tests,
+  # interfaces-juego-tests, malla-regiones-tests, materiales-regiones-tests,
+  # manifiesto-assets-tests, orquestador-estado-tests, prefab-tests,
+  # preview-material-tests, primitivas3d-tests, serializacion-tests, tema-tests
+  # y tilemap-tests.
   # interface-component-tests, shaders-tests, sombras-tests y
   # webui-runtime-tests tampoco entran: necesitan glm, que este build no trae.
   tests-multiplataforma:
