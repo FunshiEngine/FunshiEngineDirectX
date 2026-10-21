@@ -77,6 +77,12 @@ struct DescriptorComponente {
     // Submenu en el que se agrupa dentro de "Agregar componente"; vacio = nivel
     // raiz.
     std::string submenu;
+    // Icono del componente en el inspector, como ruta relativa a la carpeta de
+    // imagenes del motor (por ejemplo
+    // "GUI-Image/Component-Image/Transform/comp-transform-white.png"). Vacio si
+    // el componente no tiene icono propio. Se deriva del tipo, nunca se
+    // serializa: el nombre del tipo ya es el dato persistido.
+    std::string icono;
     // Requisito para poder agregarlo (p. ej. colisionador exige Transform).
     std::function<bool(GameObject&)> prerequisito;
     // Crea el componente; nullptr si el requisito no se cumple.

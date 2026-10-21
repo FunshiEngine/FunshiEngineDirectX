@@ -39,6 +39,8 @@
 #include "../GUI/Terminal/TerminalInterface.h"
 #include "../GUI/ModsGUI/PanelesModsInterface.h"
 #include "../Herramientas/IconosGUI/IconosGUI.h"
+#include "../Herramientas/IconosGUI/CatalogoIconos.h"
+#include "../Herramientas/IconosGUI/ReglaIconoCatalogo.h"
 #include "../FileManager/FileManager.h"
 #include "../Estructuras/ListasEnlazadas/ListasConPrioridad/PriorityListaDE.h"
 #include "../Events/EditorEventBus.h"
@@ -70,6 +72,10 @@ private:
 	std::unique_ptr<TreeFilesInterface> treeFilesGUI;
 	std::unique_ptr<DockSpaceInterface> dockSpaceGUI;
 	std::unique_ptr<IconosGUI> iconosGUI;
+	// Iconos de componente: la regla lee el catalogo (que es la fuente unica
+	// del icono de cada tipo) y el resolvedor lo pinta en el inspector.
+	std::unique_ptr<ReglaIconoCatalogo> reglaIconos;
+	std::unique_ptr<CatalogoIconos> resolutorIconos;
 	EditorController* editor = nullptr;
 	std::unique_ptr<ContentFolderInterface> contentOfThisFolder;
 	std::unique_ptr<StatusBarInterface> statusBarGUI;

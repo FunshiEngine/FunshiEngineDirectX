@@ -292,6 +292,8 @@ FunshiEngineGL/                          ← raíz del repo
         │   │   └── MenuGUI.h/.cpp          ← fachada pública del paquete
         │   ├── ObjetosGUI/
         │   │   ├── SettingsObjectInterface.h/.cpp ← inspector: crea Settings* por componente
+        │   │   │                                 y dibuja el icono de cada componente a la
+        │   │   │                                 izquierda de su nombre (IResolutorIconos)
         │   │   ├── SettingsComponent.h
         │   │   ├── Transform/SettingsTransform.h/.cpp ← transform + checkbox "Gizmo activo"
         │   │   ├── Color/  Model/  Script/
@@ -333,6 +335,14 @@ FunshiEngineGL/                          ← raíz del repo
         │   ├── TreeGUI/TreeGUI.h         ← widget de árbol genérico para ImGui
         │   └── IconosGUI/                ← carga de íconos (usa stb_image, que ya
         │                                   vive en External/stb_image)
+        │       ├── RutasIconos.h        ← dónde se buscan los assets de imagen
+        │       │                           (junto al ejecutable y junto al cwd);
+        │       │                           el orden de búsqueda es una pieza
+        │       │                           testeable en headless
+        │       ├── IReglaIcono.h        ← contrato: tipo de componente → ruta de icono
+        │       ├── ReglaIconoCatalogo.h/.cpp ← la regla que lee el catálogo (fuente única)
+        │       ├── IResolutorIconos.h   ← contrato: tipo de componente → textura
+        │       └── CatalogoIconos.h/.cpp← une la regla con la carga en GPU (a demanda)
         ├── Iluminacion/
         │   ├── LightSystem.h/.cpp        ← dueño del estado GL de luces (GL_LIGHT0..7) por frame
         │   │                              (además devuelve el objeto dueño de cada luz)
@@ -435,6 +445,8 @@ FunshiEngineGL/                          ← raíz del repo
         │   └── Componentes/
         │       ├── Component.h           ← interfaz base polimórfica (serialize/deserialize)
         │       ├── ComponentFactory.h/.cpp ← creación por nombre (GUI y deserialización)
+        │       ├── CatalogoComponentes.h/.cpp ← tabla única de tipos de componente: nombre,
+        │       │                            dimensión, submenú, icono, requisitos, creador y panel
         │       ├── Transform.h/.cpp      ← local/global con GLM; anti-NaN; flag gizmoHabilitado
         │       ├── CameraComponent.h/.cpp ← cámara componente: vista, FPS, flag de vista previa
         │       ├── Material.h/.cpp       ← AMBIENT/DIFFUSE/SPECULAR/EMISSION/SHININESS
@@ -700,6 +712,13 @@ solo como orquestador de arranque y bucle.
   de `Component` y serializan sus datos binarios.
 - `ComponentFactory` centraliza la creación por nombre de tipo tanto desde la GUI
   como durante la deserialización (`"CameraComponent"` acepta el alias `"Camera"`).
+- El catálogo declara además el **icono** de cada tipo de componente (la ruta
+  del PNG dentro de `Imagenes/GUI-Image/Component-Image/`). El icono se
+  **deriva del tipo** y no se serializa: el nombre del tipo ya es el dato
+  persistido de la escena, así que guardarlo también sería duplicar la fuente
+  de verdad. El inspector lo pinta a la izquierda del nombre del componente,
+  resuelto por `IResolutorIconos` (la regla lee el catálogo; la textura se
+  carga en GPU a demanda).
 - `Component` declara dos hooks de serialización (`serializeComponent` y
   `deserializeComponent`): son los dos métodos que implementa cada componente. La
   base ofrece `saveComponent` y `loadComponent` como entrada del motor, que
@@ -1513,8 +1532,13 @@ GameScene → coordina todos los subsistemas del frame
   con deshacer/rehacer, la cadena de redo múltiple, el límite del historial, la
   descripción que el historial devuelve para avisar en la barra de estado y el
   registro de cuerpos en fisica al borrar/duplicar/agregar/quitar.
+- `tests/IconosComponentesTests.cpp`: el catálogo de componentes es la fuente
+  única del icono de cada tipo. La suite verifica que todo componente declare
+  icono, que la imagen exista en el disco, que la regla resuelva por nombre de
+  tipo, por alias ("Camera") y con el prefijo que MSVC antepone ("class
+  Transform"), y que un tipo desconocido no devuelva icono.
 - Las suites de prueba se ejecutan con `ctest`: el build con motor registra
-  **37** tests (35 habilitados y 2 deshabilitados) y el build headless
+  **38** tests (36 habilitados y 2 deshabilitados) y el build headless
   (`BUILD_ENGINE=OFF`) registra **21** (20 habilitados y 1 deshabilitado).
 - `.github/workflows/ci.yml` compila el engine completo en Ubuntu (Release, sin
   ASan) y ejecuta las pruebas; además ejecuta las headless en
@@ -1545,7 +1569,7 @@ GameScene → coordina todos los subsistemas del frame
   Windows usa el generador por defecto (multi-config), que es el mismo que
   comprueba el job multi-config de la CI.
 - La lista de targets que compila cada job tiene que cubrir todas las suites
-  registradas en ese modo de build (37 con `BUILD_ENGINE=ON`, 21 con
+  registradas en ese modo de build (38 con `BUILD_ENGINE=ON`, 21 con
   `BUILD_ENGINE=OFF`): `ctest` ejecuta todos los tests registrados en el build,
   no solo los compilados, y los que faltan quedan como `Not Run`, lo que hace
   fallar el job. Las suites con `DISABLED TRUE` se pueden omitir porque `ctest`

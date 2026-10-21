@@ -408,6 +408,19 @@ void SettingsObjectInterface::contentGUI() {
 			// Asegurar que compName no esté vacío
 			if (compName.empty()) compName = "Componente";
 
+			// Icono del componente a la izquierda de su nombre. Se dibuja antes
+			// del encabezado (y antes de SetNextItemOpen, que aplica al
+			// encabezado): si se dibujara despues, el popup contextual y el
+			// arrastre quedarian anclados al icono y no al nombre.
+			if (resolutorIconos_) {
+				const ImTextureID icono =
+				    resolutorIconos_->iconoPara(comp->getTipoComponente());
+				if (icono != ImTextureID_Invalid) {
+					ImGui::Image(icono, ImVec2(16.f, 16.f));
+					ImGui::SameLine();
+				}
+			}
+
 			SettingsScript* scriptSettings =
 			    dynamic_cast<SettingsScript*>(comp);
 			if (scriptSettings && scriptSettings->estaEditandoNombre())

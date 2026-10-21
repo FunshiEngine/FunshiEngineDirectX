@@ -70,6 +70,49 @@ namespace {
 
 constexpr const char* kSubmenuColliders = "Add Collider";
 
+// Iconos de componente (ruta relativa a la carpeta de imagenes del motor).
+// Los dibuja el inspector a la izquierda del nombre del componente. El icono
+// se deriva del tipo de componente, no se serializa: el nombre del tipo ya es
+// el dato que se guarda en la escena.
+constexpr const char* kIconoTransform =
+    "GUI-Image/Component-Image/Transform/comp-transform-white.png";
+constexpr const char* kIconoGenerico =
+    "GUI-Image/Component-Image/comp-empty-white.png";
+constexpr const char* kIconoCamara =
+    "GUI-Image/Component-Image/Camara/camera-white.png";
+constexpr const char* kIconoMaterial =
+    "GUI-Image/Component-Image/Material/material-white.png";
+constexpr const char* kIconoLuz =
+    "GUI-Image/Component-Image/Iluminacion/comp-light-directional-white.png";
+constexpr const char* kIconoModelo =
+    "GUI-Image/Component-Image/Model/model-white.png";
+constexpr const char* kIconoSkybox =
+    "GUI-Image/Component-Image/Skybox/skybox-white.png";
+constexpr const char* kIconoSprite =
+    "GUI-Image/Component-Image/Sprite/sprite-white.png";
+constexpr const char* kIconoAnimacion =
+    "GUI-Image/Component-Image/animation-white.png";
+constexpr const char* kIconoTilemap =
+    "GUI-Image/Component-Image/tilemap-white.png";
+constexpr const char* kIconoColliderEsfera =
+    "GUI-Image/Component-Image/Fisicas/comp-collider-sphere-white.png";
+constexpr const char* kIconoColliderCubo =
+    "GUI-Image/Component-Image/Fisicas/comp-collider-box-white.png";
+constexpr const char* kIconoColliderMalla =
+    "GUI-Image/Component-Image/Fisicas/comp-collider-mesh-white.png";
+constexpr const char* kIconoColliderTilemap =
+    "GUI-Image/Component-Image/Fisicas/comp-collider-box-white.png";
+constexpr const char* kIconoRigidBody =
+    "GUI-Image/Component-Image/Fisicas/comp-rigidbody-white.png";
+constexpr const char* kIconoScript =
+    "GUI-Image/Component-Image/Scripts/script-white.png";
+constexpr const char* kIconoAudio =
+    "GUI-Image/Component-Image/Sonidos/audio-white.png";
+constexpr const char* kIconoMusica =
+    "GUI-Image/Component-Image/Sonidos/audio-white.png";
+constexpr const char* kIconoInterfaz =
+    "GUI-Image/Component-Image/Interfaces/ui-white.png";
+
 } // namespace
 
 CatalogoComponentes::CatalogoComponentes() {
@@ -79,7 +122,7 @@ CatalogoComponentes::CatalogoComponentes() {
 
     auto add = [this](std::string nombre, std::string etiqueta,
                       DimensionesComponente dim, std::string submenu,
-                      Creador crear, CreadorPanel panel,
+                      std::string icono, Creador crear, CreadorPanel panel,
                       std::function<bool(GameObject&)> prereq = nullptr,
                       std::string alias = std::string()) {
         DescriptorComponente d;
@@ -88,6 +131,7 @@ CatalogoComponentes::CatalogoComponentes() {
         d.alias = std::move(alias);
         d.dimensiones = dim;
         d.submenu = std::move(submenu);
+        d.icono = std::move(icono);
         d.prerequisito = std::move(prereq);
         d.crear = std::move(crear);
         d.crearPanel = std::move(panel);
@@ -96,6 +140,7 @@ CatalogoComponentes::CatalogoComponentes() {
 
     // Nucleo: presentes en cualquier dimension.
     add("Transform", "Transform", DimensionesComponente::Ambas, "",
+        kIconoTransform,
         [](GameObject&) { return std::unique_ptr<Component>(new Transform()); },
         [](Component* c, GameObject* o, const ContextoPanel& ctx) {
             auto* s = new SettingsTransform(dynamic_cast<Transform*>(c), o);
@@ -103,11 +148,13 @@ CatalogoComponentes::CatalogoComponentes() {
             return std::unique_ptr<SettingsComponent>(s);
         });
     add("Color", "Color", DimensionesComponente::Ambas, "",
+        kIconoGenerico,
         [](GameObject&) { return std::unique_ptr<Component>(new Color()); },
         [](Component*, GameObject* o, const ContextoPanel&) {
             return std::unique_ptr<SettingsComponent>(new SettingsColor(o));
         });
     add("CameraComponent", "CameraComponent", DimensionesComponente::Ambas, "",
+        kIconoCamara,
         [](GameObject&) {
             return std::unique_ptr<Component>(new CameraComponent());
         },
@@ -120,32 +167,38 @@ CatalogoComponentes::CatalogoComponentes() {
 
     // Render 3D: solo tienen sentido con profundidad.
     add("Material", "Material", DimensionesComponente::TresD, "",
+        kIconoMaterial,
         [](GameObject&) { return std::unique_ptr<Component>(new Material()); },
         [](Component*, GameObject* o, const ContextoPanel&) {
             return std::unique_ptr<SettingsComponent>(new SettingsMaterial(o));
         });
     add("Light", "Light", DimensionesComponente::TresD, "",
+        kIconoLuz,
         [](GameObject&) { return std::unique_ptr<Component>(new Light()); },
         [](Component*, GameObject* o, const ContextoPanel&) {
             return std::unique_ptr<SettingsComponent>(new SettingsLight(o));
         });
     add("Model", "Model", DimensionesComponente::TresD, "",
+        kIconoModelo,
         [](GameObject&) { return std::unique_ptr<Component>(new Model()); },
         [](Component*, GameObject* o, const ContextoPanel&) {
             return std::unique_ptr<SettingsComponent>(new SettingsModel(o));
         });
     add("Grid", "Grid", DimensionesComponente::TresD, "",
+        kIconoGenerico,
         [](GameObject&) { return std::unique_ptr<Component>(new Grid()); },
         [](Component*, GameObject* o, const ContextoPanel&) {
             return std::unique_ptr<SettingsComponent>(new SettingsGrid(o));
         });
     add("Skybox", "Skybox", DimensionesComponente::TresD, "",
+        kIconoSkybox,
         [](GameObject&) { return std::unique_ptr<Component>(new Skybox()); },
         [](Component*, GameObject* o, const ContextoPanel&) {
             return std::unique_ptr<SettingsComponent>(new SettingsSkybox(o));
         });
     // Sombras: se agrega al objeto de la luz, asi que sin luz no tiene sentido.
     add("Sombras", "Sombras", DimensionesComponente::TresD, "",
+        kIconoGenerico,
         [](GameObject& o) -> std::unique_ptr<Component> {
             if (!o.getComponent<Light>()) return nullptr;
             return std::unique_ptr<Component>(new Sombras());
@@ -158,6 +211,7 @@ CatalogoComponentes::CatalogoComponentes() {
     // Render 2D: el sprite se puede usar en ambas; el animador es propio del
     // plano.
     add("SpriteRenderer", "SpriteRenderer", DimensionesComponente::Ambas, "",
+        kIconoSprite,
         [](GameObject&) {
             return std::unique_ptr<Component>(new SpriteRenderer());
         },
@@ -166,6 +220,7 @@ CatalogoComponentes::CatalogoComponentes() {
                 new SettingsSpriteRenderer(o));
         });
     add("Animador2D", "Animador2D", DimensionesComponente::DosD, "",
+        kIconoAnimacion,
         [](GameObject& o) -> std::unique_ptr<Component> {
             if (!o.getComponent<SpriteRenderer>()) return nullptr;
             return std::unique_ptr<Component>(new Animador2D());
@@ -178,6 +233,7 @@ CatalogoComponentes::CatalogoComponentes() {
             return o.getComponent<SpriteRenderer>() != nullptr;
         });
     add("Tilemap", "Tilemap", DimensionesComponente::DosD, "",
+        kIconoTilemap,
         [](GameObject&) { return std::unique_ptr<Component>(new Tilemap()); },
         [](Component*, GameObject* o, const ContextoPanel&) {
             return std::unique_ptr<SettingsComponent>(new SettingsTilemap(o));
@@ -189,6 +245,7 @@ CatalogoComponentes::CatalogoComponentes() {
     };
     add("EsfereCollider", "EsfereCollider", DimensionesComponente::Ambas,
         kSubmenuColliders,
+        kIconoColliderEsfera,
         [](GameObject& o) -> std::unique_ptr<Component> {
             Transform* t = o.getComponent<Transform>();
             if (!t) return nullptr;
@@ -202,6 +259,7 @@ CatalogoComponentes::CatalogoComponentes() {
         exigeTransform);
     add("CubeCollider", "CubeCollider", DimensionesComponente::Ambas,
         kSubmenuColliders,
+        kIconoColliderCubo,
         [](GameObject& o) -> std::unique_ptr<Component> {
             Transform* t = o.getComponent<Transform>();
             if (!t) return nullptr;
@@ -215,6 +273,7 @@ CatalogoComponentes::CatalogoComponentes() {
         exigeTransform);
     add("MallaCollider", "MallaCollider", DimensionesComponente::TresD,
         kSubmenuColliders,
+        kIconoColliderMalla,
         [](GameObject& o) -> std::unique_ptr<Component> {
             Transform* t = o.getComponent<Transform>();
             if (!t) return nullptr;
@@ -228,6 +287,7 @@ CatalogoComponentes::CatalogoComponentes() {
         exigeTransform);
     add("TilemapCollider", "TilemapCollider", DimensionesComponente::DosD,
         kSubmenuColliders,
+        kIconoColliderTilemap,
         [](GameObject& o) -> std::unique_ptr<Component> {
             Transform* t = o.getComponent<Transform>();
             if (!t) return nullptr;
@@ -243,6 +303,7 @@ CatalogoComponentes::CatalogoComponentes() {
                    o.getComponent<Tilemap>() != nullptr;
         });
     add("RigidBody", "RigidBody", DimensionesComponente::Ambas, "",
+        kIconoRigidBody,
         [](GameObject& o) -> std::unique_ptr<Component> {
             Collider* col = o.getComponent<Collider>();
             if (!col) return nullptr;
@@ -257,12 +318,14 @@ CatalogoComponentes::CatalogoComponentes() {
 
     // Script, audio e interfaz: disponibles en cualquier dimension.
     add("Script", "Script", DimensionesComponente::Ambas, "",
+        kIconoScript,
         [](GameObject&) { return std::unique_ptr<Component>(new Script()); },
         [](Component* c, GameObject*, const ContextoPanel&) {
             return std::unique_ptr<SettingsComponent>(
                 new SettingsScript(dynamic_cast<Script*>(c)));
         });
     add("AudioSource", "AudioSource", DimensionesComponente::Ambas, "",
+        kIconoAudio,
         [](GameObject&) {
             return std::unique_ptr<Component>(new AudioSource());
         },
@@ -272,6 +335,7 @@ CatalogoComponentes::CatalogoComponentes() {
             return std::unique_ptr<SettingsComponent>(s);
         });
     add("Musica", "Musica", DimensionesComponente::Ambas, "",
+        kIconoMusica,
         [](GameObject&) {
             return std::unique_ptr<Component>(new Musica());
         },
@@ -282,6 +346,7 @@ CatalogoComponentes::CatalogoComponentes() {
         });
     add("InterfaceComponent", "Interfaz de juego (HTML)",
         DimensionesComponente::Ambas, "",
+        kIconoInterfaz,
         [](GameObject&) {
             return std::unique_ptr<Component>(new InterfaceComponent());
         },

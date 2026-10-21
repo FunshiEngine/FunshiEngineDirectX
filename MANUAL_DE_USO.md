@@ -262,6 +262,9 @@ seleccion).
   `InterfaceComponent`, `Sombras` y `Script`.
 - **Inspector:** boton "Agregar componente" abre el popup de componentes; cada
   uno tiene su panel propio (Transform, Luz con tipo/atenuacion/color, etc.).
+  Cada componente se lista con su icono a la izquierda del nombre; el icono
+  viene del tipo de componente (no se guarda en la escena) y el juego de
+  imagenes completo esta en `Imagenes/GUI-Image/Component-Image/`.
 - **Jerarquia:** arrastra un objeto sobre otro en el arbol para reparentar; el
   motor rechaza ciclos y la raiz. "Childs Freeze" congela la transformacion de
   los hijos durante la edicion del padre.
