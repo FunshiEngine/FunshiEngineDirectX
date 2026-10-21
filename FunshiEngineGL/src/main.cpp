@@ -50,6 +50,7 @@
 #include "../src/Input/EditorInput.h"
 #include "../src/Hilos/HiloActual.h"
 #include "../src/Rendering/Backend/IRenderBackend.h"
+#include "../src/Rendering/FondoEscena.h"
 #include "../src/Diagnosticos/RegistroDiagnosticos.h"
 #include "../src/Mods/GestorMods.h"
 #include "../src/Mods/CargadorMods.h"
@@ -732,8 +733,10 @@ static int EjecutarMotor(int argc, char* argv[])
 
         // Limpieza del framebuffer de la ventana con el color de fondo vigente
         // (setClearColor). El backend lo limpia y queda el default framebuffer
-        // listo para ImGui y la pasada de la escena.
-        Rendering::Backend::activeBackend().clearScreen(nullptr);
+        // listo para ImGui y la pasada de la escena. El color sale del perfil
+        // de apariencia de la escena, el mismo que usa el juego exportado.
+        FondoEscena::limpiar(Rendering::Backend::activeBackend(),
+                             scene->getApariencia());
 
             // El frame del renderer solo si el backend arranco: con
             // ImGui_ImplOpenGL3_Init() fallido no hay backend data y en Release

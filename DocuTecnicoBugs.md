@@ -117,6 +117,7 @@ recorrer(destFolder); // Ahora SÍ re-lee porque cache inválido
 | **R23 — La etiqueta manda sobre el dato guardado** | Un `std::variant` solo admite una alternativa activa: si el tipo del campo cambió desde que se guardó, el valor guardado ya no se puede reinterpretar y leerlo lanza `std::bad_variant_access`. Al emparejar por nombre, si la etiqueta no coincide con la del campo, se usa el valor por defecto del campo | `FunshiEngineGL/src/Behaviour/Reflection/BehaviourReflection.cpp` (ver §19.4) |
 | **R24 — El avance del iterador va en la cláusula de incremento** | En un bucle sobre una lista enlazada, con el avance al final del cuerpo, un `continue` lo salta y el bucle gira sobre el mismo elemento para siempre. Con el avance en la cláusula de incremento del `for`, ninguna sentencia del cuerpo puede saltárselo | `FunshiEngineGL/src/Rendering/SceneRenderer.cpp` (ver §20.4) |
 | **R25 — La consulta de disponibilidad es el resultado de la carga** | Si la carga de punteros a funciones comprueba treinta funciones y la consulta de disponibilidad mira una sola, existe un estado en el que la carga falló y la consulta dice que todo está bien: el motor llama a un puntero nulo. La consulta devuelve el resultado de la carga | `FunshiEngineGL/src/Rendering/Backend/GLFuncs.h` (ver §21.4) |
+| **R26 — El frame arranca limpio** | Dibujar sobre el framebuffer sin limpiarlo color y profundidad supone que el driver dejó el buffer de profundidad en 1.0: no todos lo hacen. El test de profundidad descarta entonces todo lo que se dibuja y la ventana queda en negro, sin error ni aviso. Cada frame limpia color y profundidad con el color del perfil de apariencia, y el editor y el juego exportado usan el mismo helper | `FunshiEngineGL/src/Rendering/FondoEscena.h` (ver §22.4) |
 
 ---
 
@@ -1452,7 +1453,66 @@ inline bool available() { return inicializado; }
 
 ---
 
-## 22. Historial de Cambios
+## 22. Decimoctavo concepto: **Un framebuffer que no se limpia descarta lo que se dibuja**
+
+### 22.1 Patrón
+
+Un renderizador dibuja sobre el framebuffer de la ventana y confía en su
+contenido inicial: no limpia el color ni la profundidad y espera que el driver
+deje el buffer de profundidad en 1.0 (el valor que hace que el test de
+profundidad deje pasar todo lo que se dibuja).
+
+No todos los drivers lo garantizan. Cuando el valor inicial no es 1.0, el test
+de profundidad (`LESS`) rechaza **todos** los fragmentos: no se ve el cielo ni
+la geometría, y la ventana queda en negro.
+
+### 22.2 Síntomas
+
+- La ventana del juego exportado abre completamente negra; la misma escena, en
+  el editor, se ve bien.
+- El log no dice nada: no hay error ni excepción, solo píxeles negros.
+- El fallo depende de la máquina: en un driver el buffer sí arranca en 1.0 y la
+  escena aparece; en otro no.
+
+### 22.3 Causa
+
+El bucle del juego exportado no limpiaba el framebuffer. El editor sí lo hacía
+(`clearScreen` al comienzo del frame), así que el mismo motor, con dos puntos
+de entrada, tenía uno que limpiaba el frame y otro que no.
+
+### 22.4 Fix canónico (Patrón R26 — el frame arranca limpio)
+
+Cada frame empieza limpiando color y profundidad, con el color que sale del
+perfil de apariencia. La limpieza vive en un helper compartido
+(`FondoEscena::limpiar`) para que el editor y el juego exportado arranquen el
+frame igual:
+
+```cpp
+inline void limpiar(Rendering::Backend::IRenderBackend& backend,
+                    const Apariencia& apariencia) {
+    float fondo[3];
+    color(apariencia, fondo);
+    backend.setClearColor(fondo);
+    backend.clearScreen(nullptr);
+}
+```
+
+### 22.5 Checklist de mitigación
+
+- [ ] Cada frame empieza con una limpieza de color **y** de profundidad.
+- [ ] El color de la limpieza sale del perfil de apariencia (una sola fuente),
+      no de un valor suelto repetido en dos puntos de entrada.
+- [ ] Editor y juego exportado usan el mismo helper de limpieza.
+
+### 22.6 Registro de Instancias
+
+| # | Ubicación | Operación | Herramienta | Fix Aplicado | Commit |
+|---|-----------|-----------|-------------|--------------|--------|
+| 1 | `FunshiEngineGL/src/Runtime/main_juego.cpp` | Limpiar el framebuffer al inicio del frame del juego exportado | Captura de pantalla + lectura de píxeles (`glReadPixels`) | El frame limpia color y profundidad con `FondoEscena::limpiar` antes de `scene->gameScene()` (Patrón R26) | `fix(export): el juego exportado limpia el frame antes de dibujar` |
+
+---
+
+## 23. Historial de Cambios
 
 | Fecha | Autor | Cambio |
 |-------|-------|--------|
@@ -1477,10 +1537,11 @@ inline bool available() { return inicializado; }
 | 2026-10-20 | Gianfranco Ivan Enrique | Añadido el decimoquinto concepto (Patrón R23, la etiqueta de un valor guardado deja de corresponder a su campo) con su instancia #1: un script que cambia el tipo de un campo dejaba el `std::variant` del inspector con la alternativa vieja y el render de ImGui abortaba con `std::bad_variant_access`. |
 | 2026-10-20 | Gianfranco Ivan Enrique | Añadido el decimosexto concepto (Patrón R24, un `continue` salta el avance del iterador y el bucle no termina) con su instancia #1: la pasada de vistas previas del editor giraba sobre el mismo elemento si el backend no estaba disponible. |
 | 2026-10-20 | Gianfranco Ivan Enrique | Añadido el decimoséptimo concepto (Patrón R25, una comprobación de disponibilidad más débil que la inicialización que la respalda) con su instancia #1: `available()` del backend de OpenGL comprobaba una sola de las treinta funciones que la carga exige. |
+| 2026-10-21 | Gianfranco Ivan Enrique | Añadido el decimoctavo concepto (Patrón R26, el frame arranca limpio) con su instancia #1: el juego exportado no limpiaba el framebuffer, el buffer de profundidad no arrancaba en 1.0 en el driver de la máquina y la ventana se quedaba en negro. |
 
 ---
 
-*Este documento es vivo: cada nuevo bug de esta clase debe registrarse en la tabla de su concepto (§2 para el primero, §6.5 para el segundo, §7.5 para el tercero, §8.5 para el cuarto, §9.5 para el quinto), §14.6 para el décimo, §15.6 para el undécimo, §16.6 para el duodécimo, §17.6 para el decimotercer, §18.6 para el decimocuarto, §19.6 para el decimoquinto, §20.6 para el decimosexto y §21.6 para el decimoséptimo; si revela un patrón nuevo, añadirse a §4.*
+*Este documento es vivo: cada nuevo bug de esta clase debe registrarse en la tabla de su concepto (§2 para el primero, §6.5 para el segundo, §7.5 para el tercero, §8.5 para el cuarto, §9.5 para el quinto), §14.6 para el décimo, §15.6 para el undécimo, §16.6 para el duodécimo, §17.6 para el decimotercer, §18.6 para el decimocuarto, §19.6 para el decimoquinto, §20.6 para el decimosexto, §21.6 para el decimoséptimo y §22.6 para el decimoctavo; si revela un patrón nuevo, añadirse a §4.*
 ## CEF: "Invalid file descriptor to ICU data received" en InitializeICU
 
 - **Síntoma**: al arrancar el motor con `FUNSHI_CEF=ON`, `CefInitialize` aborta en

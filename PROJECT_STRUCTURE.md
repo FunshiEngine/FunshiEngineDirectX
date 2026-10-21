@@ -398,6 +398,9 @@ FunshiEngineGL/                          ← raíz del repo
         │   ├── Cielo.h/.cpp                ← cielo degradado
         │   ├── Difuminado.h/.cpp           ← cálculo de difuminado radial
         │   ├── CacheCubemap.h             ← caché de caras del cubemap
+        │   ├── FondoEscena.h              ← color de fondo del perfil de apariencia y limpieza
+        │   │                                del framebuffer (color y profundidad) al inicio del
+        │   │                                frame; lo usan el editor y el juego exportado
         │   ├── Backend/                    ← abstracción de backend gráfico (Strategy)
         │   │   ├── IRenderBackend.h        ← contrato (handles opacos, MeshData, Image2D,
         │   │   │                              DepthFunc, recursos GPU, estados, FBO,
@@ -471,7 +474,12 @@ FunshiEngineGL/                          ← raíz del repo
         ├── Runtime/
         │   └── main_juego.cpp            ← punto de entrada de juegos exportados (sin editor:
         │                                  GUIManager, MenuGUI, paneles). ImGui básico para runtime,
-        │                                  carga escenas desde estructura simplificada (scenes/)
+        │                                  carga escenas desde estructura simplificada (scenes/),
+        │                                  limpia el framebuffer al inicio de cada frame. Lo
+        │                                  compila el target `runtime-compile-check` del motor
+        │                                  (el exportador genera su propio proyecto, pero el
+        │                                  motor lo compila igual para que sus errores no
+        │                                  aparezcan al exportar)
         ├── Comandos/
         │   ├── IComando.h              ← interfaz Command: ejecutar(), deshacer(), descripcion()
         │   ├── GestorComandos.h/.cpp   ← pilas undo/redo (máx 50), ejecuta/deshace/rehace
@@ -1503,7 +1511,9 @@ GameScene → coordina todos los subsistemas del frame
   con deshacer/rehacer, la cadena de redo múltiple, el límite del historial, la
   descripción que el historial devuelve para avisar en la barra de estado y el
   registro de cuerpos en fisica al borrar/duplicar/agregar/quitar.
-- Los treinta targets compilan en cualquier plataforma y se ejecutan con `ctest`.
+- Las suites de prueba se ejecutan con `ctest`: el build con motor registra
+  **37** tests (35 habilitados y 2 deshabilitados) y el build headless
+  (`BUILD_ENGINE=OFF`) registra **21** (20 habilitados y 1 deshabilitado).
 - `.github/workflows/ci.yml` compila el engine completo en Ubuntu (Release, sin
   ASan) y ejecuta las pruebas; además ejecuta las headless en
   Linux/Windows con `BUILD_ENGINE=OFF`, el backend Java en Ubuntu con JDK y
@@ -1533,7 +1543,7 @@ GameScene → coordina todos los subsistemas del frame
   Windows usa el generador por defecto (multi-config), que es el mismo que
   comprueba el job multi-config de la CI.
 - La lista de targets que compila cada job tiene que cubrir todas las suites
-  registradas en ese modo de build (30 con `BUILD_ENGINE=ON`, 18 con
+  registradas en ese modo de build (37 con `BUILD_ENGINE=ON`, 21 con
   `BUILD_ENGINE=OFF`): `ctest` ejecuta todos los tests registrados en el build,
   no solo los compilados, y los que faltan quedan como `Not Run`, lo que hace
   fallar el job. Las suites con `DISABLED TRUE` se pueden omitir porque `ctest`
