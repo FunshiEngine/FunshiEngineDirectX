@@ -364,7 +364,7 @@ public:
 
     Handle createMesh(const MeshData&) override { return 1; }
     void destroyMesh(Handle) override {}
-    void drawMesh(Handle, unsigned int) override {}
+    void drawMesh(Handle, unsigned int, unsigned int) override {}
 
     Handle createLineBatch(const float*, std::size_t) override { return 2; }
     void destroyLineBatch(Handle) override {}

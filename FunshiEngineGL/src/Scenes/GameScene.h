@@ -31,6 +31,7 @@
 #include "../Input/InputScripts.h"
 #include "../Configuracion/Apariencia.h"
 #include "../Configuracion/DimensionProyecto.h"
+#include "../Objetos/Componentes/ResolvedorMateriales.h"
 #include "OperacionGizmo.h"
 #include "../WebUI/VistasWebUI.h"
 #include "../WebUI/EstadoInterfaces.h"
@@ -101,6 +102,10 @@ private:
     // usa el MeshRenderer para convertir el path de textura de cada Material
     // en una imagen subida una sola vez a GPU.
     std::unique_ptr<TextureManager> textureManager;
+    // Resolvedor de materiales: decide que material se dibuja en cada region
+    // de la malla (los materiales por parte) y cual es el material unico del
+    // objeto. Se inyecta al renderer de la escena.
+    std::unique_ptr<ResolvedorMateriales> resolvedorMateriales_;
     EventBus events;
     // Los constructores de EditorController y SceneSerializer reciben
     // pointers a los miembros anteriores (assetManager/events): deben estar

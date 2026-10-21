@@ -63,6 +63,9 @@ public:
 
     // Dibuja la malla subida. No-op si no hay recurso/indices.
     void draw() const;
+    // Dibuja solo un rango de indices (una region de la malla, con su
+    // material propio). No-op si el rango no cabe en la malla.
+    void draw(unsigned int firstIndex, unsigned int indexCount) const;
 };
 
 #endif

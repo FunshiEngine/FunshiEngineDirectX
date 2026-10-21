@@ -22,6 +22,7 @@
 #include "../GeneralUserInterface.h"
 #include "../../Estructuras/ListasEnlazadas/ListasDoblementeEnlazada/ListaDE.h"
 #include "../../Configuracion/DimensionProyecto.h"
+#include "../../Herramientas/IconosGUI/IResolutorIconos.h"
 #include <array>
 #include <functional>
 
@@ -41,6 +42,8 @@ private:
 	EditorController* editor = nullptr;
 	AudioEngine* audioMotor = nullptr;
 	EventBus* events = nullptr;
+	// Iconos de componente (inyectado por la escena via GUIManager).
+	IResolutorIconos* resolutorIconos_ = nullptr;
 	// Proveedor de la dimension del proyecto (2D/3D), inyectado por la escena
 	// via GUIManager. Se consulta al armar el menu "agregar componente" para
 	// ofrecer solo los que aplican. Sin proveedor se asume 3D.
@@ -92,6 +95,11 @@ public:
 	// Canal de eventos de la escena: el inspector se suscribe para desvincularse
 	// cuando el objeto inspeccionado se borra o se limpia la escena.
 	void setEventBus(EventBus* bus);
+	// Resolvedor de iconos de componente (dibuja el icono a la izquierda del
+	// nombre). Puede ser nullptr: entonces los componentes se listan sin icono.
+	void setResolutorIconos(IResolutorIconos* resolutor) {
+		resolutorIconos_ = resolutor;
+	}
 	void loadComponents();
 
 	// Numero de reconciliaciones disparadas por cambios estructurales (alta o

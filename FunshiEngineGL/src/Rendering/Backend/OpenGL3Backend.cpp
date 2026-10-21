@@ -247,11 +247,16 @@ void OpenGL3Backend::destroyMesh(Handle mesh) {
     meshes_.erase(it);
 }
 
-void OpenGL3Backend::drawMesh(Handle mesh, unsigned int indexCount) {
+void OpenGL3Backend::drawMesh(Handle mesh, unsigned int firstIndex,
+                               unsigned int indexCount) {
     if (mesh == kInvalidHandle || indexCount == 0) return;
     GLFuncs::pfnBindVertexArray(static_cast<GLuint>(mesh));
+    // El puntero del EBO se desplaza al primer indice del rango: asi una
+    // region (una sub-malla con material propio) se dibuja sin tocar el resto.
+    const std::size_t offset = static_cast<std::size_t>(firstIndex) *
+                                sizeof(unsigned int);
     glDrawElements(GL_TRIANGLES, static_cast<GLsizei>(indexCount),
-                   GL_UNSIGNED_INT, (const void*)nullptr);
+                   GL_UNSIGNED_INT, (const void*)offset);
     GLFuncs::pfnBindVertexArray(0);
 }
 

@@ -90,6 +90,7 @@ GameScene::GameScene(GUIManager* manager, Rendering::Backend::IRenderBackend& ba
       sceneRenderer(std::make_unique<SceneRenderer>(backend)),
       textureManager(std::make_unique<TextureManager>(
           std::make_unique<StbImageLoader>())),
+      resolvedorMateriales_(std::make_unique<ResolvedorMateriales>()),
       editorController(
           std::make_unique<EditorController>(sceneRegistry.get(), phisics.get(),
                                               &events, assetManager.get())),
@@ -133,6 +134,9 @@ GameScene::GameScene(GUIManager* manager, Rendering::Backend::IRenderBackend& ba
     // El renderer resuelve la textura de cada Material con el cache de imagenes
     // de la escena (un solo decode por archivo, imagen compartida).
     sceneRenderer->setTextureManager(textureManager.get());
+    // El resolvedor decide que material se dibuja en cada region de la malla
+    // (materiales por parte) y cual es el material unico del objeto.
+    sceneRenderer->setResolvedorMateriales(resolvedorMateriales_.get());
     // Los renderers piden los programas al gestor de shaders.
     sceneRenderer->setGestorShaders(gestorShaders.get());
 }

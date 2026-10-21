@@ -647,11 +647,78 @@ set_target_properties(catalogo-componentes-tests PROPERTIES
 )
 add_test(NAME catalogo-componentes-tests COMMAND catalogo-componentes-tests)
 
+# --- Pruebas headless de los iconos de componente ---------------------------
+# El catalogo declara el icono de cada tipo de componente (el nombre del tipo
+# ya es el dato persistido, asi que el icono se deriva de el y no se guarda).
+# La suite comprueba que todo componente declare icono, que la imagen exista
+# en el disco y que la regla resuelva por tipo, por alias y con el prefijo que
+# antepone MSVC.
+add_executable(iconos-componentes-tests
+    ${CMAKE_CURRENT_SOURCE_DIR}/../tests/IconosComponentesTests.cpp
+)
+target_include_directories(iconos-componentes-tests PRIVATE
+    ${SRC_DIR}
+    ${CMAKE_SOURCE_DIR}/External
+    ${CMAKE_SOURCE_DIR}/External/imgui
+)
+target_link_libraries(iconos-componentes-tests PRIVATE funshi_engine)
+set_target_properties(iconos-componentes-tests PROPERTIES
+    CXX_STANDARD 17
+    CXX_STANDARD_REQUIRED ON
+    CXX_EXTENSIONS OFF
+)
+add_test(NAME iconos-componentes-tests COMMAND iconos-componentes-tests)
+
+# --- Pruebas headless de las regiones con material propio de una malla -----
+# El importador antes concatenaba las sub-mallas y perdia el material de cada
+# una; ahora la malla guarda una region (rango de indices + nombre del
+# material) por sub-malla. La suite carga un .obj con dos materiales reales.
+add_executable(malla-regiones-tests
+    ${CMAKE_CURRENT_SOURCE_DIR}/../tests/MallaRegionesTests.cpp
+)
+target_include_directories(malla-regiones-tests PRIVATE
+    ${SRC_DIR}
+    ${CMAKE_SOURCE_DIR}/External
+    ${CMAKE_SOURCE_DIR}/External/imgui
+)
+target_link_libraries(malla-regiones-tests PRIVATE funshi_engine)
+set_target_properties(malla-regiones-tests PROPERTIES
+    CXX_STANDARD 17
+    CXX_STANDARD_REQUIRED ON
+    CXX_EXTENSIONS OFF
+)
+add_test(NAME malla-regiones-tests COMMAND malla-regiones-tests)
+
+# --- Pruebas headless de los materiales por region ---------------------------
+# El componente Materiales guarda una region por parte de la malla con su
+# material, y el resolvedor decide que material se dibuja en cada region.
+add_executable(materiales-regiones-tests
+    ${CMAKE_CURRENT_SOURCE_DIR}/../tests/MaterialesRegionesTests.cpp
+)
+target_include_directories(materiales-regiones-tests PRIVATE
+    ${SRC_DIR}
+    ${CMAKE_SOURCE_DIR}/External
+    ${CMAKE_SOURCE_DIR}/External/imgui
+)
+target_link_libraries(materiales-regiones-tests PRIVATE funshi_engine)
+set_target_properties(materiales-regiones-tests PROPERTIES
+    CXX_STANDARD 17
+    CXX_STANDARD_REQUIRED ON
+    CXX_EXTENSIONS OFF
+)
+add_test(NAME materiales-regiones-tests COMMAND materiales-regiones-tests)
+
 if(WIN32)
     target_link_libraries(escena-serializacion-tests PRIVATE dbghelp)
     target_compile_definitions(escena-serializacion-tests PRIVATE _HAS_STD_BYTE=0)
     target_link_libraries(catalogo-componentes-tests PRIVATE dbghelp)
     target_compile_definitions(catalogo-componentes-tests PRIVATE _HAS_STD_BYTE=0)
+    target_link_libraries(iconos-componentes-tests PRIVATE dbghelp)
+    target_compile_definitions(iconos-componentes-tests PRIVATE _HAS_STD_BYTE=0)
+    target_link_libraries(malla-regiones-tests PRIVATE dbghelp)
+    target_compile_definitions(malla-regiones-tests PRIVATE _HAS_STD_BYTE=0)
+    target_link_libraries(materiales-regiones-tests PRIVATE dbghelp)
+    target_compile_definitions(materiales-regiones-tests PRIVATE _HAS_STD_BYTE=0)
     target_link_libraries(serializacion-tests PRIVATE dbghelp)
     target_compile_definitions(serializacion-tests PRIVATE _HAS_STD_BYTE=0)
 endif()

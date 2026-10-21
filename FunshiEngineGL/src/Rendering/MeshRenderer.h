@@ -42,6 +42,8 @@ struct Image;
 class TextureManager;
 class Modelos3D;
 class GameObject;
+class IMaterial;
+class IResolutorMateriales;
 
 // Renderer de objetos con el pipeline moderno (VBO/VAO + shader). Sustituyo al
 // dibujado de Modelos3D que vivia en glBegin/glEnd, que ya no existe. Replica
@@ -77,6 +79,13 @@ public:
     // materiales con textura se dibujan sin ellas (no hay loader de imagenes).
     void setTextureManager(TextureManager* textureManager) noexcept {
         textureManager_ = textureManager;
+    }
+
+    // Resolvedor de materiales por region: decide que material se dibuja en
+    // cada region de la malla (una sub-malla con material propio). Si no se
+    // inyecta, la malla se dibuja entera con el material unico del objeto.
+    void setResolvedorMateriales(IResolutorMateriales* resolvedor) noexcept {
+        resolvedorMateriales_ = resolvedor;
     }
 
     // Luces de la pasada actual (1 vez por pasada, desde LightSystem: la misma
@@ -130,6 +139,8 @@ private:
     std::shared_ptr<ShaderProgram> shaderSombra_;
     Rendering::GestorShaders* gestorShaders_ = nullptr;
     TextureManager* textureManager_ = nullptr;
+    // Resolvedor de materiales por region (inyectado).
+    IResolutorMateriales* resolvedorMateriales_ = nullptr;
     // Backend de render inyectado (crea y destruye los recursos GPU).
     Rendering::Backend::IRenderBackend* backend_ = nullptr;
     std::unordered_map<const Mesh*, std::unique_ptr<MeshGPU>> gpu_;
@@ -150,7 +161,9 @@ private:
     // moderno no esta disponible, deja available() == false.
     bool inicializar();
     void aplicarLuces();
-    void aplicarMaterial(GameObject* objeto);
+    // Sube los uniforms del material (contrato IMaterial). Si el material es
+    // nullptr, se usa el color del objeto o los valores por defecto.
+    void aplicarMaterial(GameObject* objeto, const IMaterial* material);
     // Sube los uniforms de los mapas de sombra (matriz, sesgo, fuerza, texel
     // y a que luz pertenece cada mapa) y enlaza sus texturas.
     void aplicarSombras();
@@ -161,10 +174,10 @@ private:
     // Sube la malla a GPU (cache por identidad de la malla) y la devuelve.
     // nullptr si la malla no se puede dibujar.
     const MeshGPU* obtenerGpu(const Mesh* mesh);
-    // Resuelve los 4 slots de textura del Material (difusa/especular/emision/
+    // Resuelve los 4 slots de textura del material (difusa/especular/emision/
     // normal) contra el TextureManager inyectado y enlaza las unidades de
     // sampleo correspondientes. La normal exige que la malla tenga tangentes.
-    void aplicarTexturas(GameObject* objeto, const Mesh* mesh);
+    void aplicarTexturas(const IMaterial* material, const Mesh* mesh);
     // Enlaza un slot: devuelve true si quedo bindeado en la unidad indicada.
     bool enlazarSlotTextura(const std::string& path, int unit,
                             const char* samplerUniform);

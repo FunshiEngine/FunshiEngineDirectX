@@ -153,7 +153,7 @@ bool SpriteRenderer::dibujar(const SpriteDraw& sprite) {
     // escriben z-buffer, asi el orden de dibujo (Z creciente, atras->adelante)
     // decide el solapamiento y un sprite detras de la geometria se descarta.
     backend.setDepthMask(false);
-    backend.drawMesh(quadMalla_, 6);
+    backend.drawMesh(quadMalla_, 0, 6);
     backend.setDepthMask(true);
     backend.setBlendEnabled(false);
     ShaderProgram::unbind(backend);

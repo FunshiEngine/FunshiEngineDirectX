@@ -95,6 +95,21 @@ public:
         return nullptr;
     }
 
+    // Version de solo lectura: deja consultar los componentes de un objeto
+    // constante (por ejemplo, para resolver el material de una region sin
+    // poder modificar el objeto).
+    template <typename T>
+    const T* getComponent() const {
+        if (!components || components->isEmpty()) return nullptr;
+        Position<Component*>* position = components->first();
+        while (position != nullptr) {
+            if (auto* component = dynamic_cast<const T*>(position->getElement()))
+                return component;
+            position = (position != components->last()) ? components->next(position) : nullptr;
+        }
+        return nullptr;
+    }
+
     // Devuelven false si el archivo binario no se pudo abrir (sin directorio,
     // sin permisos): quien llama (SceneSerializer) lo avisa en el log en vez de
     // dejar que cada write()/read() falle en silencio. El nombre del archivo

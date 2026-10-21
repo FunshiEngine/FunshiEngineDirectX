@@ -85,7 +85,12 @@ public:
     // --- Malla GPU (VAO/VBO/EBO o su analogo nativo) -------------------------
     virtual Handle createMesh(const MeshData& data) = 0;
     virtual void destroyMesh(Handle mesh) = 0;
-    virtual void drawMesh(Handle mesh, unsigned int indexCount) = 0;
+    // Dibuja un rango de la malla: firstIndex es el indice del primer elemento
+    // del EBO y indexCount cuantos dibuja. Con firstIndex = 0 y el total de
+    // indices, es la malla entera; con un rango, es una region (una sub-malla
+    // con material propio).
+    virtual void drawMesh(Handle mesh, unsigned int firstIndex,
+                           unsigned int indexCount) = 0;
 
     // --- Batch de lineas (VAO/VBO de la geometria expandida por LineBuilder) --
     // Los vertices vienen en el layout de LineBuilder (12 floats: inicio, fin,

@@ -43,7 +43,8 @@ public:
     // --- Malla GPU ---
     Handle createMesh(const MeshData& data) override;
     void destroyMesh(Handle mesh) override;
-    void drawMesh(Handle mesh, unsigned int indexCount) override;
+    void drawMesh(Handle mesh, unsigned int firstIndex,
+                  unsigned int indexCount) override;
 
     // --- Batch de lineas ---
     Handle createLineBatch(const float* vertices,

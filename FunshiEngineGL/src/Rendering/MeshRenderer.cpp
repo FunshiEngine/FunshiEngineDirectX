@@ -30,6 +30,8 @@
 #include "../Assets/TextureManager.h"
 #include "../Iluminacion/LightSystem.h"
 #include "../Objetos/Componentes/Color.h"
+#include "../Objetos/Componentes/IMaterial.h"
+#include "../Objetos/Componentes/IResolutorMateriales.h"
 #include "../Objetos/Componentes/Material.h"
 #include "../Objetos/Componentes/Model.h"
 #include "../Objetos/GameObject.h"
@@ -222,8 +224,8 @@ void MeshRenderer::aplicarSombras() {
     }
 }
 
-void MeshRenderer::aplicarMaterial(GameObject* objeto) {
-    if (Material* material = objeto->getComponent<Material>()) {
+void MeshRenderer::aplicarMaterial(GameObject* objeto, const IMaterial* material) {
+    if (material) {
         shader_->setVec4("uMaterialAmbient", material->getAmbient());
         shader_->setVec4("uMaterialDiffuse", material->getDiffuse());
         shader_->setVec4("uMaterialSpecular", material->getSpecular());
@@ -232,19 +234,21 @@ void MeshRenderer::aplicarMaterial(GameObject* objeto) {
         return;
     }
 
-    if (Color* color = objeto->getComponent<Color>()) {
-        // El pipeline inmediato solo seteaba GL_DIFFUSE al color; el resto
-        // quedaba con el default GL (ambiente gris tenue, sin especular).
-        const float* c = color->getColor();
-        const float ambient[4] = {0.2f, 0.2f, 0.2f, 1.f};
-        const float specular[4] = {0.f, 0.f, 0.f, 1.f};
-        const float emission[4] = {0.f, 0.f, 0.f, 1.f};
-        shader_->setVec4("uMaterialAmbient", ambient);
-        shader_->setVec4("uMaterialDiffuse", c);
-        shader_->setVec4("uMaterialSpecular", specular);
-        shader_->setVec4("uMaterialEmission", emission);
-        shader_->setFloat("uMaterialShininess", 0.f);
-        return;
+    if (objeto) {
+        if (Color* color = objeto->getComponent<Color>()) {
+            // El pipeline inmediato solo seteaba GL_DIFFUSE al color; el resto
+            // quedaba con el default GL (ambiente gris tenue, sin especular).
+            const float* c = color->getColor();
+            const float ambient[4] = {0.2f, 0.2f, 0.2f, 1.f};
+            const float specular[4] = {0.f, 0.f, 0.f, 1.f};
+            const float emission[4] = {0.f, 0.f, 0.f, 1.f};
+            shader_->setVec4("uMaterialAmbient", ambient);
+            shader_->setVec4("uMaterialDiffuse", c);
+            shader_->setVec4("uMaterialSpecular", specular);
+            shader_->setVec4("uMaterialEmission", emission);
+            shader_->setFloat("uMaterialShininess", 0.f);
+            return;
+        }
     }
 
     // Sin material ni color: defaults del componente Material.
@@ -281,7 +285,7 @@ bool MeshRenderer::enlazarSlotTextura(const std::string& path, int unit,
     }
 }
 
-void MeshRenderer::aplicarTexturas(GameObject* objeto, const Mesh* mesh) {
+void MeshRenderer::aplicarTexturas(const IMaterial* material, const Mesh* mesh) {
     // Por defecto: sin texturas en ningun slot.
     shader_->setInt("uUseTexture", 0);
     shader_->setInt("uUseSpecularMap", 0);
@@ -291,8 +295,6 @@ void MeshRenderer::aplicarTexturas(GameObject* objeto, const Mesh* mesh) {
     if (!textureManager_ || !mesh || !mesh->hasUvs()) {
         return;
     }
-
-    Material* material = objeto->getComponent<Material>();
     if (!material) return;
 
     shader_->setInt("uUseTexture",
@@ -392,19 +394,45 @@ bool MeshRenderer::intentarRenderMesh(GameObject* contexto, const Mesh* mesh,
     shader_->setFloat("uDistanceFadeStart", horizonteInicio_);
     shader_->setFloat("uDistanceFadeEnd", horizonteFin_);
 
-    aplicarMaterial(contexto);
-    aplicarTexturas(contexto, mesh);
-    enlazarTexturasSombra();
-
-    const MeshGPU* gpu = obtenerGpu(mesh);
-    if (!gpu) return false;
-
     // El relleno de poligonos es el unico estado valido en un contexto core
     // (no hay glPolygonMode) y el depth test ya lo activa applyBaseState().
     if (!backend_) return false;
     auto& backend = *backend_;
     backend.setBlendEnabled(true);
-    gpu->draw();
+
+    const MeshGPU* gpu = obtenerGpu(mesh);
+    if (!gpu) {
+        backend.setBlendEnabled(false);
+        return false;
+    }
+
+    // Malla con regiones (materiales por parte): cada region se dibuja con su
+    // material, en el rango de indices que le corresponde. Sin regiones, la
+    // malla entera se dibuja de una vez con el material del objeto.
+    if (mesh->subMallas.empty()) {
+        const IMaterial* material =
+            resolvedorMateriales_
+                ? resolvedorMateriales_->materialDeRegion(contexto, "")
+                : nullptr;
+        aplicarMaterial(contexto, material);
+        aplicarTexturas(material, mesh);
+        enlazarTexturasSombra();
+        gpu->draw();
+    } else {
+        for (const SubMalla& region : mesh->subMallas) {
+            if (region.indiceCantidad == 0) continue;
+            const IMaterial* material =
+                resolvedorMateriales_
+                    ? resolvedorMateriales_->materialDeRegion(contexto,
+                                                             region.nombreMaterial)
+                    : nullptr;
+            aplicarMaterial(contexto, material);
+            aplicarTexturas(material, mesh);
+            enlazarTexturasSombra();
+            gpu->draw(region.indiceInicio, region.indiceCantidad);
+        }
+    }
+
     backend.setBlendEnabled(false);
     ShaderProgram::unbind(backend);
     return true;

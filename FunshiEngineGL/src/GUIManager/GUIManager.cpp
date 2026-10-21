@@ -48,6 +48,12 @@ GUIManager::GUIManager(GLFWwindow* window)
     dockSpaceGUI = std::make_unique<DockSpaceInterface>(true);
     iconosGUI = std::make_unique<IconosGUI>();
     iconosGUI->init();
+    // Los iconos de componente se resuelven por el catalogo (fuente unica) y
+    // se cargan a demanda en el inspector.
+    reglaIconos = std::make_unique<ReglaIconoCatalogo>();
+    resolutorIconos =
+        std::make_unique<CatalogoIconos>(*iconosGUI, *reglaIconos);
+    settingGUI->setResolutorIconos(resolutorIconos.get());
     menuBarGUI->setIconosGUI(iconosGUI.get());
     statusBarGUI = std::make_unique<StatusBarInterface>(true);
     terminalGUI = std::make_unique<TerminalInterface>(true);

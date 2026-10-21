@@ -36,6 +36,7 @@ class GameObject;
 class CameraComponent;
 class RenderTarget;
 class TextureManager;
+class IResolutorMateriales;
 class ShaderProgram;
 
 namespace Rendering {
@@ -70,6 +71,10 @@ public:
     // Manager de imagenes compartidas: se inyecta al MeshRenderer para que
     // los materiales con textura se suban una sola vez a GPU.
     void setTextureManager(TextureManager* textureManager) noexcept;
+
+    // Resolvedor de materiales por region: decide el material de cada region
+    // de la malla (sub-malla con material propio).
+    void setResolvedorMateriales(IResolutorMateriales* resolvedor) noexcept;
 
     // Gestor de shaders del motor (dueno de los programas): se reparte a los
     // renderers de la pasada y a los programas del cielo.
