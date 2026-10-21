@@ -1659,7 +1659,67 @@ enum class Resultado { Pendiente, Exito, Error };
 
 ---
 
-## 25. Historial de Cambios
+## 25. Vigesimoprimer concepto: **Las dependencias de una biblioteca son dependencias de quien la usa**
+
+### 25.1 Patrón
+
+Un binario que se lleva consigo sus bibliotecas tiene que llevar consigo, no
+solo las que importa él, sino **todas las que importan las que él importa**. El
+cierre es transitivo: si A importa B y B importa C, el paquete necesita A, B y
+C.
+
+Copiar solo el primer nivel (la tabla de importaciones del ejecutable) deja el
+paquete incompleto: el juego arranca y falla al pedir la segunda dependencia.
+
+### 25.2 Síntomas
+
+- El juego exportado arranca y el sistema pide una biblioteca que no está en la
+  carpeta (típicamente `zlib1.dll` o `libminizip-1.dll`, que pide la biblioteca
+  de modelos).
+- Las bibliotecas que el ejecutable importa directamente **sí** están en la
+  carpeta: el error no viene de la copia, viene de lo que faltaba.
+- El fallo se reproduce en cualquier máquina, no depende del entorno.
+
+### 25.3 Causa
+
+El copiador de dependencias copiaba lo que el ejecutable importaba, sin mirar
+qué importan esas DLL. En Windows, las bibliotecas de terceros (assimp) se
+enlazan contra bibliotecas del sistema (zlib, minizip): el enlazador deja esas
+dependencias en la DLL que las usa, no en el ejecutable, asi que no aparecen en
+su tabla de importaciones.
+
+### 25.4 Fix canónico (Patrón R29 — el cierre de dependencias es transitivo)
+
+- El ejecutable se lee como lo que es: un PE con su tabla de importaciones, de
+  donde salen los nombres exactos (con su version) de las DLL que pide.
+- El cierre se calcula **recursivamente**: por cada DLL copiada se leen sus
+  importaciones y se copian tambien, con un conjunto de vistas para no repetir
+  ni ciclar.
+- Las DLL que trae el sistema no se copian (las tiene el sistema operativo), y
+  las que no se encuentran quedan avisadas en el log: el juego las pedira al
+  arrancar.
+
+### 25.5 Checklist de mitigación
+
+- [ ] Las dependencias se leen del binario (no de una lista escrita a mano que
+      se queda vieja con cada version de las bibliotecas).
+- [ ] El cierre es transitivo: se recorren tambien las importaciones de cada
+      DLL copiada.
+- [ ] Hay un conjunto de vistas (evita ciclos y trabajo repetido).
+- [ ] Las DLL del sistema no se copian, ni las que taparian la version del
+      sistema (por ejemplo, una `opengl32.dll` de software en lugar de la del
+      driver).
+- [ ] Lo que no se encuentra queda avisado en el log.
+
+### 25.6 Registro de Instancias
+
+| # | Ubicación | Operación | Herramienta | Fix Aplicado | Commit |
+|---|-----------|-----------|-------------|--------------|--------|
+| 1 | `FunshiEngineGL/src/Exportador/GameExporter.cpp` | Empaquetar el juego exportado con las DLL que necesita | Ejecucion del `.exe` exportado (pide `zlib1.dll` y `libminizip-1.dll`) + `objdump -p` del ejecutable y de las DLL copiadas | `ImportacionesPE` (lee la tabla de importaciones) + cierre transitivo de dependencias (Patrón R29) | `fix(export): el juego exportado lleva sus dependencias` |
+
+---
+
+## 26. Historial de Cambios
 
 | Fecha | Autor | Cambio |
 |-------|-------|--------|
@@ -1687,10 +1747,11 @@ enum class Resultado { Pendiente, Exito, Error };
 | 2026-10-21 | Gianfranco Ivan Enrique | Añadido el decimoctavo concepto (Patrón R26, el frame arranca limpio) con su instancia #1: el juego exportado no limpiaba el framebuffer, el buffer de profundidad no arrancaba en 1.0 en el driver de la máquina y la ventana se quedaba en negro. |
 | 2026-10-21 | Gianfranco Ivan Enrique | Añadido el decimonoveno concepto (Patrón R27, lo que solo compila otra herramienta no lo compila nadie) con sus instancias #1–#2: el punto de entrada del juego exportado quedaba fuera de todo build (lo compilaba solo el exportador) y el proyecto generado heredaba los sanitizadores del motor, que el toolchain de exportación no trae. |
 | 2026-10-21 | Gianfranco Ivan Enrique | Añadido el vigésimo concepto (Patrón R28, el resultado de una operación se conserva y se muestra) con su instancia #1: el diálogo de exportación dibujaba el motivo solo mientras la exportación corría, y con el editor arrancado con `--proyecto` el diálogo recibía el proyecto vacío: la exportación se rechazaba y el fallo se perdía. |
+| 2026-10-21 | Gianfranco Ivan Enrique | Añadido el vigesimoprimer concepto (Patrón R29, las dependencias de una biblioteca son dependencias de quien la usa) con su instancia #1: el juego exportado se llevaba solo las DLL que importaba él, y las que importan esas (zlib y minizip, de la biblioteca de modelos) se quedaban fuera: al arrancar, el sistema las pedía. |
 
 ---
 
-*Este documento es vivo: cada nuevo bug de esta clase debe registrarse en la tabla de su concepto (§2 para el primero, §6.5 para el segundo, §7.5 para el tercero, §8.5 para el cuarto, §9.5 para el quinto), §14.6 para el décimo, §15.6 para el undécimo, §16.6 para el duodécimo, §17.6 para el decimotercer, §18.6 para el decimocuarto, §19.6 para el decimoquinto, §20.6 para el decimosexto, §21.6 para el decimoséptimo, §22.6 para el decimoctavo, §23.6 para el decimonoveno y §24.6 para el vigésimo; si revela un patrón nuevo, añadirse a §4.*
+*Este documento es vivo: cada nuevo bug de esta clase debe registrarse en la tabla de su concepto (§2 para el primero, §6.5 para el segundo, §7.5 para el tercero, §8.5 para el cuarto, §9.5 para el quinto), §14.6 para el décimo, §15.6 para el undécimo, §16.6 para el duodécimo, §17.6 para el decimotercer, §18.6 para el decimocuarto, §19.6 para el decimoquinto, §20.6 para el decimosexto, §21.6 para el decimoséptimo, §22.6 para el decimoctavo, §23.6 para el decimonoveno, §24.6 para el vigésimo y §25.6 para el vigesimoprimer; si revela un patrón nuevo, añadirse a §4.*
 ## CEF: "Invalid file descriptor to ICU data received" en InitializeICU
 
 - **Síntoma**: al arrancar el motor con `FUNSHI_CEF=ON`, `CefInitialize` aborta en

@@ -102,8 +102,18 @@ void ExportDialog::renderFormulario() {
     ImGui::InputText("Nombre del ejecutable", nombreEjecutable_, IM_ARRAYSIZE(nombreEjecutable_));
     ImGui::InputText("Nombre del proyecto exportado", nombreProyectoExportado_, IM_ARRAYSIZE(nombreProyectoExportado_));
 
-    const char* plataformas[] = { "Linux (nativo)", "Windows (cross-compile MinGW)" };
-    ImGui::Combo("Plataforma objetivo", &plataformaIdx_, plataformas, IM_ARRAYSIZE(plataformas));
+    // La plataforma destino depende de la maquina: en Windows el toolchain
+    // es el nativo (sale un .exe con sus DLL al lado); en Linux se puede
+    // ademas cruzar a Windows.
+    const std::vector<GameExporter::Plataforma> plataformas =
+        GameExporter::plataformasDisponibles();
+    std::vector<const char*> etiquetas;
+    etiquetas.reserve(plataformas.size());
+    for (GameExporter::Plataforma plataforma : plataformas) {
+        etiquetas.push_back(GameExporter::etiquetaPlataforma(plataforma));
+    }
+    ImGui::Combo("Plataforma objetivo", &plataformaIdx_, etiquetas.data(),
+                 static_cast<int>(etiquetas.size()));
 
     // El motivo de un intento anterior que no llego a exportarse: sin esto el
     // fallo se pierde y el dialogo parece que no respondio.
@@ -207,7 +217,13 @@ void ExportDialog::iniciarExportacion() {
     cfg.nombreProyecto = proyectoActual_;
     cfg.nombreEjecutable = nombreEjecutable_;
     cfg.nombreProyectoExportado = nombreProyectoExportado_;
-    cfg.plataforma = (plataformaIdx_ == 0) ? GameExporter::Plataforma::Linux : GameExporter::Plataforma::Windows;
+    const std::vector<GameExporter::Plataforma> plataformas =
+        GameExporter::plataformasDisponibles();
+    const int indice = (plataformaIdx_ >= 0 &&
+                        plataformaIdx_ < static_cast<int>(plataformas.size()))
+                           ? plataformaIdx_
+                           : 0;
+    cfg.plataforma = plataformas[static_cast<std::size_t>(indice)];
     cfg.directorioSalida = EditorConfig::directorioExportaciones() + "/" + std::string(nombreProyectoExportado_);
 
     // Callbacks thread-safe: usan cola para pasar mensajes al hilo principal

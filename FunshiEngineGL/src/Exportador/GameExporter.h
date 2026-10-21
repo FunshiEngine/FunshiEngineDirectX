@@ -38,6 +38,16 @@ public:
         Windows
     };
 
+    // Plataformas a las que se puede exportar desde esta maquina.
+    //
+    // En Windows el toolchain es el nativo (MinGW): lo que sale es un .exe
+    // con sus DLL al lado. En Linux se puede ademas cruzar a Windows con el
+    // toolchain de MinGW, si esta instalado.
+    static std::vector<Plataforma> plataformasDisponibles();
+
+    // Etiqueta de la plataforma para el menu del dialogo.
+    static const char* etiquetaPlataforma(Plataforma plataforma);
+
     struct Config {
         std::string proyectoOrigen;       // ruta al proyecto en MotorGrafico/Proyects/
         std::string nombreProyecto;       // nombre de la carpeta del proyecto; si
@@ -69,6 +79,26 @@ public:
     // en segundo plano; el editor sigue en su hilo y se enteran por los
     // callbacks (que encolan en las colas thread-safe del dialogo).
     void setMotorHilos(MotorHilos* motor) noexcept { motorHilos_ = motor; }
+
+    // Carpetas donde puede estar una DLL: la del compilador con el que se
+    // construyo el motor (el runtime y las bibliotecas de terceros), las del
+    // PATH y las del build.
+    static std::vector<std::string> directoriosDeDependencias(
+        const std::string& buildDir, bool windows);
+    // True si la DLL la trae el sistema (no hace falta copiarla).
+    static bool esDllDelSistema(const std::string& dll);
+    // Primera ruta donde existe la DLL, o vacia si no esta.
+    static std::string buscarDependencia(
+        const std::vector<std::string>& directorios, const std::string& dll);
+    // De donde sale cada DLL que hay que copiar (vacio si no se encuentra).
+    using BuscadorDll = std::function<std::string(const std::string&)>;
+    // Cierre de las DLL que necesita un ejecutable: sus propias
+    // importaciones y las de cada DLL de la que depende (recursivamente). Una
+    // biblioteca que usa otra (assimp usa zlib) arrastra a la que usa.
+    // Devuelve pares: nombre de la DLL y de donde sale (vacio si no esta).
+    static std::vector<std::pair<std::string, std::string>>
+    cierreDeDependencias(const std::string& rutaEjecutable,
+                          const BuscadorDll& buscador);
 
 private:
     Config cfg_;

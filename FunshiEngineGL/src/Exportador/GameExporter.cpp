@@ -22,6 +22,7 @@
 #include "../FileManager/Proceso.h"
 #include "../Hilos/MotorHilos.h"
 #include "ConfigJuegoExportado.h"
+#include "ImportacionesPE.h"
 #include "RaizEngine.h"
 #include "RutasExportacion.h"
 
@@ -30,13 +31,29 @@
 #include <filesystem>
 #include <cstdlib>
 #include <iostream>
+#include <set>
 #include <string>
 #include <vector>
 #include <algorithm>
 
+#ifndef FUNSHI_CXX_COMPILER
+#define FUNSHI_CXX_COMPILER "g++"
+#endif
+
 namespace fs = std::filesystem;
 
 namespace {
+
+// La maquina donde corre el motor es Windows: el toolchain de MinGW es el
+// nativo (no hace falta cruzar compilers) y el binario exportado lleva sus
+// DLL al lado, no en lib/.
+bool hostEsWindows() {
+#ifdef _WIN32
+    return true;
+#else
+    return false;
+#endif
+}
 
 // Raiz de los fuentes del engine para el add_subdirectory del proyecto de
 // exportacion: la horneada en el build (FUNSHI_ENGINE_SOURCE_DIR) y, si no
@@ -270,7 +287,10 @@ set_target_properties(@EXE@ PROPERTIES BUILD_RPATH "$ORIGIN/lib")
     // pasa con -DCMAKE_TOOLCHAIN_FILE en el configure. Declarar
     // CMAKE_SYSTEM_NAME dentro del CMakeLists (como hacia antes este
     // exportador) llega despues de project() y CMake no entra en modo cross.
-    if (cfg_.plataforma == Plataforma::Windows) {
+    // Solo cuando la maquina NO es Windows: aqui el toolchain de MinGW ya es
+    // el nativo y el archivo de toolchain (que busca el compilador cruzado
+    // x86_64-w64-mingw32) no estaria disponible.
+    if (cfg_.plataforma == Plataforma::Windows && !hostEsWindows()) {
         static const char* kToolchain = R"(
 set(CMAKE_SYSTEM_NAME Windows)
 set(CMAKE_SYSTEM_PROCESSOR x86_64)
@@ -302,10 +322,10 @@ bool GameExporter::compilarEngineRuntime(const std::string& buildDir) {
     // `cmake .` (fuente = el propio buildDir, donde el generador dejo el
     // CMakeLists): el viejo `cmake ..` apuntaba al padre del buildDir, que no
     // contiene CMakeLists.txt y el configure fallaba siempre. El toolchain
-    // MinGW (si la plataforma objetivo es Windows) se pasa en este configure:
-    // es lo unico que hace que CMake cruce compilers.
+    // MinGW (si la plataforma objetivo es Windows y la maquina no lo es) se
+    // pasa en este configure: es lo unico que hace que CMake cruce compilers.
     std::vector<std::string> argvConfigure = {"cmake", "."};
-    if (cfg_.plataforma == Plataforma::Windows)
+    if (cfg_.plataforma == Plataforma::Windows && !hostEsWindows())
         argvConfigure.push_back("-DCMAKE_TOOLCHAIN_FILE=" + buildDir +
                                 "/toolchain-mingw.cmake");
     if (Proceso::ejecutar(argvConfigure, std::string(), buildDir) != 0)
@@ -351,7 +371,13 @@ bool GameExporter::copiarAssetsYDependencias(const std::string& buildDir) {
     }
 
     // 2. Copiar el directorio de escenas (assets de las escenas: modelos, texturas, etc.)
-    const std::string sceneDirOrigen = EditorConfig::rutaSceneDir(cfg_.nombreProyecto);
+    // La ruta del proyecto viene con barra final (".../Scene/"): con ella, la
+    // copia falla con "no such file or directory", asi que se normaliza.
+    std::string sceneDirOrigen = EditorConfig::rutaSceneDir(cfg_.nombreProyecto);
+    while (!sceneDirOrigen.empty() &&
+           (sceneDirOrigen.back() == '/' || sceneDirOrigen.back() == '\\')) {
+        sceneDirOrigen.pop_back();
+    }
     const std::string sceneDirDestino = cfg_.directorioSalida + "/scenes/SceneDir";
     
     if (fs::exists(sceneDirOrigen, ec)) {
@@ -424,6 +450,27 @@ bool GameExporter::copiarAssetsYDependencias(const std::string& buildDir) {
     return true;
 }
 
+std::vector<GameExporter::Plataforma> GameExporter::plataformasDisponibles() {
+#ifdef _WIN32
+    // En Windows el toolchain de MinGW es el nativo: se exporta a Windows.
+    return {Plataforma::Windows};
+#else
+    // En Linux se exporta a Linux y, si se quiere, se cruza a Windows con el
+    // toolchain de MinGW.
+    return {Plataforma::Linux, Plataforma::Windows};
+#endif
+}
+
+const char* GameExporter::etiquetaPlataforma(Plataforma plataforma) {
+#ifdef _WIN32
+    (void)plataforma;
+    return "Windows (nativo)";
+#else
+    return plataforma == Plataforma::Windows ? "Windows (cross-compile MinGW)"
+                                             : "Linux (nativo)";
+#endif
+}
+
 bool GameExporter::copiarDependenciasRuntime(const std::string& buildDir) {
     // Windows resuelve las DLL junto al .exe (el loader no busca en lib/);
     // Linux lleva las .so a lib/ y el binario las encuentra via $ORIGIN/lib
@@ -434,39 +481,153 @@ bool GameExporter::copiarDependenciasRuntime(const std::string& buildDir) {
     std::error_code ec;
     fs::create_directories(libDir, ec);
 
-    // Lista de librerías a buscar y copiar
-    std::vector<std::string> libs;
-    if (cfg_.plataforma == Plataforma::Windows) {
-        libs = {
-            "libBulletDynamics.dll", "libBulletCollision.dll", "libLinearMath.dll",
-            "glfw3.dll", "miniaudio.dll", "libstdc++-6.dll", "libgcc_s_seh-1.dll", "libwinpthread-1.dll"
-        };
-    } else {
-        libs = {
-            "libBulletDynamics.so", "libBulletCollision.so", "libLinearMath.so",
-            "libglfw.so", "libminiaudio.so"
-        };
-    }
+    // Que DLL necesita el juego: en Windows se leen de la tabla de
+    // importaciones del ejecutable (con su nombre real, version incluida: el
+    // runtime de MinGW y las bibliotecas de terceros las Exports).
+    const std::string exe = buildDir + "/" + obtenerExtensionEjecutable();
 
-    // Buscar en rutas típicas del sistema y build
-    std::vector<std::string> searchPaths = {
-        "/usr/lib/x86_64-linux-gnu/",
-        "/usr/local/lib/",
-        buildDir + "/engine_build/",
-        buildDir + "/engine_build/src/",
-        buildDir + "/"
+    // De donde se toman: la carpeta del compilador con el que se construyo el
+    // motor (ahi viven el runtime y las DLL de las bibliotecas de terceros),
+    // las carpetas del PATH y las del build.
+    const std::vector<std::string> rutas = directoriosDeDependencias(
+        buildDir, cfg_.plataforma == Plataforma::Windows);
+    const BuscadorDll buscador = [&rutas](const std::string& dll) {
+        return buscarDependencia(rutas, dll);
     };
 
-    for (const auto& lib : libs) {
-        for (const auto& path : searchPaths) {
-            std::string src = path + lib;
-            if (fs::exists(src)) {
-                fs::copy_file(src, libDir + "/" + lib, fs::copy_options::overwrite_existing, ec);
-                break;
-            }
+    // Una DLL puede necesitar otras (assimp necesita zlib y minizip), asi que
+    // el cierre de dependencias se calcula sobre los imports de cada DLL
+    // copiada, no solo sobre los del ejecutable.
+    std::vector<std::pair<std::string, std::string>> cierre;
+    if (cfg_.plataforma == Plataforma::Windows) {
+        cierre = cierreDeDependencias(exe, buscador);
+    } else {
+        // En Linux las .so van a lib/ con su nombre tal cual: el binario las
+        // encuentra por $ORIGIN/lib (BUILD_RPATH del CMake generado).
+        for (const char* so : { "libBulletDynamics.so", "libBulletCollision.so",
+                                "libLinearMath.so", "libglfw.so",
+                                "libminiaudio.so" }) {
+            cierre.emplace_back(so, buscarDependencia(rutas, so));
         }
     }
+
+    for (const auto& par : cierre) {
+        const std::string& dll = par.first;
+        const std::string& origen = par.second;
+        if (origen.empty()) {
+            log("La DLL '" + dll + "' no se encontro donde buscarla: el juego "
+                "exportado la pedira al arrancar");
+            continue;
+        }
+        fs::copy_file(origen, libDir + "/" + dll,
+                      fs::copy_options::overwrite_existing, ec);
+        if (ec) {
+            log("Error copiando " + dll + ": " + ec.message());
+            continue;
+        }
+        log("Dependencia copiada: " + dll);
+    }
     return true;
+}
+
+std::vector<std::pair<std::string, std::string>>
+GameExporter::cierreDeDependencias(const std::string& rutaEjecutable,
+                                   const BuscadorDll& buscador) {
+    std::vector<std::pair<std::string, std::string>> cierre;
+    std::set<std::string> vistas;
+    std::vector<std::string> pendientes = ImportacionesPE::leer(rutaEjecutable);
+    while (!pendientes.empty()) {
+        const std::string dll = pendientes.back();
+        pendientes.pop_back();
+        if (dll.empty()) continue;
+        if (!vistas.insert(dll).second) continue; // ya mirada
+        if (esDllDelSistema(dll)) continue;        // la trae el sistema
+        const std::string origen = buscador(dll);
+        cierre.emplace_back(dll, origen);
+        if (origen.empty()) continue; // no esta: no hay de donde leer lo suyo
+        // Lo que esa DLL necesita a su vez.
+        for (const std::string& dependiente : ImportacionesPE::leer(origen)) {
+            pendientes.push_back(dependiente);
+        }
+    }
+    return cierre;
+}
+
+std::vector<std::string> GameExporter::directoriosDeDependencias(
+    const std::string& buildDir, bool windows) {
+    std::vector<std::string> directorios;
+
+    // La carpeta del compilador con el que se construyo el motor: ahi viven
+    // el runtime (libstdc++-6.dll, libgcc_s_seh-1.dll, libwinpthread-1.dll) y
+    // las DLL de las bibliotecas con las que enlaza (glfw3, assimp, bullet...).
+    const std::string compilador(FUNSHI_CXX_COMPILER);
+    const std::size_t separador = compilador.find_last_of("/\\");
+    if (separador != std::string::npos) {
+        directorios.push_back(compilador.substr(0, separador));
+    }
+
+    // Las carpetas del PATH: el toolchain suele estar ahi.
+    if (const char* path = std::getenv("PATH")) {
+        const std::string separadores = windows ? ";" : ":";
+        std::string actual;
+        for (const char c : std::string(path)) {
+            if (c == separadores[0]) {
+                if (!actual.empty()) directorios.push_back(actual);
+                actual.clear();
+            } else {
+                actual.push_back(c);
+            }
+        }
+        if (!actual.empty()) directorios.push_back(actual);
+    }
+
+    // Las del build (por si el propio build copio algo junto al binario).
+    directorios.push_back(buildDir);
+    directorios.push_back(buildDir + "/engine_build");
+    directorios.push_back(buildDir + "/engine_build/src");
+
+    // Las de sistema en Linux.
+    directorios.push_back("/usr/lib/x86_64-linux-gnu");
+    directorios.push_back("/usr/local/lib");
+    return directorios;
+}
+
+bool GameExporter::esDllDelSistema(const std::string& dll) {
+    // Las que Windows ya trae: no hacen falta en la carpeta del juego.
+    // opengl32.dll y dbghelp.dll tambien: la del toolchain es la version de
+    // Mesa (render por software), ycopiarla taparia la del sistema.
+    static const char* const kDelSistema[] = {
+        "kernel32.dll", "user32.dll", "gdi32.dll", "advapi32.dll",
+        "shell32.dll", "ole32.dll", "oleaut32.dll", "uuid.dll",
+        "comdlg32.dll", "ws2_32.dll", "winmm.dll", "msvcrt.dll",
+        "ntdll.dll", "imm32.dll", "setupapi.dll", "shlwapi.dll",
+        "psapi.dll", "bcrypt.dll", "crypt32.dll", "iphlpapi.dll",
+        "dwmapi.dll", "uxtheme.dll", "comctl32.dll", "mpr.dll",
+        "netapi32.dll", "userenv.dll", "version.dll", "oleacc.dll",
+        "msvcp_win.dll", "vcruntime140.dll", "vcruntime140_1.dll",
+        "ucrtbase.dll", "msvcp140.dll", "opengl32.dll", "dbghelp.dll"
+    };
+    std::string nombre = dll;
+    for (char& c : nombre) {
+        if (c >= 'A' && c <= 'Z') c = static_cast<char>(c - 'A' + 'a');
+    }
+    for (const char* delSistema : kDelSistema) {
+        if (nombre == delSistema) return true;
+    }
+    // Los conjuntos de API de Windows (api-ms-win-*) tambien son del sistema.
+    if (nombre.rfind("api-ms-win-", 0) == 0) return true;
+    return false;
+}
+
+std::string GameExporter::buscarDependencia(
+    const std::vector<std::string>& directorios, const std::string& dll) {
+    std::error_code ec;
+    for (const std::string& directorio : directorios) {
+        if (directorio.empty()) continue;
+        const std::string ruta = directorio + "/" + dll;
+        if (fs::exists(ruta, ec) && fs::is_regular_file(ruta, ec)) return ruta;
+    }
+    return "";
 }
 
 bool GameExporter::empaquetarDistribucion(const std::string& buildDir) {

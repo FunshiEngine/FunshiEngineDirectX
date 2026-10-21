@@ -771,7 +771,7 @@ exporta (el proyecto activo en ese momento):
 |---|---|
 | **Nombre del ejecutable** | Nombre del binario final (sin extension). |
 | **Nombre del proyecto exportado** | Nombre de la carpeta bajo `MotorGrafico/Exportaciones/`. |
-| **Plataforma objetivo** | Linux (nativo) o Windows (cross-compile MinGW). |
+| **Plataforma objetivo** | La que admita la maquina: en Windows, **Windows (nativo)** (sale un `.exe` con sus DLL al lado); en Linux, **Linux (nativo)** o **Windows (cross-compile MinGW)** (si esta instalado el toolchain cruzado). |
 
 Al pulsar **Exportar**, el motor:
 
@@ -795,6 +795,12 @@ Al pulsar **Exportar**, el motor:
    - `lib/` con las `.so` de sistema en Linux; en Windows las DLL quedan
      junto al `.exe`.
    - `JuegoExportado.json` (metadatos del proyecto).
+
+> El juego exportado **lleva consigo las DLL de las que depende**: el
+> exportador las lee de la tabla de importaciones del binario (y de las que
+> importan esas a su vez) y las copia desde la carpeta del toolchain (el
+> runtime de C++ y las bibliotecas con las que enlaza el motor). Asi el juego
+> arranca en otra maquina sin instalar nada.
    
    **NO se incluyen** archivos del editor:
    `ConfiguracionProyecto.json`, `imgui.ini` ni la estructura

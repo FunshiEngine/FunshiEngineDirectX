@@ -235,6 +235,8 @@ FunshiEngineGL/                          ← raíz del repo
         │   │                              resultado no se pierda y se pueda comprobar headless
         │   ├── PrecondicionesExportacion.h/.cpp ← comprueba que la exportación se puede lanzar
         │   │                              (proyecto elegido y con carpeta) y devuelve el motivo
+        │   ├── ImportacionesPE.h/.cpp   ← lee la tabla de importaciones de un binario PE (Windows):
+        │   │                              las DLL que el juego exportado necesita para arrancar
         │   ├── ConfigJuegoExportado.h   ← manifiesto JuegoExportado.json (header-only)
         │   ├── RaizEngine.h             ← búsqueda de la raíz del engine para add_subdirectory
         │   └── RutasExportacion.h       ← helpers de rutas del proyecto (header-only)
@@ -1567,12 +1569,15 @@ GameScene → coordina todos los subsistemas del frame
   ninguno. La suite comprueba el alta y la baja de regiones, la sincronización
   con las que declara el modelo, el round-trip binario (con el material de cada
   region dentro) y las tres respuestas del resolvedor.
-- `tests/ExportacionTests.cpp`: el diálogo de exportación y el estado que lleva
-  (`EstadoExportacion`). La suite comprueba que las precondiciones digan el
-  motivo cuando no se puede exportar (sin proyecto, o con su carpeta
-  inexistente), que el resultado (éxito o error) se conserve al terminar la
-  exportación en vez de perderse, y que la barra de menú le pase al diálogo el
-  proyecto activo.
+- `tests/ExportacionTests.cpp`: el diálogo de exportación, el estado que lleva
+  (`EstadoExportacion`) y las dependencias del juego exportado. La suite
+  comprueba que las precondiciones digan el motivo cuando no se puede
+  exportar (sin proyecto, o con su carpeta inexistente), que el resultado
+  (éxito o error) se conserve al terminar la exportación en vez de perderse,
+  que la barra de menú le pase al diálogo el proyecto activo y que el lector de
+  importaciones PE encuentre las DLL que pide el binario (sobre un PE
+  construido a propósito) y que el cierre de dependencias alcance las DLL de
+  segundo nivel.
 - Las suites de prueba se ejecutan con `ctest`: el build con motor registra
   **41** tests (39 habilitados y 2 deshabilitados) y el build headless
   (`BUILD_ENGINE=OFF`) registra **21** (20 habilitados y 1 deshabilitado).
