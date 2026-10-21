@@ -101,6 +101,8 @@ FunshiEngineGL/                          ← raíz del repo
 ├── MANUAL_DE_USO.md                     ← manual de usuario (editor + scripting C++/Java)
 ├── CAMARAS_VISTAS_PREVIAS.md            ← Fase 2: cámaras componente + vistas previas
 ├── ARQUITECTURA_ESTADOS_GUI.md          ← estados/menú/GUI internas (diseño + Fases 1-3)
+├── TAREAS_PENDIENTES.md                 ← sistemas que faltan en el motor, con su plan
+├── PLAN_SISTEMAS_NUEVOS.md              ← plan de integración de cada sistema pendiente
 ├── MANUAL_DE_USO.md                     ← manual de usuario (editor + scripting C++/Java)
 ├── FLUJO_DE_RAMAS.md                    ← convención de ramas (develop/test/staging/release)
 ├── .github/workflows/ci.yml             ← CI: engine en Ubuntu y en Windows (MSVC) + pruebas headless

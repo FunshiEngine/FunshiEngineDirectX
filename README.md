@@ -24,3 +24,5 @@ cd FunshiEngineGL && ./build/FunshiEngineGL
 - [PROJECT_STRUCTURE.md](PROJECT_STRUCTURE.md) – Arquitectura y estructura del proyecto
 - [FLUJO_DE_RAMAS.md](FLUJO_DE_RAMAS.md) – Convención de ramas
 - [DocuTecnicoBugs.md](DocuTecnicoBugs.md) – Registro técnico de bugs
+- [TAREAS_PENDIENTES.md](TAREAS_PENDIENTES.md) – Sistemas que faltan en el motor
+- [PLAN_SISTEMAS_NUEVOS.md](PLAN_SISTEMAS_NUEVOS.md) – Plan de integración de cada sistema
