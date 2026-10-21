@@ -50,6 +50,10 @@ void GestorDeProyectos::prepararProyectoAlArrancar() {
     // Estructura del proyecto y puntero del creador a Memory/Interfaces
     // (debe correr antes del primer frame).
     scene_->configurarProyecto(proyectoActual_);
+    // La barra de menu tiene que saber que proyecto esta activo: el dialogo
+    // de exportacion sale de ahi. Sin este reflejo, arrancar con --proyecto
+    // dejaba el dialogo sin proyecto y la exportacion no se podia lanzar.
+    reflejarProyectoEnMenuBar();
 }
 
 void GestorDeProyectos::guardarProyectoCompleto() {

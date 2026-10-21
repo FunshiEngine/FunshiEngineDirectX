@@ -770,7 +770,8 @@ estructura la jerarquia y se serializa (id 0).
 ### 10.1 Exportar juego (distribucion standalone)
 
 Menu **Archivo > Exportar juego** (barra superior del editor). Abre un dialogo
-modal para configurar la exportacion:
+modal para configurar la exportacion. El dialogo muestra de que proyecto se
+exporta (el proyecto activo en ese momento):
 
 | Campo | Descripcion |
 |---|---|
@@ -809,6 +810,20 @@ El dialogo muestra un **spinner indeterminado** (barra de progreso falsa) mientr
 se ejecuta la compilacion; el proceso no bloquea el editor. Mientras la
 exportacion corre el dialogo **no se puede cerrar** (ni con la X ni con Cerrar);
 al terminar queda abierto mostrando el resultado hasta que el usuario lo cierre.
+
+**Que se ve en cada momento:**
+
+- **Configuracion**: el formulario y, si el intento anterior no llego a
+  exportarse, el motivo en rojo (por ejemplo, que no hay proyecto o que su
+  carpeta no existe).
+- **Exportando**: el spinner, la barra de progreso, la etapa en curso
+  (compilando, empaquetando...) y la ultima linea de la bitacora.
+- **Resultado**: el mensaje final de la exportacion (la carpeta donde quedo
+  empaquetada, o el motivo del fallo), con los botones **Cerrar** y **Exportar
+  otra vez** (este ultimo vuelve al formulario con la misma configuracion).
+
+> Si el dialogo muestra «Proyecto: (ninguno)» no hay ningun proyecto activo
+> desde el que exportar: elige o abre un proyecto antes de exportar.
 
 > Los scripts C++ del proyecto viajan como fuentes y se compilan en la
 > **primera ejecucion** del juego en la maquina que lo corre: hace falta un
