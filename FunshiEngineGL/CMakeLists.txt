@@ -1511,8 +1511,11 @@ add_test(NAME rendering-tests COMMAND rendering-tests)
 # compila y corre tambien en el build sin motor.
 add_executable(particulas-tests
     ${SRC_DIR}/Particulas/SistemaParticulas.cpp
+    ${SRC_DIR}/Particulas/PerfilParticula.cpp
+    ${SRC_DIR}/Particulas/LectorPerfil.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../tests/ParticulasTests.cpp
 )
+target_include_directories(particulas-tests PRIVATE ${CMAKE_SOURCE_DIR}/External)
 set_target_properties(particulas-tests PROPERTIES
     CXX_STANDARD 17
     CXX_STANDARD_REQUIRED ON

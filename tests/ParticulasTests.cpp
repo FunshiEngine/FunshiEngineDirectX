@@ -32,9 +32,14 @@
 #include <string>
 #include <vector>
 
+#include "../FunshiEngineGL/src/Particulas/LectorPerfil.h"
 #include "../FunshiEngineGL/src/Particulas/ParametrosEmisor.h"
 #include "../FunshiEngineGL/src/Particulas/Particula.h"
+#include "../FunshiEngineGL/src/Particulas/PerfilParticula.h"
 #include "../FunshiEngineGL/src/Particulas/SistemaParticulas.h"
+#include "TempPruebas.h"
+
+#include <fstream>
 
 namespace {
 
@@ -331,6 +336,127 @@ void probarReproducibilidad() {
     CHECK(distinta, "Reproducibilidad: cambiar la semilla cambia la secuencia");
 }
 
+// --- Perfil de efecto: curvas ------------------------------------------------
+
+void probarCurvas() {
+    PerfilParticula perfil;
+    perfil.tamanos = {0.4f, 1.0f, 1.2f};
+    perfil.colores = {{1.0f, 0.0f, 0.0f, 1.0f}, {0.0f, 0.0f, 1.0f, 0.0f}};
+
+    CHECK(cerca(perfil.multiplicadorTamano(0.0f), 0.4f),
+          "Curvas: el primer punto de la curva es el nacimiento");
+    CHECK(cerca(perfil.multiplicadorTamano(0.5f), 1.0f),
+          "Curvas: el punto medio de la curva se interpola");
+    CHECK(cerca(perfil.multiplicadorTamano(1.0f), 1.2f),
+          "Curvas: el ultimo punto de la curva es la muerte");
+    CHECK(cerca(perfil.multiplicadorTamano(0.25f), 0.7f),
+          "Curvas: entre dos puntos la interpolacion es lineal");
+    CHECK(cerca(perfil.multiplicadorTamano(-1.0f), 0.4f),
+          "Curvas: una fraccion fuera de rango se acota al inicio");
+    CHECK(cerca(perfil.multiplicadorTamano(5.0f), 1.2f),
+          "Curvas: una fraccion fuera de rango se acota al final");
+
+    float color[4] = {0.0f, 0.0f, 0.0f, 0.0f};
+    perfil.colorEn(0.0f, color);
+    CHECK(cerca(color[0], 1.0f) && cerca(color[1], 0.0f) && cerca(color[3], 1.0f),
+          "Curvas: el color del nacimiento es el primer punto");
+    perfil.colorEn(1.0f, color);
+    CHECK(cerca(color[2], 1.0f) && cerca(color[3], 0.0f),
+          "Curvas: el color de la muerte es el ultimo punto");
+    perfil.colorEn(0.5f, color);
+    CHECK(cerca(color[0], 0.5f) && cerca(color[2], 0.5f),
+          "Curvas: el color se interpola entre los puntos");
+
+    // Un perfil sin curvas no cambia el tamano ni el color.
+    PerfilParticula vacio;
+    CHECK(!vacio.tieneCurvas(), "Curvas: un perfil vacio no tiene curvas");
+    CHECK(cerca(vacio.multiplicadorTamano(0.5f), 1.0f),
+          "Curvas: sin curva de tamanos el multiplicador es uno");
+    vacio.colorEn(0.5f, color);
+    CHECK(cerca(color[0], 1.0f) && cerca(color[3], 1.0f),
+          "Curvas: sin curva de colores el color es blanco opaco");
+}
+
+// --- Perfil de efecto: lectura del JSON ---------------------------------------
+
+void escribirArchivo(const std::string& ruta, const std::string& contenido) {
+    std::ofstream archivo(ruta);
+    archivo << contenido;
+}
+
+void probarLectorPerfil() {
+    TempPruebas::CarpetaPrueba carpeta("funshi_particulas_tests");
+    const std::string base = carpeta.ruta().string();
+
+    // Un perfil completo.
+    const std::string ruta = base + "/humo.json";
+    escribirArchivo(ruta, R"({
+  "version": 1,
+  "nombre": "Humo",
+  "textura": "particulas/humo.png",
+  "vida": [0.6, 1.2],
+  "velocidad": [1.0, 2.0],
+  "aceleracion": [0.0, -1.0, 0.5],
+  "rozamiento": 0.25,
+  "tamanos": [0.4, 1.0, 1.2],
+  "colores": [[1, 1, 1, 0.6], [0.5, 0.5, 0.5, 0.0]]
+})");
+    PerfilParticula perfil;
+    std::string error;
+    CHECK(cargarPerfilDesdeJson(ruta, perfil, error),
+          "Lector: un perfil valido se carga");
+    CHECK(perfil.nombre == "Humo", "Lector: se lee el nombre");
+    CHECK(perfil.textura == "particulas/humo.png", "Lector: se lee la textura");
+    CHECK(cerca(perfil.vidaMinima, 0.6f) && cerca(perfil.vidaMaxima, 1.2f),
+          "Lector: se lee el rango de vida");
+    CHECK(cerca(perfil.velocidadMinima, 1.0f) && cerca(perfil.velocidadMaxima, 2.0f),
+          "Lector: se lee el rango de velocidad");
+    CHECK(cerca(perfil.aceleracion[1], -1.0f) && cerca(perfil.aceleracion[2], 0.5f),
+          "Lector: se lee la aceleracion");
+    CHECK(cerca(perfil.rozamiento, 0.25f), "Lector: se lee el rozamiento");
+    CHECK(perfil.tamanos.size() == 3, "Lector: se lee la curva de tamanos");
+    CHECK(perfil.colores.size() == 2, "Lector: se lee la curva de colores");
+    CHECK(cerca(perfil.colores[0][3], 0.6f), "Lector: se lee el alfa del color");
+    CHECK(perfil.tieneCurvas(), "Lector: un perfil con curvas lo dice");
+
+    // Un perfil minimo: todos los campos son opcionales.
+    const std::string minimo = base + "/minimo.json";
+    escribirArchivo(minimo, "{ \"nombre\": \"Simple\" }");
+    PerfilParticula simple;
+    CHECK(cargarPerfilDesdeJson(minimo, simple, error),
+          "Lector: un perfil con un solo campo se carga");
+    CHECK(simple.nombre == "Simple", "Lector: se lee el nombre del perfil minimo");
+    CHECK(!simple.tieneCurvas(), "Lector: el perfil minimo no tiene curvas");
+
+    // Errores.
+    PerfilParticula descartada;
+    CHECK(!cargarPerfilDesdeJson(base + "/no-existe.json", descartada, error),
+          "Lector: un archivo inexistente se rechaza");
+    CHECK(!error.empty(), "Lector: el archivo inexistente se explica");
+
+    const std::string roto = base + "/roto.json";
+    escribirArchivo(roto, "{ esto no es json ");
+    CHECK(!cargarPerfilDesdeJson(roto, descartada, error),
+          "Lector: un JSON mal formado se rechaza");
+    CHECK(!error.empty(), "Lector: el JSON mal formado se explica");
+
+    const std::string vidaInvalida = base + "/vida.json";
+    escribirArchivo(vidaInvalida, "{ \"vida\": [2.0, 1.0] }");
+    CHECK(!cargarPerfilDesdeJson(vidaInvalida, descartada, error),
+          "Lector: un rango de vida invertido se rechaza");
+    CHECK(!error.empty(), "Lector: el rango invertido se explica");
+
+    const std::string vidaMala = base + "/vida-mala.json";
+    escribirArchivo(vidaMala, "{ \"vida\": 5 }");
+    CHECK(!cargarPerfilDesdeJson(vidaMala, descartada, error),
+          "Lector: un rango de vida que no es un array se rechaza");
+
+    const std::string colorMalo = base + "/color.json";
+    escribirArchivo(colorMalo, "{ \"colores\": [[1, 0, 0]] }");
+    CHECK(!cargarPerfilDesdeJson(colorMalo, descartada, error),
+          "Lector: un color con menos de 4 componentes se rechaza");
+}
+
 }  // namespace
 
 int main() {
@@ -340,6 +466,8 @@ int main() {
     probarIntegracion();
     probarMuerte();
     probarReproducibilidad();
+    probarCurvas();
+    probarLectorPerfil();
 
     std::cout << (fallos == 0 ? "OK" : "FALLOS") << ": " << total
               << " comprobaciones" << std::endl;
