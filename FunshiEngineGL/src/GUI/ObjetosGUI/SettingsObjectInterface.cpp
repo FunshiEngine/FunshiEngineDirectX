@@ -69,6 +69,13 @@
 #include <cstring>
 #include <vector>
 
+namespace {
+// Tamano del icono del componente en el inspector (en pixeles). Se dibuja al
+// 15% mas grande que antes (16 -> 18.4): a 16 se perdia el detalle del icono
+// de los componentes pequenos.
+constexpr float kTamanoIconoComponente = 18.4f;
+} // namespace
+
 SettingsObjectInterface::SettingsObjectInterface(GameObject* object,
                                                  bool stateGUI)
 	: GeneralUserInterface("Settings", stateGUI, ImGuiWindowFlags_MenuBar) {
@@ -417,7 +424,8 @@ void SettingsObjectInterface::contentGUI() {
 				const ImTextureID icono =
 				    resolutorIconos_->iconoPara(comp->getTipoComponente());
 				if (icono != ImTextureID_Invalid) {
-					ImGui::Image(icono, ImVec2(16.f, 16.f));
+					ImGui::Image(icono, ImVec2(kTamanoIconoComponente,
+					                          kTamanoIconoComponente));
 					ImGui::SameLine();
 				}
 			}
