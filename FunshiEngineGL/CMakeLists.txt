@@ -996,6 +996,27 @@ set_target_properties(interface-component-tests PROPERTIES
 )
 add_test(NAME interface-component-tests COMMAND interface-component-tests)
 
+# --- Pruebas del UIComponent (interfaz de juego nativa) ---------------------
+# El componente guarda la lista de widgets del HUD nativo y su colocacion: el
+# round-trip binario comprueba que todos los campos vuelven iguales y que un
+# payload corrupto se acota sin desalinear la lectura. Necesita funshi_engine
+# (el componente vive en el motor).
+add_executable(ui-component-tests
+    ${CMAKE_CURRENT_SOURCE_DIR}/../tests/UIComponentTests.cpp
+)
+target_include_directories(ui-component-tests PRIVATE
+    ${SRC_DIR}
+    ${CMAKE_SOURCE_DIR}/External
+    ${CMAKE_SOURCE_DIR}/External/imgui
+)
+target_link_libraries(ui-component-tests PRIVATE funshi_engine)
+set_target_properties(ui-component-tests PROPERTIES
+    CXX_STANDARD 17
+    CXX_STANDARD_REQUIRED ON
+    CXX_EXTENSIONS OFF
+)
+add_test(NAME ui-component-tests COMMAND ui-component-tests)
+
 # --- Pruebas del runtime de interfaces web (HUD) ----------------------------
 # WebUIRuntime (registro/seleccion/despacho) y VistasWebUI (ciclo de vida de las
 # vistas) corren enteros con el backend nulo, sin CEF ni GL. Compilan sueltos
@@ -1543,6 +1564,23 @@ set_target_properties(particulas-tests PROPERTIES
     CXX_EXTENSIONS OFF
 )
 add_test(NAME particulas-tests COMMAND particulas-tests)
+
+# Interfaz de juego nativa (CPU pura): colocacion de los widgets en pantalla
+# (los nueve anclajes), busqueda por identificador, cambio de texto y de
+# visibilidad y estado de interaccion con el raton. No toca OpenGL ni glm, asi
+# que compila y corre tambien en el build sin motor.
+add_executable(interfaz-ui-tests
+    ${SRC_DIR}/UI/LienzoUI.cpp
+    ${SRC_DIR}/UI/SistemaUI.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../tests/InterfazUITests.cpp
+)
+target_include_directories(interfaz-ui-tests PRIVATE ${CMAKE_SOURCE_DIR}/External)
+set_target_properties(interfaz-ui-tests PROPERTIES
+    CXX_STANDARD 17
+    CXX_STANDARD_REQUIRED ON
+    CXX_EXTENSIONS OFF
+)
+add_test(NAME interfaz-ui-tests COMMAND interfaz-ui-tests)
 
 # Reflexion de comportamiento (motor de SerializeField): headless y portatil.
 # Cubre las macros REFLECT_*, la lectura/escritura de campos (incl. grupos

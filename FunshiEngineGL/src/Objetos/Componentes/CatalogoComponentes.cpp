@@ -41,6 +41,7 @@
 #include "SpriteRenderer.h"
 #include "Tilemap.h"
 #include "Transform.h"
+#include "UIComponent.h"
 #include "../GameObject.h"
 
 #include "../../Herramientas/TypeUtils.h"
@@ -69,6 +70,7 @@
 #include "../../GUI/ObjetosGUI/Sprite/SettingsSpriteRenderer.h"
 #include "../../GUI/ObjetosGUI/Tilemap/SettingsTilemap.h"
 #include "../../GUI/ObjetosGUI/Transform/SettingsTransform.h"
+#include "../../GUI/ObjetosGUI/Interfaz/SettingsUIComponent.h"
 
 namespace {
 
@@ -116,6 +118,10 @@ constexpr const char* kIconoMusica =
     "GUI-Image/Component-Image/Sonidos/audio-white.png";
 constexpr const char* kIconoInterfaz =
     "GUI-Image/Component-Image/Interfaces/ui-white.png";
+// El HUD nativo (widgets del motor) es un lienzo de pantalla: por eso usa el
+// icono de canvas y no el de la interfaz web.
+constexpr const char* kIconoInterfazNativa =
+    "GUI-Image/Component-Image/comp-canvas-white.png";
 
 } // namespace
 
@@ -383,6 +389,18 @@ CatalogoComponentes::CatalogoComponentes() {
         },
         [](Component*, GameObject* o, const ContextoPanel&) {
             return std::unique_ptr<SettingsComponent>(new SettingsInterface(o));
+        });
+    // Interfaz de juego NATIVA: los widgets los dibuja el motor, sin
+    // navegador web. Convive con la interfaz HTML.
+    add("UIComponent", "Interfaz de juego (nativa)",
+        DimensionesComponente::Ambas, "",
+        kIconoInterfazNativa,
+        [](GameObject&) {
+            return std::unique_ptr<Component>(new UIComponent());
+        },
+        [](Component*, GameObject* o, const ContextoPanel&) {
+            return std::unique_ptr<SettingsComponent>(
+                new SettingsUIComponent(o));
         });
 }
 

@@ -44,6 +44,7 @@
 #include "../Objetos/Componentes/SpriteRenderer.h"
 #include "../Objetos/Componentes/Tilemap.h"
 #include "../Objetos/Componentes/Transform.h"
+#include "../Objetos/Componentes/UIComponent.h"
 
 namespace MotorInspeccion {
 
@@ -855,6 +856,21 @@ CatalogoPropiedades::CatalogoPropiedades() {
             "z", "Orden de apilado",
             [](InterfaceComponent* i) { return i->getZ(); },
             [](InterfaceComponent* i, float v) { i->setZ(v); }),
+    });
+
+    // --- UIComponent (interfaz de juego nativa) --------------------------
+    // Como con el Tilemap (que solo expone el tileset), la lista de widgets es
+    // un dato compuesto que se edita en el inspector: aqui se exponen las
+    // propiedades simples del componente.
+    registrar("UIComponent", {
+        propiedadBooleana<UIComponent>(
+            "active", "Activa",
+            [](UIComponent* i) { return i->estaActivo(); },
+            [](UIComponent* i, bool v) { i->setActivo(v); }),
+        propiedadFlotante<UIComponent>(
+            "z", "Orden de apilado",
+            [](UIComponent* i) { return i->getZ(); },
+            [](UIComponent* i, float v) { i->setZ(v); }),
     });
 
     // --- Colliders -------------------------------------------------------

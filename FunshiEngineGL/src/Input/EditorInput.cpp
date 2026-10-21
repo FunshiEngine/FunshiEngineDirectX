@@ -652,7 +652,16 @@ void EditorInput::onMouse(GLFWwindow* window, double xpos, double ypos) {
     if (modoJuegoActivo() ||
         (window &&
          glfwGetInputMode(window, GLFW_CURSOR) == GLFW_CURSOR_DISABLED)) {
-        if (scene) scene->registrarMouseScript(xpos, ypos);
+        // El HUD nativo se queda el raton cuando el puntero esta encima de un
+        // boton: si el movimiento siguiera llegando al script, la camara
+        // giraria mientras el jugador pulsa. Con el cursor capturado no hay
+        // puntero visible, asi que el HUD no captura nada.
+        const bool cursorVisible =
+            window && glfwGetInputMode(window, GLFW_CURSOR) !=
+                          GLFW_CURSOR_DISABLED;
+        const bool sobreInterfaz =
+            cursorVisible && scene && scene->ratonSobreInterfazNativa();
+        if (!sobreInterfaz && scene) scene->registrarMouseScript(xpos, ypos);
     }
     if (modoJuegoActivo()) {
         firstTimeMouseX = true;

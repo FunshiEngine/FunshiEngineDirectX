@@ -55,6 +55,8 @@ class AudioEngine;
 class MiniAudioBackend;
 class GizmoController;
 class PreviewMaterial;
+class UIRenderer;
+class UIComponent;
 
 namespace Rendering {
 class GestorShaders;
@@ -176,6 +178,13 @@ private:
     // lo que esta devuelve). Los scripts lo manipulan via la tabla de servicios;
     // pintarInterfacesJuego() lo sincroniza con las vistas.
     EstadoInterfaces estadoInterfaces_;
+    // Renderer de la interfaz de juego NATIVA (HUD que dibuja el motor, sin
+    // navegador web). Traduce el lienzo de cada UIComponent a primitivas de
+    // ImGui y cachea las texturas del proyecto que usa.
+    std::unique_ptr<UIRenderer> uiRenderer_;
+    // Interfaces nativas activas de la escena, recolectadas en el frame. Se
+    // ordenan por z (la de mayor z queda encima).
+    std::vector<UIComponent*> interfacesNativas_;
     // Dimension del proyecto (2D plano / 3D con profundidad). La fija main y el
     // gestor de proyectos antes de cargar la escena; gobierna la siembra de la
     // grilla, la posicion de la camara inicial y (fase de render) el modo 2D.
@@ -200,6 +209,15 @@ private:
     // desde gameScene() para que exista tambien en el juego exportado, donde no
     // hay GUI del editor.
     void pintarInterfacesJuego();
+
+    // Interfaz de juego NATIVA (HUD del motor). Recolecta las interfaces
+    // activas y actualiza su estado de interaccion con el raton del frame.
+    void actualizarInterfazNativa();
+    // Dibuja el overlay de las interfaces nativas.
+    void pintarInterfazNativa();
+    // Si la interfaz nativa se dibuja en este momento: en el juego exportado
+    // siempre; en el editor, solo en modo juego.
+    bool interfazNativaHabilitada() const noexcept;
 
     // Ventana dockable con la vista web de la interfaz del objeto seleccionado
     // (preview del editor). Solo corre con GUI del editor; en el juego
@@ -267,6 +285,9 @@ public:
     void emitirParticulas(float deltaTime);
     void registrarTeclaScript(int key, int action);
     void registrarMouseScript(double x, double y);
+    // Si el puntero esta encima de un boton del HUD nativo: el juego no debe
+    // seguir girando la camara con el raton mientras el boton lo tiene.
+    bool ratonSobreInterfazNativa() const noexcept;
     void gameScene();
     void setGizmoOperation(OperacionGizmo operation);
     OperacionGizmo getGizmoOperation() const;

@@ -236,7 +236,18 @@ const ScriptServices* tablaServicios() {
         },
         [](float fundido) { fundidoSalida = fundido; },
         [](float volumen) { volumenBus = volumen; },
-        8,
+        // Interfaz de juego nativa (HUD del motor): el handle es opaco.
+        [](const char* nombre) {
+            return nombre && std::string(nombre) == "HUD"
+                       ? reinterpret_cast<void*>(static_cast<intptr_t>(0x5678))
+                       : nullptr;
+        },
+        [](const void*) { return true; },
+        [](void*, bool) {},
+        [](void*, const char*, const char*) { return true; },
+        [](void*, const char*, bool) { return true; },
+        [](void*, const char*) { return false; },
+        9,
     };
     return &servicios;
 }

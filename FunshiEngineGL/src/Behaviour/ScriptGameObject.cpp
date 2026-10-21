@@ -46,6 +46,7 @@
 #include "../Input/InputScripts.h"
 #include "../Estructuras/ListasEnlazadas/ListasDoblementeEnlazada/ListaDE.h"
 #include "../Objetos/Componentes/InterfaceComponent.h"
+#include "../Objetos/Componentes/UIComponent.h"
 #include "../WebUI/EstadoInterfaces.h"
 
 namespace MotorScript {
@@ -606,6 +607,55 @@ const char* serviciosInterfazValor(void* interfaz, const char* rutaJson) {
     return g_interfaces->valor(componenteInterfaz(interfaz), rutaJson);
 }
 
+// --- Interfaz de juego NATIVA (HUD que dibuja el motor) --------------------
+// Mismas reglas que la interfaz web: el handle es opaco (un puntero al
+// UIComponent del objeto) y toda funcion tolera un handle nulo.
+UIComponent* componenteInterfazNativa(const void* interfaz) {
+    return const_cast<UIComponent*>(
+        static_cast<const UIComponent*>(interfaz));
+}
+
+void* serviciosInterfazNativaDeObjeto(const char* nombreObjeto) {
+    if (!nombreObjeto) return nullptr;
+    GameObject* objeto =
+        static_cast<GameObject*>(serviciosObjetoPorNombre(nombreObjeto));
+    return objeto ? objeto->getComponent<UIComponent>() : nullptr;
+}
+
+bool serviciosInterfazNativaVisible(const void* interfaz) {
+    const UIComponent* c = static_cast<const UIComponent*>(interfaz);
+    return c ? c->estaActivo() : false;
+}
+
+void serviciosInterfazNativaEstablecerVisible(void* interfaz, bool visible) {
+    UIComponent* c = componenteInterfazNativa(interfaz);
+    if (!c) return;
+    c->setActivo(visible);
+}
+
+bool serviciosInterfazNativaEstablecerTexto(void* interfaz,
+                                              const char* idWidget,
+                                              const char* texto) {
+    UIComponent* c = componenteInterfazNativa(interfaz);
+    if (!c || !idWidget || !texto) return false;
+    return c->lienzo().establecerTexto(idWidget, texto);
+}
+
+bool serviciosInterfazNativaEstablecerVisibleWidget(void* interfaz,
+                                                      const char* idWidget,
+                                                      bool visible) {
+    UIComponent* c = componenteInterfazNativa(interfaz);
+    if (!c || !idWidget) return false;
+    return c->lienzo().establecerVisible(idWidget, visible);
+}
+
+bool serviciosInterfazNativaBotonPulsado(void* interfaz,
+                                          const char* idWidget) {
+    UIComponent* c = componenteInterfazNativa(interfaz);
+    if (!c || !idWidget) return false;
+    return c->sistema().fuePulsado(idWidget);
+}
+
 } // namespace
 
 const ScriptServices* tablaServicios() {
@@ -644,7 +694,17 @@ const ScriptServices* tablaServicios() {
         /* .reproducirMusica  = */ serviciosReproducirMusica,
         /* .detenerMusica     = */ serviciosDetenerMusica,
         /* .volumenMusica     = */ serviciosVolumenMusica,
-        /* .version           = */ 8,
+        /* .interfazNativaDeObjeto = */ serviciosInterfazNativaDeObjeto,
+        /* .interfazNativaVisible = */ serviciosInterfazNativaVisible,
+        /* .interfazNativaEstablecerVisible = */
+        serviciosInterfazNativaEstablecerVisible,
+        /* .interfazNativaEstablecerTexto = */
+        serviciosInterfazNativaEstablecerTexto,
+        /* .interfazNativaEstablecerVisibleWidget = */
+        serviciosInterfazNativaEstablecerVisibleWidget,
+        /* .interfazNativaBotonPulsado = */
+        serviciosInterfazNativaBotonPulsado,
+        /* .version           = */ 9,
     };
     return &tabla;
 }

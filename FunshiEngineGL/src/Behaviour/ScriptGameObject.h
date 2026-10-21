@@ -39,7 +39,7 @@ namespace MotorScript {
 // La tabla de servicios tambien es APPEND-ONLY y comparte este numero: la
 // v8 anadio las funciones de musica, asi que los scripts compilados contra
 // el contrato viejo se recompilan con la cabecera nueva.
-constexpr int versionRuntimeScript = 12;
+constexpr int versionRuntimeScript = 13;
 struct ApiScriptGameObject {
     // --- v1 (original) ---
     const char* (*nombre)(const void* objeto);
@@ -228,6 +228,29 @@ struct ScriptServices {
     void (*detenerMusica)(float fundido);
     // Volumen del bus de musica (todas las pistas juntas, de 0 a 1).
     void (*volumenMusica)(float volumen);
+
+    // --- v9: interfaz de juego NATIVA (HUD que dibuja el motor) ---
+    // Mismas reglas que las interfaces web: el handle (`interfaz`) es opaco
+    // (un puntero al UIComponent del objeto que la tiene) y toda funcion
+    // tolera un handle nulo (no hace nada). Se distingue de la interfaz web
+    // por el prefijo: son dos sistemas distintos que pueden convivir en la
+    // misma escena.
+    // Handle de la interfaz nativa del objeto `nombreObjeto`, o nullptr si no
+    // existe o no tiene UIComponent.
+    void* (*interfazNativaDeObjeto)(const char* nombreObjeto);
+    // Si la interfaz nativa esta activa (visible).
+    bool (*interfazNativaVisible)(const void* interfaz);
+    void (*interfazNativaEstablecerVisible)(void* interfaz, bool visible);
+    // Cambia el texto de un widget (por su identificador). Devuelve false si
+    // no hay ningun widget con ese identificador.
+    bool (*interfazNativaEstablecerTexto)(void* interfaz, const char* idWidget,
+                                           const char* texto);
+    // Muestra u oculta un widget. Devuelve false si no existe.
+    bool (*interfazNativaEstablecerVisibleWidget)(void* interfaz,
+                                                   const char* idWidget,
+                                                   bool visible);
+    // Si ese boton se pulso en el frame actual (flanco de pulsacion).
+    bool (*interfazNativaBotonPulsado)(void* interfaz, const char* idWidget);
 
     // Version de la tabla (siempre al final).
     int version;

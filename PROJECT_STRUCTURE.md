@@ -379,6 +379,9 @@ FunshiEngineGL/                          ← raíz del repo
         │   │   │                                 (drag & drop), volumen, fundido, repetición
         │   │   ├── Interface/SettingsInterface.* ← ruta del .html de la interfaz
         │   │   │                                 (drag & drop) + activa, ancla, tamaño y z
+        │   │   ├── Interfaz/SettingsUIComponent.* ← lista de widgets del HUD nativo:
+        │   │   │                                 tipo, ancla, desplazamiento, tamaño,
+        │   │   │                                 colores, texto, ruta de imagen y orden
         │   │   ├── Skybox/SettingsSkybox.*       ← visible + las seis caras del cubemap
         │   │   │   └── SelectorArchivoCubemap.h ← modal de elección de cara (header-only):
         │   │   │                                la lógica que decide (extensiones válidas,
@@ -485,6 +488,9 @@ FunshiEngineGL/                          ← raíz del repo
         │   ├── ParticulasRenderer.h/.cpp   ← dibuja el lote de particulas: agrupa por
         │   │                                perfil (cada perfil tiene su textura) y
         │   │                                sube un lote por grupo
+        │   ├── UIRenderer.h/.cpp          ← dibuja la interfaz de juego nativa con el
+        │   │                                draw list de ImGui (el unico punto del sistema
+        │   │                                que sabe de ImGui) y cachea las texturas
         │   ├── GrillaRenderer.h/.cpp       ← geometría/lógica de grilla infinita
         │   ├── GuiaEje.h/.cpp              ← guía de eje con contraste
         │   ├── TextureGL.h/.cpp            ← wrapper de textura 2D + cubemap
@@ -565,6 +571,9 @@ FunshiEngineGL/                          ← raíz del repo
         │       ├── EmisorParticulas.h/.cpp ← emisor de partículas: tasa, vida, velocidad,
         │       │                            tamaño, color, cono de emisión y perfil de
         │       │                            efecto opcional (serial FPT1)
+        │       ├── UIComponent.h/.cpp     ← interfaz de juego nativa (HUD que dibuja el
+        │       │                            motor): lista de widgets con su colocacion
+        │       │                            (serial UIJ1, con tamaño de bloque acotado)
         │       ├── RigidBody/RigidBody.h/.cpp ← cuerpo Bullet sincronizado, habilitable, con detección de apoyo (RAII); masa, gravedad por cuerpo (uso+escala), friccion y freeze por ejes via setGravity/setFriction/setLinearFactor/setAngularFactor, serial v3 con lectura de v1 y v2
         │       └── Colliders/
         │           ├── Collider.h/.cpp   ← base abstracta; radio; visibilidad persistente y gizmo
@@ -630,6 +639,17 @@ FunshiEngineGL/                          ← raíz del repo
         │   │                              y presupuesto de particulas vivas
         │   └── ParticulasBuilder.h/.cpp← expansion de cada particula a un quad
         │                                  (CPU puro, como LineBuilder)
+        ├── UI/                          ← interfaz de juego nativa (HUD del motor)
+        │   ├── TiposUI.h                ← tipo de widget, anclaje (9), vectores,
+        │   │                               colores y rectangulo en pixeles
+        │   ├── WidgetUI.h               ← datos de un widget: identificador, tipo,
+        │   │                               anclaje, desplazamiento, tamano, colores,
+        │   │                               texto, ruta de textura y visibilidad
+        │   ├── LienzoUI.h/.cpp          ← lista de widgets y colocacion en pantalla
+        │   │                              (se recalcula al cambiar el tamano)
+        │   ├── EntradaUI.h              ← posicion y estado del raton de un frame
+        │   └── SistemaUI.h/.cpp         ← estado de interaccion: que widget tiene el
+        │                                  raton encima, cual se pulso (CPU puro)
         ├── WebUI/
         │   ├── VistaWebUI.h             ← una interfaz web ya montada por un backend
         │   │                               (estado opaco + ruta .html + sello mtime +
@@ -832,6 +852,29 @@ solo como orquestador de arranque y bucle.
   - El backend graphics incorporaron un lote de partículas y un **modo de
     mezcla aditivo** (`BlendMode`): el fuego y las chispas suman el color en
     vez de fundirse con el fondo.
+- Interfaz de juego nativa (`src/UI/`): el HUD que dibuja el motor, sin
+  navegador web. Convive con la interfaz web (`InterfaceComponent`): son dos
+  sistemas distintos y una escena puede tener de los dos.
+  - El módulo es **CPU puro** (no toca OpenGL, glm ni ImGui), así que se
+    prueba entero en los targets headless, igual que `src/Particulas/`.
+    `LienzoUI` coloca los widgets (los nueve anclajes, desplazamiento y
+    tamaño) y `SistemaUI` responde qué widget tiene el ratón encima y cuál se
+    pulsó. El estado de interacción se reconstruye cada frame: no se serializa.
+  - El componente `UIComponent` guarda el lienzo (lo que se serializa) y el
+    estado vivo (lo que no). Es un tipo nuevo, no una ampliación de
+    `InterfaceComponent`: el nombre del tipo persistido **es** el formato de
+    datos, así que ampliar el componente web habría obliged a versionar su
+    payload binario.
+  - El renderer (`src/Rendering/UIRenderer.*`) es el **único** punto del
+    sistema que sabe de ImGui: traduce los rectángulos del layout a
+    `AddRectFilled` / `AddText` / `AddImage` del draw list de primer plano.
+    No conoce el componente: recibe el lienzo ya colocado.
+  - El ratón llega al HUD por el `ImGuiIO` y lo procesa `GameScene` antes de
+    que corran los scripts, para que un script vea el clic en el mismo frame.
+    Cuando el puntero está encima de un botón, el juego deja de girar la
+    cámara con el ratón (lo consulta `EditorInput` a la escena).
+  - La notificación de los clics es **por consulta**, no por callback: el
+    motor solo llama a los scripts, nunca al revés.
 - API de inspección (`src/Inspeccion/`): contrato público del motor para
   herramientas externas. La CLI (`FunshiEngineCLI`) es un **proyecto aparte**
   que consume este contrato; el motor publica la API y la CLI la usa.
@@ -1252,16 +1295,17 @@ La convención general es un par `.h`/`.cpp` por clase. Las excepciones son:
 al build sin enumerarlos manualmente. Los archivos de ImGui se recopilan por separado
 desde `src/ImGui/` y los de ImGuizmo desde `ImGuizmo/` (fuera de `src/`).
 
-Además del ejecutable, el proyecto define **cuarenta y cuatro targets de prueba
+Además del ejecutable, el proyecto define **cuarenta y nueve targets de prueba
 headless** registrados en CTest (`scripts-java-tests` solo se registra con
-`-DFUNSHI_JAVA=ON`; veintiuno de ellos solo existen con `BUILD_ENGINE=ON`
-—`catalogo-componentes-tests`, `comandos-tests`, `escena-serializacion-tests`,
-`exportacion-tests`, `iconos-componentes-tests`, `iluminacion-tests`,
-`interface-component-tests`, `interfaces-juego-tests`, `malla-regiones-tests`,
-`materiales-regiones-tests`, `manifiesto-assets-tests`,
-`orquestador-estado-tests`, `prefab-tests`, `preview-material-tests`,
-`primitivas3d-tests`, `serializacion-tests`, `shaders-tests`, `sombras-tests`,
-`tema-tests`, `tilemap-tests` y `webui-runtime-tests`—; los veintidós
+`-DFUNSHI_JAVA=ON`; veinticinco de ellos solo existen con `BUILD_ENGINE=ON`
+—`catalogo-componentes-tests`, `comandos-tests`, `emisor-particulas-tests`,
+`escena-serializacion-tests`, `exportacion-tests`, `iconos-componentes-tests`,
+`iluminacion-tests`, `inspeccion-escena-tests`, `interface-component-tests`,
+`interfaces-juego-tests`, `malla-regiones-tests`, `manifiesto-assets-tests`,
+`materiales-regiones-tests`, `orquestador-estado-tests`, `prefab-tests`,
+`preview-material-tests`, `primitivas3d-tests`, `scripts-java-tests`,
+`serializacion-tests`, `shaders-tests`, `sombras-tests`, `tema-tests`,
+`tilemap-tests`, `ui-component-tests` y `webui-runtime-tests`—; los veinticuatro
 restantes compilan también con `BUILD_ENGINE=OFF`):
 
 - `filemanager-tests` (190 en Linux; 181 en Windows con MinGW, 183 con MSVC): ejercita `GestorDeArchivos`/`FileManager`/`FileSystemWatcher`
@@ -1371,6 +1415,19 @@ restantes compilan también con `BUILD_ENGINE=OFF`):
   (ruta del `.html` + colocación): round-trip del formato nuevo y lectura del
   formato viejo (solo el nombre) sin consumir bytes de más, que desalinearía el
   resto del objeto.
+- `interfaz-ui-tests` (67): la interfaz de juego nativa (CPU pura, corre también
+  en el build sin motor): la colocación de los widgets con los nueve anclajes y
+  su desplazamiento, el recálculo del layout cuando cambia el tamano de la
+  pantalla, la búsqueda por identificador, el cambio de texto y de visibilidad,
+  el acierto del ratón sobre un widget y el flanco de pulsación (un clic se
+  marca solo en el frame en que ocurre), el apilado (el widget de encima recibe
+  el ratón) y el widget invisible (no se dibuja ni recibe el ratón).
+- `ui-component-tests` (27): serialización binaria del `UIComponent`: round-trip
+  de la lista de widgets (identificador, tipo, anclaje, desplazamiento, tamaño,
+  colores, texto, ruta de textura y visibilidad), los valores por defecto, un
+  payload ajeno que no debe consumirse de más (el centinela posterior sobrevive)
+  y los valores fuera de rango (tipo, anclaje y cantidad de widgets) acotados
+  sin desalinear la lectura.
 - `barra-progreso-tests` (8): `BarraProgresoTexto` (formato de la barra de la
   ventana Estado, acotado ante `hecha > total` y `total == 0`).
 - `webui-runtime-tests` (57): `WebUIRuntime`, `VistasWebUI` y `EstadoInterfaces`
@@ -1478,19 +1535,22 @@ restantes compilan también con `BUILD_ENGINE=OFF`):
   su salida por el PTY, y que `detener()` no se cuelga ni pierde la salida
   emitida durante el cierre (SKIP 77 si ConPTY no está disponible).
 
-Los **veintiuno** targets que solo existen con `BUILD_ENGINE=ON` son los que
+Los **veinticinco** targets que solo existen con `BUILD_ENGINE=ON` son los que
 enlazan `funshi_engine` (`comandos-tests`, `escena-serializacion-tests`,
 `serializacion-tests`, `catalogo-componentes-tests`, `tilemap-tests`,
 `interfaces-juego-tests`, `prefab-tests`, `iluminacion-tests`,
 `exportacion-tests`, `iconos-componentes-tests`, `malla-regiones-tests`,
-`materiales-regiones-tests`, `preview-material-tests` y `primitivas3d-tests`),
+`materiales-regiones-tests`, `preview-material-tests`, `primitivas3d-tests`,
+`emisor-particulas-tests`, `inspeccion-escena-tests` y `ui-component-tests`),
 los que necesitan glm (`interface-component-tests`, `webui-runtime-tests`,
 `shaders-tests` y `sombras-tests`), los que compilan las fuentes de ImGui
-(`tema-tests`) y los que usan solo el core de diagnóstico
-(`manifiesto-assets-tests` y `orquestador-estado-tests`). El resto compila sus
+(`tema-tests`), los que usan solo el core de diagnóstico
+(`manifiesto-assets-tests` y `orquestador-estado-tests`) y el backend Java
+(`scripts-java-tests`). El resto compila sus
 fuentes directamente (`barra-progreso-tests` entre ellas) y corre también con
-`BUILD_ENGINE=OFF`: con el motor hay 45 suites que se ejecutan (47
-registradas, dos deshabilitadas) y sin él 23.
+`BUILD_ENGINE=OFF`: con el motor hay 47 suites que se ejecutan (49
+registradas, dos deshabilitadas) y sin él 23 (24 registradas, una
+deshabilitada).
 
 La opción `BUILD_ENGINE=OFF` compila solo las pruebas (útil en CI y plataformas
 sin las librerías gráficas), y `ENABLE_ASAN` (ON por defecto en Debug) activa
@@ -1786,9 +1846,20 @@ GameScene → coordina todos los subsistemas del frame
   target de su tamaño con su viewport y vuelve al framebuffer de la ventana, el
   material editado llega al shader (el color difuso se sube) y al invalidarla
   queda sucia para redibujarse.
+- `tests/InterfazUITests.cpp`: la interfaz de juego nativa (el modulo es CPU
+  puro, asi que la suite corre tambien en el build sin motor). Comprueba la
+  colocacion de los widgets con los nueve anclajes y su desplazamiento, el
+  recalculo del layout cuando cambia el tamano de la pantalla, la busqueda por
+  identificador, el cambio de texto y de visibilidad, el acierto del raton
+  sobre un widget y el flanco de pulsacion, el apilado (el widget de encima
+  recibe el raton) y que un widget invisible no se dibuja ni recibe el raton.
+- `tests/UIComponentTests.cpp`: la serializacion binaria del `UIComponent` (el
+  HUD nativo): el round-trip de la lista de widgets, los valores por defecto, un
+  payload ajeno que no debe consumirse de mas (el centinela posterior sobrevive)
+  y los valores fuera de rango acotados sin desalinear la lectura.
 - Las suites de prueba se ejecutan con `ctest`: el build con motor registra
-  **43** tests (41 habilitados y 2 deshabilitados) y el build headless
-  (`BUILD_ENGINE=OFF`) registra **21** (20 habilitados y 1 deshabilitado).
+  **49** tests (47 habilitados y 2 deshabilitados) y el build headless
+  (`BUILD_ENGINE=OFF`) registra **24** (23 habilitados y 1 deshabilitado).
 - `.github/workflows/ci.yml` compila el engine completo en Ubuntu (Release, sin
   ASan) y ejecuta las pruebas; además ejecuta las headless en
   Linux/Windows con `BUILD_ENGINE=OFF`, el backend Java en Ubuntu con JDK y

@@ -60,9 +60,11 @@
 #include "../Objetos/Componentes/AudioSource.h"
 #include "../Objetos/Componentes/Musica.h"
 #include "../Objetos/Componentes/InterfaceComponent.h"
+#include "../Objetos/Componentes/UIComponent.h"
 #include "../Configuracion/EditorConfig.h"
 #include "GizmoController.h"
 #include "InterfacesJuego.h"
+#include "../Rendering/UIRenderer.h"
 #include "../WebUI/WebUIRuntime.h"
 #include <cmath>
 #include <imgui.h>
@@ -148,6 +150,11 @@ GameScene::GameScene(GUIManager* manager, Rendering::Backend::IRenderBackend& ba
     previewMaterial_ = std::make_unique<PreviewMaterial>(
         backend_, gestorShaders.get(), textureManager.get());
     if (managerGUI) managerGUI->setPreviewMaterial(previewMaterial_.get());
+    // Renderer del HUD nativo: usa el backend de la escena para subir a GPU las
+    // texturas de los widgets de imagen y el cache de imagenes de la escena
+    // para decodificarlas (un solo decode por archivo).
+    uiRenderer_ = std::make_unique<UIRenderer>(backend_);
+    uiRenderer_->setTextureManager(textureManager.get());
 }
 
 GameScene::~GameScene() {
@@ -234,29 +241,38 @@ void GameScene::configurarResolverObjetosScripts() {
     ReflejoScripts::fijarResolverObjetos(buscarObjeto);
 
     // Referencias a componentes (TagTipo::Componente): un campo reflejado puede
-    // apuntar al InterfaceComponent de otro objeto. El tipo se especifica por
-    // nombre; hoy solo "InterfaceComponent".
+    // apuntar al InterfaceComponent (interfaz web) o al UIComponent (interfaz
+    // nativa) de otro objeto. El tipo se especifica por nombre.
     ReflejoScripts::fijarResolverComponentes(ReflejoScripts::ResolverComponentes{
         [buscarObjeto](const std::string& nombre,
                        const std::string& tipo) -> void* {
-            if (tipo != "InterfaceComponent") return nullptr;
             GameObject* objeto = buscarObjeto(nombre);
-            return objeto
-                       ? static_cast<void*>(
-                             objeto->getComponent<InterfaceComponent>())
-                       : nullptr;
+            if (!objeto) return nullptr;
+            if (tipo == "InterfaceComponent") {
+                return static_cast<void*>(
+                    objeto->getComponent<InterfaceComponent>());
+            }
+            if (tipo == "UIComponent") {
+                return static_cast<void*>(objeto->getComponent<UIComponent>());
+            }
+            return nullptr;
         },
         [this](const void* componente, const std::string& tipo) -> std::string {
-            if (tipo != "InterfaceComponent" || !componente) return std::string();
-            const auto* objetivo =
-                static_cast<const InterfaceComponent*>(componente);
+            if (!componente) return std::string();
+            if (tipo != "InterfaceComponent" && tipo != "UIComponent")
+                return std::string();
             auto* objetos = getGameObjectsScene();
             if (!objetos || objetos->isEmpty()) return std::string();
             Position<GameObject*>* pos = objetos->first();
             while (pos && pos->getElement()) {
                 GameObject* o = pos->getElement();
-                if (o && o->getComponent<InterfaceComponent>() == objetivo)
-                    return o->inputName;
+                const bool coincide =
+                    (tipo == "InterfaceComponent")
+                        ? (o->getComponent<InterfaceComponent>() ==
+                           static_cast<const InterfaceComponent*>(componente))
+                        : (o->getComponent<UIComponent>() ==
+                           static_cast<const UIComponent*>(componente));
+                if (coincide) return o->inputName;
                 pos = (pos != objetos->last()) ? objetos->next(pos) : nullptr;
             }
             return std::string();
@@ -825,6 +841,66 @@ void GameScene::pintarInterfacesJuego() {
     }
 }
 
+bool GameScene::interfazNativaHabilitada() const noexcept {
+    // En el juego exportado (sin GUI del editor) la interfaz nativa se dibuja
+    // siempre; en el editor, solo en modo juego, para no tapar los paneles
+    // mientras se edita la escena.
+    return managerGUI == nullptr || modoJuego;
+}
+
+void GameScene::actualizarInterfazNativa() {
+    interfacesNativas_.clear();
+    if (!interfazNativaHabilitada()) return;
+
+    interfacesNativas_ =
+        InterfacesJuego::recolectarUINativas(getGameObjectsScene());
+    if (interfacesNativas_.empty()) return;
+
+    // El raton llega por el mismo canal que el resto de la GUI (el ImGuiIO).
+    // Sin contexto de ImGui no hay puntero que mirar.
+    if (ImGui::GetCurrentContext() == nullptr) return;
+
+    const ImGuiIO& io = ImGui::GetIO();
+    EntradaUI entrada;
+    entrada.posicion.x = io.MousePos.x;
+    entrada.posicion.y = io.MousePos.y;
+    entrada.botonIzquierdo = io.MouseDown[0];
+    entrada.clicIzquierdo = io.MouseClicked[0];
+
+    const float ancho = io.DisplaySize.x;
+    const float alto = io.DisplaySize.y;
+    for (UIComponent* interfaz : interfacesNativas_) {
+        interfaz->actualizarInteraccion(entrada, ancho, alto);
+    }
+}
+
+void GameScene::pintarInterfazNativa() {
+    if (!interfazNativaHabilitada()) return;
+    if (!uiRenderer_) return;
+
+    if (interfacesNativas_.empty()) {
+        interfacesNativas_ =
+            InterfacesJuego::recolectarUINativas(getGameObjectsScene());
+    }
+    if (interfacesNativas_.empty()) return;
+
+    const ImGuiIO& io = ImGui::GetIO();
+    ImDrawList* dibujo = ImGui::GetForegroundDrawList();
+    for (UIComponent* interfaz : interfacesNativas_) {
+        // El layout se (re)calcula aqui por si el frame de entrada no corrio
+        // (por ejemplo, con la simulacion en pausa).
+        interfaz->lienzo().layout(io.DisplaySize.x, io.DisplaySize.y);
+        uiRenderer_->dibujar(interfaz->lienzo(), interfaz->sistema(), dibujo);
+    }
+}
+
+bool GameScene::ratonSobreInterfazNativa() const noexcept {
+    for (const UIComponent* interfaz : interfacesNativas_) {
+        if (interfaz && interfaz->sistema().hayInteractivoSobre()) return true;
+    }
+    return false;
+}
+
 void GameScene::pintarVistaInterfaz() {
     GameObject* seleccionado =
         editorController ? editorController->getSelectedObject() : nullptr;
@@ -1091,6 +1167,12 @@ void GameScene::emitirParticulas(float deltaTime) {
 
 void GameScene::update(float value) {
     deltaTime = value;
+
+    // HUD nativo: se recoge el raton y se actualiza el estado de los widgets
+    // antes de que corran los scripts, para que un script vea el clic en el
+    // mismo frame en que ocurre. Fuera del modo juego no hay nada que
+    // recoger (la funcion vacia la lista y sale).
+    actualizarInterfazNativa();
 
     // Particulas: primero se mueven las que viven y despues los emisores
     // sueltan las nuevas. Corre en el editor y en juego (a diferencia de los
@@ -1512,6 +1594,9 @@ void GameScene::gameScene() {
     if (!managerGUI) {
         pintarInterfacesJuego();
     }
+    // El HUD nativo (widgets del motor) se dibuja encima de todo: es la
+    // interfaz del juego y no depende de la GUI del editor.
+    pintarInterfazNativa();
 
     if (!CameraFrameSafety::validarCamara(sceneRegistry.get(),
                                           activeCameraObject, camara)) {
