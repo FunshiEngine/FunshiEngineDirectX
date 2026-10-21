@@ -589,14 +589,32 @@ FunshiEngineGL/                          ← raíz del repo
         ├── Comandos/
         │   ├── IComando.h              ← interfaz Command: ejecutar(), deshacer(), descripcion()
         │   ├── GestorComandos.h/.cpp   ← pilas undo/redo (máx 50), ejecuta/deshace/rehace
-        │   ├── CrearObjetoComando.h/.cpp
+        │   ├── CrearObjetoComando.h/.cpp ← crea cualquier GameObject (modelo o simple)
         │   ├── BorrarObjetoComando.h/.cpp
         │   ├── DuplicarObjetoComando.h/.cpp ← Ctrl+C/V por la puerta del editor
         │   ├── ReparentarComando.h/.cpp
         │   ├── TransformComando.h/.cpp
         │   ├── AgregarComponenteComando.h/.cpp
         │   ├── QuitarComponenteComando.h/.cpp
+        │   ├── AjustarVariableComando.h/.cpp ← escribe una variable de un componente
+        │   │                                (los accesores se inyectan: el comando no
+        │   │                                depende del catálogo de propiedades)
+        │   ├── EstablecerTagComando.h/.cpp ← fija la etiqueta (tag) de un objeto
         │   └── LimpiarEscenaComando.h/.cpp
+        ├── Inspeccion/                  ← API publica del motor para herramientas
+        │   │                              externas (la CLI, que es un proyecto aparte)
+        │   ├── ApiEscena.h              ← contrato (IApiEscena) + versión propia
+        │   │                                (versionApiEscena, independiente de la
+        │   │                                de los scripts) y los tipos de las vistas
+        │   ├── TextoValor.h/.cpp        ← conversiones texto <-> valor (numero,
+        │   │                                booleano, vector) sin dependencias del motor
+        │   ├── PropiedadesComponentes.h/.cpp ← catálogo de las variables de cada
+        │   │                                tipo de componente (getter/setter por
+        │   │                                variable); es la lista que antes solo
+        │   │                                existía dentro de los paneles de la GUI
+        │   └── InspeccionEscena.h/.cpp   ← implementación sobre SceneRegistry y
+        │                                    EditorController; toda mutación pasa por
+        │                                    el gestor de comandos
         ├── WebUI/
         │   ├── VistaWebUI.h             ← una interfaz web ya montada por un backend
         │   │                               (estado opaco + ruta .html + sello mtime +
@@ -765,13 +783,43 @@ solo como orquestador de arranque y bucle.
    está excluida de delete/clear por diseño.
 - Equivalencia GUI ↔ CLI (contrato): toda operación de la GUI de edición debe
   pasar por un `IComando` con parámetros explícitos (los que ya existen:
-  crear/borrar/reparentar, transform, agregar/quitar componentes, limpiar
-  escena), de modo que cada acción del editor tenga un equivalente invocable
-  sin GUI. Esto habilita un editor por línea de comandos que manipula la
-  creación del videojuego con los mismos comandos, sin interactuar con la
-  GUI. Regla: ninguna mutación de escena desde la GUI salta el gestor; un
-  comando nuevo se agrega con su clase en `Comandos/` y su caso en
-  `tests/ComandosTests.cpp`.
+  crear/borrar/reparentar, transform, agregar/quitar componentes, ajustar una
+  variable, etiquetar, limpiar escena), de modo que cada acción del editor
+  tenga un equivalente invocable sin GUI. Esto habilita un editor por línea de
+  comandos que manipula la creación del videojuego con los mismos comandos, sin
+  interactuar con la GUI. Regla: ninguna mutación de escena desde la GUI salta
+  el gestor; un comando nuevo se agrega con su clase en `Comandos/` y su caso
+  en `tests/ComandosTests.cpp`.
+- API de inspección (`src/Inspeccion/`): contrato público del motor para
+  herramientas externas. La CLI (`FunshiEngineCLI`) es un **proyecto aparte**
+  que consume este contrato; el motor publica la API y la CLI la usa.
+  - `IApiEscena` (`ApiEscena.h`) expone: listar objetos con filtros
+    combinables (componente, etiqueta, id, nombre exacto o parcial, tipo de
+    objeto y límite), ver un objeto, ver los componentes de un objeto con sus
+    variables y valores, crear/quitar componentes, asignar una variable,
+    consultar la posición global, crear objetos, etiquetarlos, guardar y
+    cargar la escena. `versionApiEscena` versiona este contrato y es
+    **independiente** de `versionRuntimeScript` (la caché de scripts): subir una
+    no invalida la otra.
+  - `PropiedadesComponentes` es el catálogo de las variables de cada tipo de
+    componente (nombre, tipo, valores admitidos y el par getter/setter). Antes
+    esa lista no existía: cada panel de la GUI editaba su componente con su
+    propio cast, y no había forma de leer o escribir una variable por nombre.
+    El acceso es siempre por los getters y setters públicos del componente,
+    nunca por el dato interno: `Transform` guarda dos copias de su estado
+    (la que serializa y la que usa el render) y solo los setters las
+    mantienen sincronizadas.
+  - `TextoValor` traduce entre texto y valor (entero, flotante, booleano,
+    vectores y enumeraciones por su nombre). Un valor se **valida antes** de
+    encolar el comando, así que un texto inválido no deja la escena a medias.
+  - Toda mutación de la API pasa por el `GestorComandos`, de modo que se
+    deshace igual que en el editor. Como `GestorComandos::ejecutar` no puede
+    fallar, la API valida antes de encolar (objeto existente, tipo de
+    componente conocido, prerrequisito del catálogo cumplido, valor
+    interpretable) y devuelve el motivo del rechazo.
+  - La escena se guarda y se carga con un **prefijo** de ruta
+    (`<prefijo>BBDDObjetos.txt` es el índice y `<prefijo>/` la carpeta con un
+    binario por objeto), igual que hace el motor al guardar un proyecto.
 - Settings manipulables por código: los datos públicos que muestran los
   paneles de componentes (`Settings*`) deben tener su contraparte escribible
   por código: setters del componente y/o entradas en las tablas de scripts
@@ -1399,8 +1447,8 @@ los que necesitan glm (`interface-component-tests`, `webui-runtime-tests`,
 (`tema-tests`) y los que usan solo el core de diagnóstico
 (`manifiesto-assets-tests` y `orquestador-estado-tests`). El resto compila sus
 fuentes directamente (`barra-progreso-tests` entre ellas) y corre también con
-`BUILD_ENGINE=OFF`: con el motor hay 41 suites que se ejecutan (43
-registradas, dos deshabilitadas) y sin él 20.
+`BUILD_ENGINE=OFF`: con el motor hay 43 suites que se ejecutan (45
+registradas, dos deshabilitadas) y sin él 22.
 
 La opción `BUILD_ENGINE=OFF` compila solo las pruebas (útil en CI y plataformas
 sin las librerías gráficas), y `ENABLE_ASAN` (ON por defecto en Debug) activa

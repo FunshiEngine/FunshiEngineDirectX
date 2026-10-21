@@ -126,7 +126,8 @@ CatalogoComponentes::CatalogoComponentes() {
                       DimensionesComponente dim, std::string submenu,
                       std::string icono, Creador crear, CreadorPanel panel,
                       std::function<bool(GameObject&)> prereq = nullptr,
-                      std::string alias = std::string()) {
+                      std::string alias = std::string(),
+                      std::string requisito = std::string()) {
         DescriptorComponente d;
         d.nombre = std::move(nombre);
         d.etiqueta = std::move(etiqueta);
@@ -135,6 +136,7 @@ CatalogoComponentes::CatalogoComponentes() {
         d.submenu = std::move(submenu);
         d.icono = std::move(icono);
         d.prerequisito = std::move(prereq);
+        d.requisito = std::move(requisito);
         d.crear = std::move(crear);
         d.crearPanel = std::move(panel);
         items_.push_back(std::move(d));
@@ -218,7 +220,8 @@ CatalogoComponentes::CatalogoComponentes() {
         [](Component*, GameObject* o, const ContextoPanel&) {
             return std::unique_ptr<SettingsComponent>(new SettingsSombras(o));
         },
-        [](GameObject& o) { return o.getComponent<Light>() != nullptr; });
+        [](GameObject& o) { return o.getComponent<Light>() != nullptr; },
+        "", "necesita una Light");
 
     // Render 2D: el sprite se puede usar en ambas; el animador es propio del
     // plano.
@@ -243,7 +246,8 @@ CatalogoComponentes::CatalogoComponentes() {
         },
         [](GameObject& o) {
             return o.getComponent<SpriteRenderer>() != nullptr;
-        });
+        },
+        "", "necesita un SpriteRenderer");
     add("Tilemap", "Tilemap", DimensionesComponente::DosD, "",
         kIconoTilemap,
         [](GameObject&) { return std::unique_ptr<Component>(new Tilemap()); },
@@ -268,7 +272,7 @@ CatalogoComponentes::CatalogoComponentes() {
             s->setEditor(ctx.editor);
             return std::unique_ptr<SettingsComponent>(s);
         },
-        exigeTransform);
+        exigeTransform, "", "necesita un Transform");
     add("CubeCollider", "CubeCollider", DimensionesComponente::Ambas,
         kSubmenuColliders,
         kIconoColliderCubo,
@@ -282,7 +286,7 @@ CatalogoComponentes::CatalogoComponentes() {
             s->setEditor(ctx.editor);
             return std::unique_ptr<SettingsComponent>(s);
         },
-        exigeTransform);
+        exigeTransform, "", "necesita un Transform");
     add("MallaCollider", "MallaCollider", DimensionesComponente::TresD,
         kSubmenuColliders,
         kIconoColliderMalla,
@@ -296,7 +300,7 @@ CatalogoComponentes::CatalogoComponentes() {
             s->setEditor(ctx.editor);
             return std::unique_ptr<SettingsComponent>(s);
         },
-        exigeTransform);
+        exigeTransform, "", "necesita un Transform");
     add("TilemapCollider", "TilemapCollider", DimensionesComponente::DosD,
         kSubmenuColliders,
         kIconoColliderTilemap,
@@ -313,7 +317,8 @@ CatalogoComponentes::CatalogoComponentes() {
         [](GameObject& o) {
             return o.getComponent<Transform>() != nullptr &&
                    o.getComponent<Tilemap>() != nullptr;
-        });
+        },
+        "", "necesita un Transform y un Tilemap");
     add("RigidBody", "RigidBody", DimensionesComponente::Ambas, "",
         kIconoRigidBody,
         [](GameObject& o) -> std::unique_ptr<Component> {
@@ -326,7 +331,8 @@ CatalogoComponentes::CatalogoComponentes() {
             s->setEditor(ctx.editor);
             return std::unique_ptr<SettingsComponent>(s);
         },
-        [](GameObject& o) { return o.getComponent<Collider>() != nullptr; });
+        [](GameObject& o) { return o.getComponent<Collider>() != nullptr; },
+        "", "necesita un Collider");
 
     // Script, audio e interfaz: disponibles en cualquier dimension.
     add("Script", "Script", DimensionesComponente::Ambas, "",

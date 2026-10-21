@@ -606,6 +606,35 @@ add_test(NAME escena-serializacion-tests COMMAND escena-serializacion-tests)
 # vuelve y CTest la da por fallida por timeout en lugar de quedarse esperando.
 set_tests_properties(escena-serializacion-tests PROPERTIES TIMEOUT 60)
 
+# --- Pruebas headless de la API de inspeccion de escena ----------------------
+# Cubren el contrato de src/Inspeccion: conversiones texto <-> valor, catalogo
+# de propiedades de los componentes, filtros de objetos, vistas, mutaciones
+# (crear objeto, etiquetar, agregar y quitar componentes, asignar variables) y
+# que todo se pueda deshacer.
+# Necesita funshi_engine (SceneRegistry/SceneSerializer/EditorController y los
+# componentes), asi que solo se compila con BUILD_ENGINE=ON.
+add_executable(inspeccion-escena-tests
+    ${CMAKE_CURRENT_SOURCE_DIR}/../tests/InspeccionEscenaTests.cpp
+)
+target_include_directories(inspeccion-escena-tests PRIVATE
+    ${SRC_DIR}
+    ${CMAKE_SOURCE_DIR}/External
+    ${CMAKE_SOURCE_DIR}/External/imgui
+)
+target_link_libraries(inspeccion-escena-tests PRIVATE funshi_engine)
+set_target_properties(inspeccion-escena-tests PROPERTIES
+    CXX_STANDARD 17
+    CXX_STANDARD_REQUIRED ON
+    CXX_EXTENSIONS OFF
+)
+add_test(NAME inspeccion-escena-tests COMMAND inspeccion-escena-tests)
+set_tests_properties(inspeccion-escena-tests PROPERTIES TIMEOUT 60)
+
+if(WIN32)
+    target_link_libraries(inspeccion-escena-tests PRIVATE dbghelp)
+    target_compile_definitions(inspeccion-escena-tests PRIVATE _HAS_STD_BYTE=0)
+endif()
+
 # --- Pruebas headless de la lectura de datos serializados ---------------------
 # Las longitudes y las etiquetas las controla el archivo: si estan corruptas,
 # la lectura se corta con un error limpio en vez de reservar una memoria
