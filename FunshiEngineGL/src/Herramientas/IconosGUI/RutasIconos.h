@@ -65,7 +65,9 @@ inline std::string directorioEjecutable() {
 // Carpetas donde se buscan los assets de imagen, en orden de prioridad:
 //  1) Relativas al directorio del ejecutable (determinista): los vectores de
 //     build suelen quedar junto al binario o un nivel arriba (build/ ->
-//     ../Imagenes, build-java/ -> ../FunshiEngineGL/Imagenes).
+//     ../Imagenes, build-java/ -> ../FunshiEngineGL/Imagenes) y en la CI el
+//     build vive en la raiz del repositorio con las fuentes un nivel mas
+//     abajo (build/Release/ -> ../../FunshiEngineGL/Imagenes).
 //  2) Relativas al directorio de trabajo (fallback historico).
 inline std::vector<std::string> carpetasImagenes() {
     std::vector<std::string> carpetas;
@@ -75,12 +77,17 @@ inline std::vector<std::string> carpetasImagenes() {
         carpetas.push_back(exeDir + "../Imagenes/");
         carpetas.push_back(exeDir + "../FunshiEngineGL/Imagenes/");
         carpetas.push_back(exeDir + "../../Imagenes/");
+        carpetas.push_back(exeDir + "../../FunshiEngineGL/Imagenes/");
         carpetas.push_back(exeDir + "../../../Imagenes/");
+        carpetas.push_back(exeDir + "../../../FunshiEngineGL/Imagenes/");
     }
     carpetas.emplace_back("Imagenes/");
     carpetas.emplace_back("../Imagenes/");
+    carpetas.emplace_back("../FunshiEngineGL/Imagenes/");
     carpetas.emplace_back("../../Imagenes/");
+    carpetas.emplace_back("../../FunshiEngineGL/Imagenes/");
     carpetas.emplace_back("../../../Imagenes/");
+    carpetas.emplace_back("../../../FunshiEngineGL/Imagenes/");
     return carpetas;
 }
 
