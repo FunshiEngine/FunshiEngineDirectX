@@ -255,15 +255,25 @@ versiona; es la memoria de trabajo del agente.
 | `.agentes/PLAN GENERAL DE FIX.md` | Lote de correcciones: cada hallazgo con su cadena `síntoma → evidencia → causa → fix → test`, la tabla de avance con los commits que cierran cada ítem y lo que queda por validar. |
 | `.agentes/auditorias/` | Informes de auditoría por área, uno por archivo: qué se revisó, qué se encontró, con evidencia `archivo:línea`, y si es regresión de un commit reciente o deuda preexistente. |
 | `.agentes/pendiente-revision/PENDIENTE_DE_REVISAR.md` | Lista local de verificaciones manuales todavía pendientes; no forma parte de la documentación versionada del proyecto. |
+| `.agentes/plan-*.md` | Planes de trabajo por tema (integración de un sistema, lote de fixes, refactor): qué se va a construir, en qué orden, con qué arquitectura y cómo se valida. |
 
 Reglas:
 
+- **Los planes de integración, de corrección y de refactor van siempre en
+  `.agentes/`**: un plan de trabajo (qué sistemas se integran, en qué orden,
+  con qué arquitectura, con qué testers) es material del agente, no
+  documentación del proyecto, así que **no se versiona**. Si el plan ya está
+  escrito y en la raíz del repo, se mueve a `.agentes/` y se retira del
+  árbol versionado con un commit propio. Del plan solo se versiona lo que
+  describe el proyecto terminado (la arquitectura que queda, el manual de uso
+  y el registro de bugs), y eso va en los `.md` del repo, en el commit que lo
+  justifica.
 - **Crear lo que haga falta, manteniendo la raíz ordenada**: `.agentes/` es
   extensible. Un informe nuevo de una revisión puntual es un archivo nuevo en
-  `.agentes/auditorias/`; un tema que ya no tiene archivo propio (por ejemplo
-  un informe de depuración grande) se agrupa en un `.md` con nombre claro en
-  `.agentes/`. No crear archivos sueltos en la raíz del repo: la raíz es del
-  proyecto, `.agentes/` es del agente.
+  `.agentes/auditorias/`; un plan nuevo es un archivo nuevo
+  `.agentes/plan-<tema>.md` (un tema que ya no tiene archivo propio se agrupa
+  en un `.md` con nombre claro en `.agentes/`). No crear archivos sueltos en
+  la raíz del repo: la raíz es del proyecto, `.agentes/` es del agente.
 - **Si falta un archivo, recrearlo**: reconstruir su contenido desde el estado
   real (git log, código fuente, esta guía) y tratarlo desde ese momento como
   la fuente de contexto de la tarea — no empezar de cero sin comprobar antes
