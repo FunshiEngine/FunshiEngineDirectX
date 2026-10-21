@@ -278,6 +278,31 @@ bool FileManager::esDirectorio(const std::string& path) {
     return std::filesystem::is_directory(path, ec) && !ec;
 }
 
+std::string FileManager::nombreUnico(const std::string& carpetaDestino,
+                                     const std::string& nombre) {
+    if (nombre.empty()) return nombre;
+
+    std::error_code ec;
+    const std::filesystem::path carpeta(carpetaDestino);
+    std::filesystem::path candidato = carpeta / nombre;
+    if (!std::filesystem::exists(candidato, ec)) return nombre;
+
+    // El nombre va con su extension: "a.txt" -> "a (1).txt". La extension se
+    // separa del cuerpo para que el contador quede en el sitio que espera
+    // cualquier explorador de archivos.
+    const std::string extension = candidato.extension().string();
+    const std::string cuerpo = candidato.stem().string();
+    for (int i = 1; i < 10000; ++i) {
+        const std::string intento =
+            cuerpo + " (" + std::to_string(i) + ")" + extension;
+        candidato = carpeta / intento;
+        if (!std::filesystem::exists(candidato, ec)) return intento;
+    }
+    // Mil nombres libres no es un caso real: se devuelve el original y la
+    // copia fallara porque el destino ya existe.
+    return nombre;
+}
+
 std::string FileManager::plantillaScript(const std::string& clase, bool esJava) {
     if (esJava) {
         return

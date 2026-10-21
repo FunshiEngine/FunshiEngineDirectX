@@ -1259,6 +1259,31 @@ set_target_properties(filemanager-tests PROPERTIES
 )
 add_test(NAME filemanager-tests COMMAND filemanager-tests)
 
+# Importacion de archivos que vienen de fuera del proyecto (arrastrados desde el
+# explorador del sistema o pegados con Ctrl+V desde el portapapeles): la
+# politica de no pisar, la copia recursiva de carpetas y los parsers de los
+# formatos del portapapeles (text/uri-list de Linux y DROPFILES de Windows).
+# Headless en las dos plataformas: los parsers son funciones puras y la copia
+# trabaja contra carpetas temporales.
+add_executable(importar-archivos-tests
+    ${SRC_DIR}/GestorDeArchivos/GestorDeArchivos.cpp
+    ${SRC_DIR}/GestorDeArchivos/File.cpp
+    ${SRC_DIR}/GestorDeArchivos/Carpeta.cpp
+    ${SRC_DIR}/FileManager/FileManager.cpp
+    ${SRC_DIR}/FileManager/FileSystemWatcher.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../tests/ImportarArchivosTests.cpp
+)
+# El nucleo de diagnostico aporta RuntimeException (la lanza el arbol de
+# carpetas) y su dependencia de plataforma (dbghelp en Windows).
+target_link_libraries(importar-archivos-tests PRIVATE funshi_diagnostics_core)
+target_include_directories(importar-archivos-tests PRIVATE ${SRC_DIR}/ImGui)
+set_target_properties(importar-archivos-tests PROPERTIES
+    CXX_STANDARD 17
+    CXX_STANDARD_REQUIRED ON
+    CXX_EXTENSIONS OFF
+)
+add_test(NAME importar-archivos-tests COMMAND importar-archivos-tests)
+
 # Runner de procesos sin shell (Proceso, H-3 nivel 2): round-trip de argv con
 # argumentos hostiles (espacios, &, comilla, barra final, vacio) relanzando
 # este mismo binario copiado a un directorio con espacios, exit codes,

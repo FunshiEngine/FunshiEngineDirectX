@@ -641,6 +641,47 @@ menos 4096 bytes, de modo que paths largos no se truncan (el componente
     en el mismo objeto) → en su panel click **Recargar colisión** (reconstruye
     las cajas desde los tiles sólidos actuales).
 
+### 6.3 Traer archivos del sistema operativo
+
+El explorador del editor tambien acepta archivos y carpetas que vienen de
+**fuera** del proyecto: del explorador de archivos del sistema o del
+portapapeles del sistema.
+
+| Como | Donde cae |
+|---|---|
+| **Arrastrar** archivos desde el explorador del sistema sobre la ventana del editor | Se copian en la carpeta que se esta viendo en **Vista de contenido** |
+| **Ctrl+V** con la ventana **Vista de contenido** enfocada | Se copian en la carpeta que se esta viendo |
+
+Detalles que conviene saber:
+
+- **El destino es la carpeta visible**, la que aparece en la barra superior de
+  la ventana. Si no hay ninguna carpeta visible, el arrastre se ignora.
+- **No se pisa nada.** Si en la carpeta destino ya existe un archivo con ese
+  nombre, el nuevo recibe un nombre libre: `notas.txt`, `notas (1).txt`,
+  `notas (2).txt`... El archivo que ya estaba conserva su contenido. Es la
+  misma politica que aplica el explorador del sistema.
+- **Las carpetas se copian enteras**, con todo su contenido.
+- **El resultado se avisa en la barra de estado** (ventana *Estado*), tanto si
+  la importacion funciono como si algun elemento no se pudo copiar. Un
+  elemento que falla no impide que se copien los demas.
+- Importar no cambia ninguna ruta de la escena (no hay ningun asset que se
+  mueva de sitio), asi que la escena no se reescribe ni se guarda sola.
+- Copiar una **carpeta** hace que el arbol de carpetas de la izquierda se
+  actualice; copiar solo archivos no lo necesita, porque los archivos no
+  aparecen en el arbol.
+
+**Limitaciones por plataforma:**
+
+- En **Windows** el portapapeles de archivos es una lista de rutas del shell:
+  `Ctrl+V` funciona con lo que se haya copiado o cortado en el explorador de
+  archivos.
+- En **Linux** el portapapeles de archivos es texto (`text/uri-list`). Depende
+  de que el explorador del sistema lo deje disponible: si no hay nada, el
+  motor avisa "El portapapeles del sistema no tiene archivos" en vez de fallar.
+  Arrastrar archivos sobre la ventana si funciona en cualquier escritorio.
+- En una maquina **sin escritorio** (un servidor) no hay portapapeles: el motor
+  lo dice y sigue funcionando con normalidad.
+
 ---
 
 ## 7. Física

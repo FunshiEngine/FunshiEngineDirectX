@@ -63,6 +63,8 @@ recorrer(destFolder); // Ahora SÍ re-lee porque cache inválido
 | 2 | `ContentFolderInterface::contentGUI()` | Eliminar carpeta (grid) | Idem | Idem + `contadorCambios++` para árbol | Idem |
 | 3 | `TreeFilesInterface::contentGUI()` | Eliminar carpeta (árbol) | Idem | Ya usaba patrón R7: `carpetaAEliminar` diferida + rescaneo vía `contadorCambios` | Preexistente |
 | 4 | `SoltarEnCarpeta.h` + `ContentFolderInterface` | **Drop entre paneles** (grid → árbol / grid → grid carpeta distinta) | `std::filesystem` / NTFS / MSYS2 | `contadorCambios++` siempre (archivo o carpeta) + invalidación explícita cache grid origen **y** destino (`cacheCarpeta.clear(); cacheMtime = {}`) | `fix(explorador): invalidar cache grid al mover entre paneles` |
+| 5 | `ContentFolderInterface::initGUI()` (menu "Copy Exist File") | Copiar un archivo del sistema a la carpeta visible | `std::filesystem` / NTFS / MSYS2 | Invalidación explícita del cache del grid (`invalidarCache()`) tras la copia | `feat(explorador): arrastrar y pegar archivos del sistema` |
+| 6 | `ContentFolderInterface::contentGUI()` | Importar archivos del sistema (arrastrados sobre la ventana o pegados con Ctrl+V) | Idem | `ImportarArchivos::pegar` + `invalidarCache()` explícito; `contadorCambios++` solo si se copiaron carpetas (los archivos no aparecen en el árbol) | Idem |
 
 > **Nota**: `TreeFilesInterface` **no tenía este bug** porque su patrón R7 ya forzaba `contadorCambios++` → `refrescarArbol()` → reconstrucción completa del árbol (que no usa `mtime` de directorio). El bug apareció al replicar la lógica en `ContentFolderInterface` **sin portar la invalidación explícita del cache de grid**.
 
@@ -120,6 +122,10 @@ recorrer(destFolder); // Ahora SÍ re-lee porque cache inválido
 | **R26 — El frame arranca limpio** | Dibujar sobre el framebuffer sin limpiarlo color y profundidad supone que el driver dejó el buffer de profundidad en 1.0: no todos lo hacen. El test de profundidad descarta entonces todo lo que se dibuja y la ventana queda en negro, sin error ni aviso. Cada frame limpia color y profundidad con el color del perfil de apariencia, y el editor y el juego exportado usan el mismo helper | `FunshiEngineGL/src/Rendering/FondoEscena.h` (ver §22.4) |
 | **R27 — Lo que solo compila otra herramienta, compílalo también en el motor** | Una unidad de traducción que el build del motor excluye porque otra herramienta la compila (el exportador genera su propio proyecto) queda sin compilar en la suite y en la CI: sus errores solo aparecen cuando el usuario exporta, y solo en la plataforma que exporta. El motor la compila en un target propio, y la herramienta generada declara los flags que necesita en vez de heredar los del build de trabajo | `FunshiEngineGL/CMakeLists.txt` (target `runtime-compile-check`) y `FunshiEngineGL/src/Exportador/GameExporter.cpp` (ver §23.4) |
 | **R28 — El resultado de una operación se conserva y se muestra** | Si la interfaz decide qué dibujar con la bandera «en curso», el mensaje final (éxito o error) se dibuja solo mientras la operación corre: al terminar, la bandera se apaga, el formulario vuelve a aparecer y el usuario no ve ni el fallo ni la confirmation. El estado de la operación tiene fases explícitas (configuración → en curso → resultado) y la interfaz dibuja lo que la fase dice; el motivo de un rechazo previo queda en el estado, y los datos que la operación necesita llegan por **todos** los caminos que la pueden abrir | `FunshiEngineGL/src/Exportador/EstadoExportacion.h` (ver §24.4) |
+| **R29 — El cierre de dependencias es transitivo** | Si el ejecutable importa una biblioteca, y esa biblioteca importa otra, las dos tienen que estar junto al ejecutable: empaquetar solo las dependencias directas deja al proceso pidiendo al sistema librerías que no están | `FunshiEngineGL/src/Exportador/ImportacionesPE.h` (ver §25.4) |
+| **R30 — Cada operación que compila, con su directorio** | Un directorio de trabajo con nombre fijo lo vacía la segunda operación que compila mientras la primera sigue, y la primera falla con errores que no son de su código. El directorio se reserva de forma atómica y es de usar y tirar | `FunshiEngineGL/src/Exportador/GameExporter.cpp` (ver §26.4) |
+| **R31 — Un lector por plataforma detrás de un contrato** | El portapapeles de archivos del sistema no es texto: Windows publica un bloque `CF_HDROP` binario y Linux un `text/uri-list`. El dominio pide las rutas a un contrato y cada plataforma traduce su formato, con la traducción en funciones puras que se prueban sin portapapeles | `FunshiEngineGL/src/FileManager/PortapapelesParsers.h` (ver §27.4) |
+| **R32 — El sistema encola, la vista drena** | El drop de archivos lo entrega la biblioteca de ventanas en su bucle de eventos, fuera del frame: ahí la vista todavía no sabe qué carpeta está viendo. El servicio encola las rutas y la vista las drena en su frame, que es cuando conoce el destino | `FunshiEngineGL/src/FileManager/ReceptorDropGlfw.h` (ver §28.4) |
 
 ---
 
@@ -1779,7 +1785,121 @@ segunda borra el directorio de la primera mientras compila.
 
 ---
 
-## 27. Historial de Cambios
+## 27. Vigesimotercer concepto: **El portapapeles de archivos del sistema no es texto**
+
+### 27.1 Patrón
+
+El portapapeles del sistema operativo guarda **archivos**, no texto, y cada
+plataforma los guarda en un formato distinto:
+
+- **Windows**: un `CF_HDROP`, es decir un bloque `DROPFILES` con una cabecera
+  (el desplazamiento de la lista y dos banderas) y la lista de rutas en ANSI o
+  en UTF-16 terminada en doble null. Es un **formato binario con su propia
+  estructura**, no una cadena.
+- **Linux**: un `text/uri-list`, es decir texto con una URI `file://` por
+  linea (con porcentajes escapados en el nombre).
+
+La lectura de "el texto del portapapeles" que dan la mayoría de las
+bibliotecas de ventanas no llega al portapapeles de archivos: en Windows
+devuelve vacío o nulo cuando lo que hay copiado son archivos, y en Linux
+devuelve la URI, no la ruta.
+
+### 27.2 Síntomas
+
+- Pegar con `Ctrl+V` no hace nada, aunque en el explorador del sistema los
+  archivos estén copiados.
+- El portapapeles devuelve texto que no son rutas (`file:///home/...`) y la
+  copia falla con "no se encontró el archivo".
+- En Windows, una ruta con acentos o con caracteres fuera del plano básico
+  llega corrupta: el portapapeles los entrega en UTF-16 y el motor trabaja en
+  UTF-8.
+
+### 27.3 Causa
+
+Suponía que el portapapeles de archivos era texto plano, igual que el
+portapapeles de un editor. No lo es: cada sistema operativo publica un
+formato propio, y el que publica el shell de Windows es binario.
+
+### 27.4 Fix canónico (Patrón R31 — un lector por plataforma detrás de un contrato)
+
+- El dominio **no habla con la API del sistema**: pide las rutas a un
+  contrato (`IServicioPortapapeles`) cuya implementación es de la plataforma.
+- Cada implementación **traduce el formato del sistema a una lista de
+  rutas**: el bloque `DROPFILES` en Windows, el `text/uri-list` (y, como
+  respaldo, la lista de rutas planas) en Linux.
+- La traducción va en **funciones puras** (entra un bloque de bytes o una
+  cadena y sale una lista de rutas), con lo que se prueban en headless y en
+  las dos plataformas sin necesitar un portapapeles real.
+- Las rutas en UTF-16 se **convierten a UTF-8** al leerlas: el motor trabaja
+  en UTF-8 y las comparaciones byte a byte de rutas fallarían si cada una
+  Midiera con su propia codificación.
+
+### 27.5 Checklist de mitigación
+
+- [ ] Nadie llama "al texto del portapapeles" esperando archivos.
+- [ ] El formato de cada plataforma está en una función pura y probada, no
+      repartido por el código que la usa.
+- [ ] La conversión de codificación ocurre al **leer**, no al comparar.
+- [ ] El caso "no hay portapapeles" (servidor sin escritorio) degrada a un
+      aviso, no a un fallo.
+
+### 27.6 Registro de Instancias
+
+| # | Ubicación | Operación | Herramienta/SO | Fix Aplicado | Commit |
+|---|-----------|-----------|---------------|--------------|--------|
+| 1 | `FunshiEngineGL/src/FileManager/PortapapelesSistema.cpp` | Pegar con `Ctrl+V` los archivos del sistema | Windows (`CF_HDROP`) / Linux (`text/uri-list`) | Contrato `IServicioPortapapeles` + lector por plataforma + parsers puros en `PortapapelesParsers.h` (Patrón R31) | `feat(explorador): arrastrar y pegar archivos del sistema` |
+
+---
+
+## 28. Vigesimocuarto concepto: **El drop del sistema llega fuera del frame de la GUI**
+
+### 28.1 Patrón
+
+La biblioteca de ventanas entrega el drop de archivos en su **bucle de
+eventos**, no en el frame de dibujado. En ese instante la vista todavía no
+sabe qué carpeta está viendo, porque la carpeta visible es un dato del frame
+(la ha elegido el usuario en la navegación).
+
+### 28.2 Síntomas
+
+- Los archivos soltados caen en una carpeta fija, o en la carpeta que había
+  cuando se solvable la ventana, y no en la que el usuario tenía delante.
+- La vista se modifica desde el callback del sistema y el recorrido de la
+  carpeta se invalida a mitad (elementos fantasma, punteros colgando).
+- El destino se decide en el sitio del drop y el usuario no puede corregirlo.
+
+### 28.3 Causa
+
+Trató el callback del drop como si fuera un frame de la GUI: en él se
+consultaba el estado de la vista y se escribía en ella. Pero en el callback
+ese estado es del frame anterior (o ninguno).
+
+### 28.4 Fix canónico (Patrón R32 — el sistema encola, la vista drena)
+
+- El servicio del sistema **encola** las rutas y no toca la vista.
+- La vista **drena la cola en su frame**, y es entonces cuando sabe la
+  carpeta visible: el destino se calcula ahí, con el dato fresco.
+- La cola es la frontera entre el hilo de eventos del sistema y el frame de
+  la GUI, así que está protegida (el sistema puede entregar el drop desde su
+  propio hilo).
+
+### 28.5 Checklist de mitigación
+
+- [ ] El callback del sistema no lee ni escribe el estado de la vista.
+- [ ] El destino de una operación se calcula en el frame, no en el callback.
+- [ ] La cola entre el sistema y la GUI está protegida si los hilos difieren.
+- [ ] El sistema que entrega los eventos (ventana) y el que los consume
+      (vista) son piezas distintas, con un contrato entre ellas.
+
+### 28.6 Registro de Instancias
+
+| # | Ubicación | Operación | Herramienta/SO | Fix Aplicado | Commit |
+|---|-----------|-----------|---------------|--------------|--------|
+| 1 | `FunshiEngineGL/src/FileManager/ReceptorDropGlfw.cpp` + `ContentFolderInterface::contentGUI()` | Soltar archivos del explorador del sistema sobre la ventana del editor | GLFW (drop de ventana) | Contrato `IServicioDrop`: el servicio encola y la vista drena en su frame, donde conoce la carpeta visible (Patrón R32) | `feat(explorador): arrastrar y pegar archivos del sistema` |
+
+---
+
+## 29. Historial de Cambios
 
 | Fecha | Autor | Cambio |
 |-------|-------|--------|
@@ -1810,6 +1930,8 @@ segunda borra el directorio de la primera mientras compila.
 | 2026-10-21 | Gianfranco Ivan Enrique | Añadido el vigesimoprimer concepto (Patrón R29, las dependencias de una biblioteca son dependencias de quien la usa) con su instancia #1: el juego exportado se llevaba solo las DLL que importaba él, y las que importan esas (zlib y minizip, de la biblioteca de modelos) se quedaban fuera: al arrancar, el sistema las pedía. |
 | 2026-10-21 | Gianfranco Ivan Enrique | Añadido el vigesimosegundo concepto (Patrón R30, dos operaciones que compilan necesitan su propio directorio de trabajo) con su instancia #1: la exportación compilaba en `<salida>_build`, un nombre fijo que se vaciaba al empezar; dos exportaciones simultáneas se pisaban y la primera fallaba con errores de «dependency file» que no tenían relación con el código. |
 | 2026-10-21 | Gianfranco Ivan Enrique | Añadida la segunda instancia del patrón R28 (el resultado de una operación se conserva y se muestra): la salida de la compilación de la exportación solo se pintaba en la terminal del editor, así que no se podía revisar; ahora queda en un archivo de traza propio, cuya ruta anuncia el mensaje final. |
+| 2026-10-21 | Gianfranco Ivan Enrique | Añadidos el vigesimotercer y el vigesimocuarto conceptos (Patrón R31, el portapapeles de archivos del sistema no es texto; Patrón R32, el drop del sistema llega fuera del frame de la GUI) con su instancia #1 cada uno: el portapapeles de archivos se publica como un bloque `CF_HDROP` en Windows y como un `text/uri-list` en Linux, y el drop lo entrega la biblioteca de ventanas en su bucle de eventos, cuando la vista todavía no sabe qué carpeta está viendo. |
+| 2026-10-21 | Gianfranco Ivan Enrique | Añadidas las instancias #5–#6 del patrón R7 (invalidación explícita de caché): el menú "Copy Exist File" copiaba el archivo sin invalidar el caché del grid, y la importación desde el sistema tampoco lo hacía. |
 
 ---
 
