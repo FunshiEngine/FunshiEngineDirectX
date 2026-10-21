@@ -42,6 +42,8 @@
 #include "../Herramientas/IconosGUI/CatalogoIconos.h"
 #include "../Herramientas/IconosGUI/ReglaIconoCatalogo.h"
 #include "../FileManager/FileManager.h"
+#include "../FileManager/PortapapelesSistema.h"
+#include "../FileManager/ReceptorDropGlfw.h"
 #include "../Estructuras/ListasEnlazadas/ListasConPrioridad/PriorityListaDE.h"
 #include "../Events/EditorEventBus.h"
 
@@ -89,6 +91,12 @@ private:
 	std::unique_ptr<EstadoInterfazImGui> estadoInterfaz;
 	// Barra lateral del radio de orbita (ayuda de navegacion del editor).
 	std::unique_ptr<SidebarOrbitaGUI> sidebarOrbitaGUI;
+	// Servicios del sistema operativo que usa el explorador de archivos:
+	// el portapapeles (para pegar con Ctrl+V) y la recepcion de archivos
+	// soltados sobre la ventana del editor. Los crea el gestor porque es
+	// quien tiene la ventana; el explorador solo conoce el contrato.
+	std::unique_ptr<PortapapelesSistema> portapapeles;
+	std::unique_ptr<ReceptorDropGlfw> receptorDrop;
 	// Motor de audio inyectado por la escena para el inspector de AudioSource.
 	AudioEngine* audioMotor = nullptr;
 	// Vista previa de material (inyectada por la escena).

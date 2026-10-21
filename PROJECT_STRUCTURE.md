@@ -108,6 +108,9 @@ FunshiEngineGL/                          ← raíz del repo
 ├── .gitignore / .gitattributes
 ├── tests/                               ← suites headless (CTest), una por sistema
 │   ├── FileManagerTests.cpp             ← headless del explorador de archivos
+│   ├── ImportarArchivosTests.cpp        ← headless de la importación de archivos del
+│   │                                      sistema (no pisar, carpetas recursivas y los
+│   │                                      parsers del portapapeles: uri-list y DROPFILES)
 │   ├── EditorConfigTests.cpp            ← headless de la configuración JSON
 │   ├── EditorEventBusTests.cpp          ← headless del canal tipado de GUI (Fase 2)
 │   ├── MenuModelTests.cpp               ← headless del modelo del menú (Fase 3)
@@ -292,6 +295,17 @@ FunshiEngineGL/                          ← raíz del repo
         │   ├── FileSelection.h          ← estado de navegación compartido entre vistas
         │   ├── FileSystemWatcher.h/.cpp ← vigilancia de cambios externos (inotify
         │   │                              en Linux; polling con mtime en el resto)
+        │   ├── IServicioPortapapeles.h  ← contrato: archivos que el sistema tiene en el
+        │   │                              portapapeles (el motor no habla con la API del SO)
+        │   ├── IServicioDrop.h          ← contrato: archivos soltados sobre la ventana del
+        │   │                              editor (el servicio los encola y la vista los drena)
+        │   ├── PortapapelesParsers.h    ← parsers puros del portapapeles: text/uri-list
+        │   │                              (Linux) y DROPFILES/CF_HDROP (Windows), con la
+        │   │                              conversión UTF-16 → UTF-8
+        │   ├── PortapapelesSistema.h/.cpp ← lectura del portapapeles en la plataforma del host
+        │   │                              (CF_HDROP en Windows; texto del portapapeles en Linux)
+        │   ├── ReceptorDropGlfw.h/.cpp  ← recepción del drop con GLFW: encola las rutas y
+        │   │                              las entrega al explorador en su frame
         │   └── Proceso.h/.cpp           ← runner de procesos SIN shell (argv propio:
         │                                  CreateProcessW / fork+execvp, log por handles/fd,
         │                                  cwd, entorno extra; el log se trunca por defecto y
@@ -330,6 +344,10 @@ FunshiEngineGL/                          ← raíz del repo
         │   │   ├── SoltarEnCarpeta.h       ← helper header-only del arrastre: mueve y publica
         │   │   │                              ArchivosReubicados; lo usan las dos vistas (en el
         │   │   │                              grid Ctrl copia; soltar en el árbol siempre mueve)
+        │   │   ├── ImportarArchivos.h     ← helper header-only de la importación desde el
+        │   │   │                              sistema: copia sin pisar (nombre único) y copia
+        │   │   │                              recursiva de carpetas; lo usan el drop del SO y el
+        │   │   │                              pegado con Ctrl+V
         │   │   └── RenombrarElemento.h     ← helper header-only del renombre por click derecho:
         │   │                                  modal (campo enfocado al abrir, Enter confirma) y
         │   │                                  camino único de disco + ArchivosReubicados, también
@@ -871,6 +889,17 @@ solo como orquestador de arranque y bucle.
   referencias rotas (busca el nombre bajo la raíz del proyecto): con una sola
   coincidencia repara y guarda; con varias o con ninguna avisa en el log y no
   adivina.
+  Lo que viene de **fuera** del proyecto (el arrastre desde el explorador del
+  sistema y el pegado con `Ctrl+V` desde el portapapeles del sistema) entra por
+  dos contratos, `IServicioDrop` e `IServicioPortapapeles`, que el editor
+  inyecta en la fachada: el módulo de archivos no conoce ni la API del sistema
+  ni GLFW. `ReceptorDropGlfw` encola las rutas del drop (el sistema las
+  entrega fuera del frame de la GUI) y `PortapapelesSistema` las lee del
+  portapapeles de la plataforma (`CF_HDROP` en Windows, `text/uri-list` en
+  Linux), con los parsers puros en `PortapapelesParsers.h`. La política de
+  importación vive en `ImportarArchivos.h`: copia sin pisar (genera un nombre
+  único), copia las carpetas recursivamente y un origen fallido no aborta el
+  resto.
 - `SceneSelectedInterface` observa la escena inyectada y delega las
   operaciones de edición a `EditorController`. Usa `GameObjectFactory` para crear objetos.
 - `SceneObjectTree` dibuja el árbol de objetos (con drag & drop para reparentar).
@@ -1133,7 +1162,7 @@ La convención general es un par `.h`/`.cpp` por clase. Las excepciones son:
 al build sin enumerarlos manualmente. Los archivos de ImGui se recopilan por separado
 desde `src/ImGui/` y los de ImGuizmo desde `ImGuizmo/` (fuera de `src/`).
 
-Además del ejecutable, el proyecto define **cuarenta y tres targets de prueba
+Además del ejecutable, el proyecto define **cuarenta y cuatro targets de prueba
 headless** registrados en CTest (`scripts-java-tests` solo se registra con
 `-DFUNSHI_JAVA=ON`; veintiuno de ellos solo existen con `BUILD_ENGINE=ON`
 —`catalogo-componentes-tests`, `comandos-tests`, `escena-serializacion-tests`,
@@ -1155,6 +1184,13 @@ restantes compilan también con `BUILD_ENGINE=OFF`):
   pura de `SelectorArchivoCubemap` (filtro de extensiones del cubemap y aviso
   de caras faltantes o de resolución dispares), que al vivir fuera del dibujo del
   modal se ejercita aquí sin crear contexto de ImGui.
+- `importar-archivos-tests` (45): la importación de archivos que vienen de fuera
+  del proyecto (arrastrados desde el explorador del sistema o pegados con Ctrl+V):
+  la copia no pisa nada y genera un nombre único (`a.txt` → `a (1).txt`), las
+  carpetas se copian recursivamente, un origen inexistente da error sin abortar el
+  resto, y los parsers del portapapeles se prueban como funciones puras (el
+  `text/uri-list` de Linux con rutas con espacios y no-ASCII, y el bloque
+  `DROPFILES` de Windows en ANSI y en UTF-16, con su conversión a UTF-8).
 - `proceso-tests` (30): el runner de procesos sin shell `Proceso`: round-trip
   de argv byte a byte (el binario se relanza a sí mismo copiado en una carpeta
   con espacios, con argumentos hostiles), exit codes, truncado del log, el modo

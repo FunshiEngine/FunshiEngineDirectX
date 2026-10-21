@@ -45,6 +45,15 @@ GUIManager::GUIManager(GLFWwindow* window)
     fileManager = std::make_unique<FileManager>(path, rootName);
     treeFilesGUI = std::make_unique<TreeFilesInterface>(true, fileManager.get());
     contentOfThisFolder = std::make_unique<ContentFolderInterface>(false, fileManager.get());
+    // Servicios del sistema operativo para el explorador: el portapapeles y
+    // la recepcion de archivos soltados sobre la ventana. El gestor los crea
+    // porque es quien tiene la ventana de GLFW, y los inyecta en la fachada
+    // del explorador, que es la unica que ve el contrato.
+    portapapeles = std::make_unique<PortapapelesSistema>(window);
+    receptorDrop = std::make_unique<ReceptorDropGlfw>();
+    fileManager->setPortapapeles(portapapeles.get());
+    fileManager->setReceptorDrop(receptorDrop.get());
+    if (window != nullptr) receptorDrop->registrar(window);
     dockSpaceGUI = std::make_unique<DockSpaceInterface>(true);
     iconosGUI = std::make_unique<IconosGUI>();
     iconosGUI->init();
@@ -56,6 +65,9 @@ GUIManager::GUIManager(GLFWwindow* window)
     settingGUI->setResolutorIconos(resolutorIconos.get());
     menuBarGUI->setIconosGUI(iconosGUI.get());
     statusBarGUI = std::make_unique<StatusBarInterface>(true);
+    // La barra de estado es donde el explorador avisa del resultado de una
+    // importacion (archivos pegados o arrastrados, errores al copiar).
+    contentOfThisFolder->setStatusBar(statusBarGUI.get());
     terminalGUI = std::make_unique<TerminalInterface>(true);
     // Cada ventana se registra al crearse: el gestor no lleva una lista fija,
     // asi que agregar una ventana no obliga a tocar el estado ni el menu. La
