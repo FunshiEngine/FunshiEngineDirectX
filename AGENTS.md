@@ -233,6 +233,11 @@ cd FunshiEngineGL && ./build/FunshiEngineGL.exe   # Windows
   mantener compatibilidad de prefijos y acotar lecturas con `std::min`.
 - **Física** detrás de la fachada `PhysicsEngine` → `IPhysicsBackend`; no usar
   Bullet fuera de `Fisicas/`.
+- **Sistema de partículas** (`src/Particulas/`): la simulación es CPU pura y
+  no toca ni OpenGL ni glm, para que se pueda probar entera en los targets
+  headless. El módulo no depende del motor; el componente `EmisorParticulas`
+  (en `Objetos/Componentes/`) es quien usa el motor, y el renderer recibe el
+  sistema con datos planos, sin conocer el emisor.
 - **Compatibilidad multiplataforma**: el motor es compatible con **Linux y Windows**,
   sin excepción. Al usar APIs nativas del sistema operativo (Windows API, POSIX,
   filesystem, threading, dynamic loading, etc.), SIEMPRE verificar y mantener las
