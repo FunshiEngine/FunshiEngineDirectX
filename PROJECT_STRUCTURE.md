@@ -235,7 +235,9 @@ FunshiEngineGL/                          ← raíz del repo
         │   │                              scenes/scripts/assets en estructura simplificada.
         │   │                              Deja su traza en un archivo propio (logs/Exportacion_*.log):
         │   │                              la salida de la compilación queda ahi, y el mensaje
-        │   │                              final la menciona
+        │   │                              final la menciona. Cada exportación compila en su
+        │   │                              propio directorio temporal (reservado de forma atómica:
+        │   │                              dos exportaciones a la vez no se pisan)
         │   ├── EstadoExportacion.h/.cpp ← estado de la exportación (fase, resultado, progreso,
         │   │                              mensaje): reglas de dominio, sin ImGui, para que el
         │   │                              resultado no se pierda y se pueda comprobar headless

@@ -1720,7 +1720,66 @@ su tabla de importaciones.
 
 ---
 
-## 26. Historial de Cambios
+## 26. Vigesimosegundo concepto: **Dos operaciones que compilan necesitan su propio directorio de trabajo**
+
+### 26.1 Patrón
+
+Cuando una operacion compila, escribe en un directorio de trabajo. Si ese
+directorio tiene un nombre fijo (por ejemplo, `<salida>_build`), dos operaciones
+que se solapan comparten el mismo sitio: la segunda vacia el directorio
+mientras la primera compila, y la primera falla con errores de compilacion
+que no tienen nada que ver con el codigo que esta compilando.
+
+El sintoma caracteristico: `fatal error: opening dependency file ... No such
+file or directory` en archivos que si existen, y errores en archivos que
+**no** tocaron el cambio que se estaba haciendo.
+
+### 26.2 Síntomas
+
+- Una exportacion falla a mitad de la compilacion, con errores de
+  "dependency file" en archivos que existen y que nadie toco.
+- La exportacion funciona si se espera a que termine la otra, y falla si se
+  lanzan a la vez.
+- Los errores apuntan a archivos que no tienen relacion con el cambio: el
+  fallo parece del codigo que se compila, y no es.
+
+### 26.3 Causa
+
+El directorio de compilacion se derivaba del nombre de la salida con un
+sufijo fijo, y la exportacion lo vaciaba (`remove_all`) al empezar. Con dos
+exportaciones simultaneas (la del editor y una sonda, por ejemplo), la
+segunda borra el directorio de la primera mientras compila.
+
+### 26.4 Fix canónico (Patrón R30 — cada operación que compila, con su directorio)
+
+- El directorio de compilacion es **propio de cada operacion** y se crea
+  de forma **atomica** (`create_directory`, que falla si ya existe), asi que
+  dos procesos que exporting a la vez no obtienen el mismo nombre.
+- Vive en la **carpeta temporal del sistema**: es de usar y tirar, y ahi no se
+  acumulan los restos de las exportaciones fallidas.
+- La exportacion lo borra al terminar bien; si falla, el directorio queda en la
+  carpeta temporal (que el sistema limpia sola).
+
+### 26.5 Checklist de mitigación
+
+- [ ] Ninguna operacion que compile usa un directorio de trabajo con nombre
+      fijo.
+- [ ] El directorio se reserva de forma atomica (crear el directorio es el
+      que decide quien lo usa).
+- [ ] El directorio es de usar y tirar (temporal), y no deja restos en la
+      carpeta del usuario.
+- [ ] Cuando se borra un directorio de trabajo, se comprueba antes que no haya
+      otra operacion usandolo.
+
+### 26.6 Registro de Instancias
+
+| # | Ubicación | Operación | Herramienta | Fix Aplicado | Commit |
+|---|-----------|-----------|-------------|--------------|--------|
+| 1 | `FunshiEngineGL/src/Exportador/GameExporter.cpp` | Exportar el juego standalone (dos exportaciones a la vez) | Log de la exportación (`logs/Exportacion_*.log`): errores `opening dependency file ... No such file or directory` en varios archivos | `GameExporter::directorioBuildTemporal()`: directorio propio, reservado de forma atómica, en la carpeta temporal del sistema (Patrón R30) | `fix(exportacion): cada exportacion compila en su propio directorio` |
+
+---
+
+## 27. Historial de Cambios
 
 | Fecha | Autor | Cambio |
 |-------|-------|--------|
@@ -1749,11 +1808,12 @@ su tabla de importaciones.
 | 2026-10-21 | Gianfranco Ivan Enrique | Añadido el decimonoveno concepto (Patrón R27, lo que solo compila otra herramienta no lo compila nadie) con sus instancias #1–#2: el punto de entrada del juego exportado quedaba fuera de todo build (lo compilaba solo el exportador) y el proyecto generado heredaba los sanitizadores del motor, que el toolchain de exportación no trae. |
 | 2026-10-21 | Gianfranco Ivan Enrique | Añadido el vigésimo concepto (Patrón R28, el resultado de una operación se conserva y se muestra) con su instancia #1: el diálogo de exportación dibujaba el motivo solo mientras la exportación corría, y con el editor arrancado con `--proyecto` el diálogo recibía el proyecto vacío: la exportación se rechazaba y el fallo se perdía. |
 | 2026-10-21 | Gianfranco Ivan Enrique | Añadido el vigesimoprimer concepto (Patrón R29, las dependencias de una biblioteca son dependencias de quien la usa) con su instancia #1: el juego exportado se llevaba solo las DLL que importaba él, y las que importan esas (zlib y minizip, de la biblioteca de modelos) se quedaban fuera: al arrancar, el sistema las pedía. |
+| 2026-10-21 | Gianfranco Ivan Enrique | Añadido el vigesimosegundo concepto (Patrón R30, dos operaciones que compilan necesitan su propio directorio de trabajo) con su instancia #1: la exportación compilaba en `<salida>_build`, un nombre fijo que se vaciaba al empezar; dos exportaciones simultáneas se pisaban y la primera fallaba con errores de «dependency file» que no tenían relación con el código. |
 | 2026-10-21 | Gianfranco Ivan Enrique | Añadida la segunda instancia del patrón R28 (el resultado de una operación se conserva y se muestra): la salida de la compilación de la exportación solo se pintaba en la terminal del editor, así que no se podía revisar; ahora queda en un archivo de traza propio, cuya ruta anuncia el mensaje final. |
 
 ---
 
-*Este documento es vivo: cada nuevo bug de esta clase debe registrarse en la tabla de su concepto (§2 para el primero, §6.5 para el segundo, §7.5 para el tercero, §8.5 para el cuarto, §9.5 para el quinto), §14.6 para el décimo, §15.6 para el undécimo, §16.6 para el duodécimo, §17.6 para el decimotercer, §18.6 para el decimocuarto, §19.6 para el decimoquinto, §20.6 para el decimosexto, §21.6 para el decimoséptimo, §22.6 para el decimoctavo, §23.6 para el decimonoveno, §24.6 para el vigésimo y §25.6 para el vigesimoprimer; si revela un patrón nuevo, añadirse a §4.*
+*Este documento es vivo: cada nuevo bug de esta clase debe registrarse en la tabla de su concepto (§2 para el primero, §6.5 para el segundo, §7.5 para el tercero, §8.5 para el cuarto, §9.5 para el quinto), §14.6 para el décimo, §15.6 para el undécimo, §16.6 para el duodécimo, §17.6 para el decimotercer, §18.6 para el decimocuarto, §19.6 para el decimoquinto, §20.6 para el decimosexto, §21.6 para el decimoséptimo, §22.6 para el decimoctavo, §23.6 para el decimonoveno, §24.6 para el vigésimo, §25.6 para el vigesimoprimer y §26.6 para el vigesimosegundo; si revela un patrón nuevo, añadirse a §4.*
 ## CEF: "Invalid file descriptor to ICU data received" en InitializeICU
 
 - **Síntoma**: al arrancar el motor con `FUNSHI_CEF=ON`, `CefInitialize` aborta en

@@ -377,6 +377,27 @@ static void comprobarLogExportacion() {
     std::filesystem::remove(otra, ec);
 }
 
+static void comprobarDirectorioBuild() {
+    // Cada exportacion compila en su propio directorio: dos exportaciones
+    // simultaneas (o una que se queda a medias) no pueden vaciar el
+    // directorio de la otra.
+    const std::string uno = GameExporter::directorioBuildTemporal();
+    const std::string otro = GameExporter::directorioBuildTemporal();
+    CHECK(!uno.empty() && !otro.empty(),
+          "se puede elegir un directorio de compilacion");
+    CHECK(uno != otro,
+          "dos exportaciones no comparten el directorio de compilacion");
+    CHECK(std::filesystem::path(uno).filename().string().rfind(
+              "funshi_export_", 0) == 0,
+          "el directorio de compilacion es propio de la exportacion");
+    CHECK(std::filesystem::exists(uno),
+          "el directorio de compilacion queda reservado para esta exportacion");
+    // La prueba no deja directorios sueltos en la carpeta temporal.
+    std::error_code ec;
+    std::filesystem::remove_all(uno, ec);
+    std::filesystem::remove_all(otro, ec);
+}
+
 int main() {
     comprobarPrecondiciones();
     comprobarEstado();
@@ -384,6 +405,7 @@ int main() {
     comprobarBarraDeMenu();
     comprobarDependencias();
     comprobarLogExportacion();
+    comprobarDirectorioBuild();
 
     std::cout << (fallos == 0 ? "OK" : "FALLOS") << ": " << total
               << " comprobaciones" << std::endl;
